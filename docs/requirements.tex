@@ -1,0 +1,86 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8x]{inputenc}
+\usepackage{cite}
+\usepackage{hyperref}
+%\usepackage{float} %for H positioning
+
+
+\title{Software requirements for caTools}
+%\author{Sašo Skube, PSI}
+\date{}
+
+\renewcommand*{\theenumi}{\thesection.\arabic{enumi}}
+\renewcommand*{\theenumii}{\theenumi.\arabic{enumii}}
+
+\begin{document}
+
+\maketitle
+
+%\tableofcontents
+%\newpage
+
+%\section{Introduction}
+
+\section{Requirements}
+\begin{enumerate}
+	\item The following tools shall be available:
+	\begin{description}
+		\item [caget] Reads and format value from channels.
+		\item [cagets] Writes 1 to PROC field of a channel and reads it back after channel has finished processing.
+		\item [caput] Writes a value to a channel.
+		\item [caputq] Writes a value to a channel, but does not wait for the processing to finish.
+		\item [cainfo] Displays detailed information about a channel.
+		\item [camon] Monitors a set of channels and outputs their values on each change.
+		\item [cado] Writes 1 to a channel, but does not wait for the processing to finish.
+		\item [cawait] Monitors a channel and waits until specified conditions for the channel match. Then the value is displayed.
+	\end{description}
+	\item caTools shall be written in C programming language.
+	\item caTools shall compile on the following platforms:
+	\begin{itemize}
+		\item SL6-x86 SL6-x86\_64,
+		\item eldk52-e500v2,
+		\item eldk42-ppc4xxFP.
+	\end{itemize}
+	\item Input and expected output shall be backwards compatible with existing PSI tools, except for \textbf{caInfo} tool and array handling.
+	\item \textbf{caInfo} tool shall display all the information available in \texttt{DBR\_CTRL\_XXX} compound data type.
+	\item The user shall be able to request specified compound data type (eg. \texttt{DBR\_TIME\_CHAR}).
+	\item The user shall be able to select channel access timeout (eg. how long to wait for channel to connect).
+	\item Date and time of the record execution shall be available (CA server date/time).
+	\item Date and time of the record printout shall be available (client local data/time).
+	\item \textbf{camon} shall have additional incremental time-stamps options:
+	\begin{itemize}
+		\item Time elapsed since start of program.
+		\item Time elapsed since last update.
+		\item Time elapsed since last update, by channel.
+	\end{itemize}
+	\item \textbf{camon} shall have an option to exit monitoring after user specified number of updates.
+	\item \textbf{cawait} shall have an option to exit after a user specified timeout.
+	\item The format of the \texttt{decimal} values shall be settable:
+	\begin{itemize}
+		\item Round the value to closest integer, round to next integer, round to previous integer.
+		\item Scientific notation (mantissa/exponent) with specified precision - \%e format.
+		\item Decimal floating point notation with specified precision - \%f format.
+		\item Use the shortest representation between \%e and \%f.
+		\item Override the PREC field defined in the record.
+	\end{itemize}
+	\item The user shall be able to set the format of the \texttt{integer} values to hex, binary or octal.
+	\item The user shall be able to force interpretation of \texttt{enum} and \texttt{char} values as integers or characters / array of characters.
+	\item Arrays shall be printed as a list of values, where the formatting shall be based on the value type (eg. char type is displayed as an ASCII character, double type as a decimal number).
+	\item Array values separator shall be configurable.
+	\item The user shall be able to set the requested amount of array elements to read or write.
+%	\item The user shall be able to display the number of elements in an array (NORD record field) before printing out array values. 
+	\item Severity and status shall be displayed when not in \texttt{NO\_ALARM} state.
+	\item The user shall be able for force the severity and status to always be displayed.
+	\item The user shall be able for force the severity and status to never be displayed.
+	\item The user shall be able to hide channel name from the output.
+	\item The user shall be able to hide engineering units (EGU) from displaying next to values.
+	\item The default display output format will be in the following form: 
+	\begin{verbatim}
+		[date] [time] [channel name] [value] [EGU] [severity and status]
+	\end{verbatim}
+\end{enumerate}
+
+%\bibliographystyle{plain}
+%\bibliography{references}
+
+\end{document}
