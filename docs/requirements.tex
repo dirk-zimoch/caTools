@@ -20,7 +20,7 @@
 %\newpage
 
 \section{Introduction}
-caTools represent a set of tools used to read, write and display information about EPICS channels. Two sets of tools currently exist. First set is written in TCL programming language and have been in use at PSI for many years. Later a second, set of tools was added to EPICS base. The basic functionalities of both are equal, but each has different additional features. Furthermore, the input and output of both tools is not compatible. 
+caTools represent a set of tools used to read, write and display information about EPICS channels. Two sets of tools currently exist. First set is written in TCL programming language and have been in use at PSI for many years. Later a second set of tools was added to EPICS base. The basic functionalities of both are equal, but each has different additional features. Furthermore, the input and output of both tools is not compatible. 
 
 The new version of the TCL programming language is not compatible to the previous ones, so the existing PSI tools cannot be used with the new TCL version. Thus a new set of caTools is needed, that will be backwards compatible with the existing PSI tools and that will have additional features from EPICS base tool set added.
 
@@ -29,33 +29,36 @@ An analysis of the current tools is available inside a Jira ticket~\cite{jira_an
 \section{Requirements}
 \subsection{General}
 \begin{enumerate}
-	\item The default output format will be in the following form: 
-	\begin{verbatim}
-		[date] [time] [channel name] [value] [EGU] [severity and status]
-	\end{verbatim}
 	\item The following tools shall be available:
 	\begin{description}
-		\item [caget] Reads and formats a value from each channel specified by the user. This tool shall honor the default output format.
-		\item [cagets] Writes 1 to PROC field of a channel and reads it back after channel has finished processing. This tool shall honor the default output format.
-		\item [caput] Writes a value to a channel and reads it back. This tool shall honor the default output format.
+		\item [caget] Reads and formats a value from each channel specified by the user. 
+		\item [cagets] Writes 1 to PROC field of a channel and reads it back after channel has finished processing.
+		\item [caput] Writes a value to a channel and reads it back.
 		\item [caputq] Writes a value to a channel, but does not wait for the processing to finish. Does not have any output (except if an error occurs).
-		\item [cainfo] Displays detailed information about a channel. Has a custom output.
-		\item [camon] Monitors a set of channels and outputs their values on each change. This tool shall honor the default output format.
+		\item [camon] Monitors a set of channels and outputs their values on each change.
 		\item [cado] Writes 1 to a channel, but does not wait for the processing to finish. Does not have any output (except if an error occurs).
-		\item [cawait] Monitors a channel and waits until specified conditions for the channel match. Then the value is displayed. This tool shall honor the default output format.
+		\item [cawait] Monitors a channel and waits until specified conditions for the channel match. Then the value is displayed.
+		\item [cainfo] Displays detailed information about a channel. Has custom output, so the formatting options do not apply.
 	\end{description}
 	\item caTools shall be written in C programming language.
-	\item caTools shall compile on the following platforms:
+	\item caTools shall compile to run on all terminal stations in PSI. At least the following platforms shall be supported:
 	\begin{itemize}
 		\item SL6-x86 SL6-x86\_64,
+		\item SL5-x86 SL5-x86\_64,
 		\item eldk52-e500v2,
-		\item eldk42-ppc4xxFP.
+		\item eldk42-ppc4xxFP,
+		\item Windows (exact build system is not yet determined).
 	\end{itemize}
-	\item Input and expected output shall be backwards compatible with existing PSI tools, except for \textbf{caInfo} tool and array handling.
-	\item The user shall be able to request specified compound data type (eg. \texttt{DBR\_TIME\_CHAR}).
-	\item The user shall be able to select channel access timeout (eg. how long to wait for channel to connect).
+	\item Input and expected output shall be backwards compatible with existing PSI tools, except for \textbf{caInfo} tool and array handling (output shall be without curly braces).
 	\item Date and time of the record execution shall be available (CA server date/time).
 	\item Date and time of the record printout shall be available (client local date/time).
+\end{enumerate}
+
+\subsection{Channel access}
+\begin{enumerate}
+	\item The user shall be able to request specified compound data type (eg. \texttt{DBR\_TIME\_CHAR}).
+	\item Default requested compound data type shall be record field native DBR.
+	\item The user shall be able to select channel access timeout (eg. how long to wait for channel to connect).
 \end{enumerate}
 
 \subsection{Tool specifics}
@@ -81,26 +84,47 @@ An analysis of the current tools is available inside a Jira ticket~\cite{jira_an
 		\item Use the shortest representation between \%e and \%f.
 		\item Override the PREC field defined in the record.
 	\end{itemize}
+	\item The user shall be able to format enum or char value to integer (and vice-versa).
 	\item The user shall be able to set the format of the \texttt{integer} values to hex, binary or octal.
 	\item The user shall be able to force interpretation of \texttt{enum} and \texttt{char} values as integers or characters / array of characters.
 \end{enumerate}
 
 \subsection{Array handling}
 \begin{enumerate}
-	\item Arrays shall be printed as a list of values, where the formatting shall be based on the value type (eg. char type is displayed as an ASCII character, double type is displayed as a decimal number).
-	\item Array values separator shall be configurable.
+	\item Arrays shall be printed as a list of values, where the formatting shall be based on the DBR type. By default, native DBR type shall be requested (eg. char type is displayed as an ASCII character, double type is displayed as a decimal number).
+	\item Array input and output values separator shall be configurable.
 	\item The user shall be able to set the requested amount of array elements to read or write.
-%	\item The user shall be able to display the number of elements in an array (NORD record field) before printing out array values.
+	\item The user shall be able to print the number of elements in an array before printing out array values.
 \end{enumerate}
 
 \subsection{Output formatting}
 \begin{enumerate}
+	\item The default output format shall be in the following form: 
+	\begin{verbatim}
+		[date] [time] [channel name] [value] [EGU] [severity and status]
+	\end{verbatim}
 	\item Severity and status shall be displayed when not in \texttt{NO\_ALARM} state.
 	\item The user shall be able for force the severity and status to always be displayed.
 	\item The user shall be able for force the severity and status to never be displayed.
 	\item The user shall be able to hide channel name from the output.
 	\item The user shall be able to hide engineering units (EGU) from displaying next to values.
 	\item The value and output formatting shall be applied to all tools that honor the default output format equally.
+\end{enumerate}
+
+\subsection{Input formatting}
+\begin{enumerate}
+	\item The input format for \textbf{caget}, \textbf{cagets}, \textbf{camon}, \textbf{cado}, \textbf{cawait} shall be in the following form:
+	\begin{verbatim}
+		[tool] [arguments] [channel] [channel] ... [channel]
+	\end{verbatim}	
+	\item The input format for \textbf{caput}, \textbf{caputq} shall be in the following form:
+	\begin{verbatim}
+		[tool] [arguments] [[channel] [value]] ... [[channel] [value]]
+	\end{verbatim}
+	\item The input format for \textbf{caInfo} shall be in the following form:
+	\begin{verbatim}
+		cainfo [channel]
+	\end{verbatim}
 \end{enumerate}
 
 \bibliographystyle{plain}
