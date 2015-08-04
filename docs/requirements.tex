@@ -24,7 +24,7 @@ caTools represent a set of tools used to read, write and display information abo
 
 The new version of the TCL programming language is not compatible to the previous ones, so the existing PSI tools cannot be used with the new TCL version. Thus a new set of caTools is needed, that will be backwards compatible with the existing PSI tools and that will have additional features from EPICS base tool set added.
 
-An analysis of the current tools is available inside a Jira ticket~\cite{jira_analyze}. A preliminary list of command line arguments for the new tools is available inside a Jira ticket~\cite{jira_requirements} as \texttt{arguments.pdf} attachment. The rest of this document describes the requirements for the new set of caTools.
+An analysis of the current tools is available inside a Jira ticket~\cite{jira_analyze}. A preliminary list of command line arguments for the new tools is available inside a Jira ticket~\cite{jira_requirements} as \texttt{prelimenaryArgs.pdf} attachment. The rest of this document describes the requirements for the new set of caTools.
 
 \section{Requirements}
 \subsection{General}
@@ -33,7 +33,7 @@ An analysis of the current tools is available inside a Jira ticket~\cite{jira_an
 	\begin{description}
 		\item [caget] Reads and formats a value from each channel specified by the user. 
 		\item [cagets] Writes 1 to PROC field of a channel and reads it back after channel has finished processing.
-		\item [caput] Writes a value to a channel and reads it back.
+		\item [caput] Writes a value to a channel, waits for the processing to finish and reads back the new value.
 		\item [caputq] Writes a value to a channel, but does not wait for the processing to finish. Does not have any output (except if an error occurs).
 		\item [camon] Monitors a set of channels and outputs their values on each change.
 		\item [cado] Writes 1 to a channel, but does not wait for the processing to finish. Does not have any output (except if an error occurs).
@@ -49,16 +49,16 @@ An analysis of the current tools is available inside a Jira ticket~\cite{jira_an
 		\item eldk42-ppc4xxFP,
 		\item Windows (exact build system is not yet determined).
 	\end{itemize}
-	\item Input and expected output shall be backwards compatible with existing PSI tools, except for \textbf{caInfo} tool and array handling (output shall be without curly braces).
-	\item Date and time of the record execution shall be available (CA server date/time).
-	\item Date and time of the record printout shall be available (client local date/time).
+	\item Input and expected output shall be backwards compatible with existing PSI tools, except for \textbf{caInfo} tool and array handling (output will be without curly braces).
+	\item Date and time of the record processing shall be available (CA server date/time).
+	\item Date and time when the record data was received on the client side shall be available (client local date/time).
 \end{enumerate}
 
 \subsection{Channel access}
 \begin{enumerate}
-	\item The user shall be able to request specified compound data type (eg. \texttt{DBR\_TIME\_CHAR}).
-	\item Default requested compound data type shall be record field native DBR.
-	\item The user shall be able to select channel access timeout (eg. how long to wait for channel to connect).
+	\item The user shall be able to request specified DBR type (eg. \texttt{DBR\_TIME\_CHAR}).
+	\item Default requested DBR type shall be record's native DBR type.
+	\item The user shall be able to specify channel access timeout (eg. how long to wait for channel to connect).
 \end{enumerate}
 
 \subsection{Tool specifics}
@@ -71,7 +71,7 @@ An analysis of the current tools is available inside a Jira ticket~\cite{jira_an
 	\end{itemize}
 	\item \textbf{camon} shall have an option to exit monitoring after user specified number of updates.
 	\item \textbf{cawait} shall have an option to exit after a user specified timeout.
-	\item \textbf{caInfo} tool shall display all the information available in \texttt{DBR\_CTRL\_XXX} compound data type.
+	\item \textbf{caInfo} tool shall display all the information available in \texttt{DBR\_CTRL\_XXX} DBR type.
 \end{enumerate}
 
 \subsection{Value formatting}
@@ -104,8 +104,8 @@ An analysis of the current tools is available inside a Jira ticket~\cite{jira_an
 		[date] [time] [channel name] [value] [EGU] [severity and status]
 	\end{verbatim}
 	\item Severity and status shall be displayed when not in \texttt{NO\_ALARM} state.
-	\item The user shall be able for force the severity and status to always be displayed.
-	\item The user shall be able for force the severity and status to never be displayed.
+	\item The user shall be able to force the severity and status to always be displayed.
+	\item The user shall be able to force the severity and status to never be displayed.
 	\item The user shall be able to hide channel name from the output.
 	\item The user shall be able to hide engineering units (EGU) from displaying next to values.
 	\item The value and output formatting shall be applied to all tools that honor the default output format equally.
