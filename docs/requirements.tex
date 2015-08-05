@@ -57,7 +57,13 @@ An analysis of the current tools is available inside a Jira ticket~\cite{jira_an
 \subsection{Channel access}
 \begin{enumerate}
 	\item The user shall be able to request specified DBR type (eg. \texttt{DBR\_TIME\_CHAR}).
-	\item Default requested DBR type shall be record's native DBR type.
+	\item Default requested DBR type shall be matching record's field DBF type:
+	\begin{itemize}
+		\item By default, \texttt{GR} detail level (\texttt{DBR\_GR\_[native DBF]}) shall be used.
+		\item When only record processing time-stamp (CA server date/time) and/or severity and status are requested, \texttt{TIME} detail level shall be used (\texttt{DBR\_TIME\_[native DBF]}).
+		\item When more detailed information than severity, status and record processing time-stamp (CA server date/time) is requested, two requests shall be made. First request shall be using \texttt{TIME} detail level and second using \texttt{GR} detail level.
+		\item When less detailed information is requested, the detail level shall be set accordingly.
+	\end{itemize}
 	\item The user shall be able to specify channel access timeout (eg. how long to wait for channel to connect).
 \end{enumerate}
 
@@ -71,7 +77,11 @@ An analysis of the current tools is available inside a Jira ticket~\cite{jira_an
 	\end{itemize}
 	\item \textbf{camon} shall have an option to exit monitoring after user specified number of updates.
 	\item \textbf{cawait} shall have an option to exit after a user specified timeout.
-	\item \textbf{caInfo} tool shall display all the information available in \texttt{DBR\_CTRL\_XXX} DBR type.
+	\item \textbf{caInfo} tool shall display all the information available in \texttt{DBR\_CTRL\_XXX} DBR type, and more:
+	\begin{itemize}
+		\item native DBF type, array size, IOC name, access rights,
+		\item record type, description, severities assigned to alarm limits.
+	\end{itemize}
 \end{enumerate}
 
 \subsection{Value formatting}
@@ -86,12 +96,12 @@ An analysis of the current tools is available inside a Jira ticket~\cite{jira_an
 	\end{itemize}
 	\item The user shall be able to format enum or char value to integer (and vice-versa).
 	\item The user shall be able to set the format of the \texttt{integer} values to hex, binary or octal.
-	\item The user shall be able to force interpretation of \texttt{enum} and \texttt{char} values as integers or characters / array of characters.
+	\item \label{itm:atoitoa} The user shall be able to force interpretation of \texttt{enum} and \texttt{char} values as integers or characters / array of characters.
 \end{enumerate}
 
 \subsection{Array handling}
 \begin{enumerate}
-	\item Arrays shall be printed as a list of values, where the formatting shall be based on the DBR type. By default, native DBR type shall be requested (eg. char type is displayed as an ASCII character, double type is displayed as a decimal number).
+	\item Arrays shall be printed as a list of values, where the formatting shall be based on the record's field native DBF type (eg. char type is displayed as an ASCII character, double type is displayed as a decimal number). Default behavior can be overridden by requirement~\ref{itm:atoitoa}.
 	\item Array input and output values separator shall be configurable.
 	\item The user shall be able to set the requested amount of array elements to read or write.
 	\item The user shall be able to print the number of elements in an array before printing out array values.
@@ -113,17 +123,23 @@ An analysis of the current tools is available inside a Jira ticket~\cite{jira_an
 
 \subsection{Input formatting}
 \begin{enumerate}
-	\item The input format for \textbf{caget}, \textbf{cagets}, \textbf{camon}, \textbf{cado}, \textbf{cawait} shall be in the following form:
+	\item The input format for \textbf{caget}, \textbf{cagets}, \textbf{camon} and \textbf{cado} shall be in the following form:
 	\begin{verbatim}
 		[tool] [arguments] [channel] [channel] ... [channel]
 	\end{verbatim}	
+	\item The input format for \textbf{cawait} shall be in the following form:
+	\begin{verbatim}
+		[cawait] [arguments] [[channel] [condition]] 
+		                              ... 
+		                     [[channel] [condition]]
+	\end{verbatim}
 	\item The input format for \textbf{caput}, \textbf{caputq} shall be in the following form:
 	\begin{verbatim}
 		[tool] [arguments] [[channel] [value]] ... [[channel] [value]]
 	\end{verbatim}
 	\item The input format for \textbf{caInfo} shall be in the following form:
 	\begin{verbatim}
-		cainfo [channel]
+		cainfo [channel] [channel] ... [channel]
 	\end{verbatim}
 \end{enumerate}
 
