@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h> // XXX is ok?
 
 #include "cadef.h"  // for channel access
 #include "alarmString.h"  // XXX is ok?
@@ -36,6 +37,7 @@
 #define CA_TIMEOUT 5
 
 enum roundType{
+	roundType_no_rounding=-1,
     roundType_default=0,
     roundType_ceil=1,
     roundType_floor=2
@@ -68,7 +70,7 @@ struct arguments arguments = {
     CA_TIMEOUT,         // w
     -1,                 // d
     false,              // num
-    roundType_default,  // round
+    roundType_no_rounding,  // round
     -1,                 // prec
     false,              // hex
     false,              // bin
@@ -176,6 +178,7 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int i){
             break;
 
         case DBR_INT:
+        	//display dec, hex, bin, oct if desired
         	if (arguments.hex){
         		sprintf(stringValue, "%x", ((dbr_int_t*)value)[i]);
         	}
@@ -195,7 +198,19 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int i){
         //    break;
 
         case DBR_FLOAT:
-        	sprintf(stringValue, arguments.dblFormatStr, ((dbr_float_t*)value)[i]);
+        	//round if desired
+        	if (arguments.round == roundType_no_rounding){
+        		sprintf(stringValue, arguments.dblFormatStr, ((dbr_float_t*)value)[i]);
+        	}
+        	else if (arguments.round == roundType_default){
+        		sprintf(stringValue, arguments.dblFormatStr, roundf(((dbr_float_t*)value)[i]));
+        	}
+        	else if (arguments.round == roundType_ceil){
+        		sprintf(stringValue, arguments.dblFormatStr, ceilf(((dbr_float_t*)value)[i]));
+        	}
+        	else if (arguments.round == roundType_floor){
+        		sprintf(stringValue, arguments.dblFormatStr, floorf(((dbr_float_t*)value)[i]));
+        	}
             break;
 
         case DBR_ENUM:
@@ -220,6 +235,7 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int i){
             break;
 
         case DBR_LONG:
+        	//display dec, hex, bin, oct if desired
         	if (arguments.hex){
         		sprintf(stringValue, "%x", ((dbr_long_t*)value)[i]);
         	}
@@ -235,11 +251,24 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int i){
             break;
 
         case DBR_DOUBLE:
-            sprintf(stringValue, arguments.dblFormatStr, ((dbr_double_t*)value)[i]);
+        	if (arguments.round == roundType_no_rounding){
+        		sprintf(stringValue, arguments.dblFormatStr, ((dbr_double_t*)value)[i]);
+        	}
+        	else if (arguments.round == roundType_default){
+        		sprintf(stringValue, arguments.dblFormatStr, round(((dbr_double_t*)value)[i]));
+        	}
+        	else if (arguments.round == roundType_ceil){
+        		sprintf(stringValue, arguments.dblFormatStr, ceil(((dbr_double_t*)value)[i]));
+        	}
+        	else if (arguments.round == roundType_floor){
+        		sprintf(stringValue, arguments.dblFormatStr, floor(((dbr_double_t*)value)[i]));
+        	}
             break;
 
         default:
             strcpy(stringValue, "Unrecognized DBR type");
+
+
     }
 
     return 0;
@@ -605,7 +634,7 @@ int main ( int argc, char ** argv )
     static struct option long_options[] = {
         {"num",     no_argument,        0,  0 },
         {"int",     no_argument,        0,  0 },    // same as num
-        {"round",   optional_argument,  0,  0 },	//type of rounding:default, ceil, floor
+        {"round",   required_argument,  0,  0 },	//type of rounding:default, ceil, floor
         {"prec",    required_argument,  0,  0 },	//precision
         {"hex",     no_argument,        0,  0 },	//display as hex
         {"bin",     no_argument,        0,  0 },	//display as bin
@@ -644,7 +673,7 @@ int main ( int argc, char ** argv )
                 arguments.d = -1;
             }
             break;
-        case 'e':	//how to show format doubles in strings
+        case 'e':	//how to format doubles in strings
         case 'f':
         case 'g':
             if (sscanf(optarg, "%d", &arguments.digits) != 1){
@@ -672,7 +701,7 @@ int main ( int argc, char ** argv )
                 arguments.num = true;
                 break;
             case 2:   // round
-            	;//needs to precede declaration because of C
+            	;//declaration must not follow label
                 int type;
                 if (sscanf(optarg, "%d", &type) != 1){   // type was not given as a number [0, 1, 2]
                     if(!strcmp("default", optarg)){
@@ -689,16 +718,16 @@ int main ( int argc, char ** argv )
                     }
                 } else{ // type was given as a number
                     if(roundType_floor < type || type < roundType_default){   // out of range check
-                        arguments.round = roundType_default;
+                        arguments.round = roundType_no_rounding;
                         fprintf(stderr,
                             "Invalid round type '%s' "
                             "for option '-%c' - ignored.\n", optarg, opt);
                     } else{
-                        //arguments.round = (roundType)type;//casting causes error?? XXX
                     	arguments.round = type;
                     }
                 }
                 break;
+
             case 3:   // prec
                 if (sscanf(optarg, "%d", &arguments.prec) != 1){
                     fprintf(stderr,
