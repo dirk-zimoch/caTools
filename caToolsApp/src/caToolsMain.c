@@ -34,7 +34,7 @@
 
 
 #define CA_PRIORITY CA_PRIORITY_MIN
-#define CA_TIMEOUT 5
+#define CA_TIMEOUT 1
 
 enum roundType{
 	roundType_no_rounding=-1,
@@ -49,23 +49,28 @@ struct arguments
    float w;					//ca timeout
    int  d;					//precision
    bool num;    			//same as -int
-   enum roundType round;
-   int prec;
-   bool hex;
-   bool bin;
-   bool oct;
-   bool plain;
+   enum roundType round;	//type of rounding:default, ceil, floor
+   int prec;				//precision
+   bool hex;				//display as hex
+   bool bin;				//display as bin
+   bool oct;				//display as oct
+   bool plain;				//ignore formatting switches
    int digits;  			// precision for e, f, g option
    char dblFormatStr[30]; 	// Format string to print doubles (see -e -f -g option)
    bool s;					//try to interpret values as strings
-   char stat;
-   bool noname;
-   bool nounit;
-
+   bool stat;				//status and severity on
+   bool nostat;				//status and severity off
+   bool noname;				//hide name
+   bool nounit;				//hide units
+   char timestamp;			//timestamp type ruc
+   bool date;				//server date
+   bool localdate;			//client date
+   bool time;				//server time
+   bool localtime;			//client time
    int count;   			// Request and print / write up to <num> elements.
 };
 
-//const struct arguments arguments_init = {
+//intialize arguments
 struct arguments arguments = {
     CA_TIMEOUT,         // w
     -1,                 // d
@@ -79,9 +84,15 @@ struct arguments arguments = {
     -1,                 // digits
     "%g",               // dblFormatStr
     false,              // s
-    0,                  // stat
+    false,              // stat
+    false,              // nostat
     0,                  // noname
     0,                  // nounit
+    0,					// timestamp
+    false,				// server date
+    false,				// localdate
+    false,				// time
+    false,				// localtime
     0                   // count
 };
 
@@ -171,7 +182,6 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int i){
 
     value = dbr_value_ptr(dbr, type);
     baseType = type % (LAST_TYPE+1);   // convert appropriate TIME, GR, CTRL,... type to basic one
-    // TODO everything
     switch (baseType) {
         case DBR_STRING:
             strcpy(stringValue, ((dbr_string_t*) value)[i]);
@@ -213,9 +223,11 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int i){
         	}
             break;
 
+         //   POGLEJ KAJ SO TI ENUMI, IN KAJ NAJ ZA -NUM, -INT XXX
+          //  DBR_TIME? kako dela naredi debug caT blabbi -d TIME_STRING
+
         case DBR_ENUM:
             v = ((dbr_enum_t *)value)[i];
-
             if (!arguments.num && !arguments.bin && !arguments.oct && !arguments.hex) { // if not requested as a number check if we can get string
                 if (dbr_type_is_GR(type)) {
                     sprintf(stringValue, "%s", ((struct dbr_gr_enum *)dbr)->strs[v]);
@@ -284,12 +296,13 @@ static void caCallback (evargs args){
     // output strings
 #define LEN_TIMESTAMP 50
 #define LEN_RECORD_NAME 61
-    char timestamp[LEN_TIMESTAMP], severityStatus[2*30], units[20+MAX_UNITS_SIZE], ack[2*30], name[LEN_RECORD_NAME];
+    char outDate[LEN_TIMESTAMP],outTime[LEN_TIMESTAMP], severityStatus[2*30], units[20+MAX_UNITS_SIZE], ack[2*30], name[LEN_RECORD_NAME];
     //chsr precision[30], grLimits[6*45], ctrLimits[2*45], enums[30 + (MAX_ENUM_STATES * (20 + MAX_ENUM_STRING_SIZE))];
     int precision=-1;
     int status=0, severity=0;
 
-    sprintf(timestamp,"%s","");
+    sprintf(outDate,"%s","");
+    sprintf(outTime,"%s","");
 	sprintf(severityStatus,"%s","");
 	sprintf(units,"%s","");
 	sprintf(name,"%s","");
@@ -303,7 +316,8 @@ static void caCallback (evargs args){
 	sprintf(severityStatus, "%s%c%s", epicsAlarmSeverityStrings[severity], fieldSeparator, epicsAlarmConditionStrings[status]);
 
 #define timestamp_get(T) \
-		epicsTimeToStrftime(timestamp, LEN_TIMESTAMP, "%Y-%m-%d %H:%M:%S.%06f", (epicsTimeStamp *)&(((struct T *)args.dbr)->stamp.secPastEpoch));
+		epicsTimeToStrftime(outDate, LEN_TIMESTAMP, "%Y-%m-%d", (epicsTimeStamp *)&(((struct T *)args.dbr)->stamp.secPastEpoch));\
+		epicsTimeToStrftime(outTime, LEN_TIMESTAMP, "%H:%M:%S.%06f", (epicsTimeStamp *)&(((struct T *)args.dbr)->stamp.secPastEpoch));
 
 #define units_get(T) sprintf(units, "%s", ((struct T *)args.dbr)->units);
 
@@ -454,53 +468,59 @@ static void caCallback (evargs args){
             break;
 
         default :
-            //strcpy (s, "Can not print %s DBR type", dbr_type_to_text(args.type));
-            printf("Can not print %s DBR type", dbr_type_to_text(args.type));
+            printf("Can not print %s DBR type. \n", dbr_type_to_text(args.type));
             break;
     } // TODO add the rest.... XXX kaksen rest
 
-   /* XXX kaj nucajo tile
-	if (args.type >= DBR_CTRL_STRING ) {    // upper and lower control limits are available
-
-	}
-
-    if (args.type >= DBR_GR_STRING ) {      // egu, precision, upper and lower value, alarm and display limits are available
-
-    }
-
-    if (args.type >= DBR_TIME_STRING ) {    // time is available
-
-    }
-
-    if (args.type >= DBR_STS_STRING ) {     // status and severity are available
-
-    }*/
 
 
-    //construct output
-    //check arguments
+    //check formating arguments
+    //hide name?
     if (!arguments.noname){
     	sprintf(name, ch->name);
     }
 
+    //hide units?
     if (arguments.nounit){
     	sprintf(units,"%s","");
     }
 
-    if (arguments.stat == 0){//display if alarm
+    //hide alarms?
+    if (arguments.stat){//always display
+    	//do nothing
+    }
+    if (arguments.nostat){//never display
+    	sprintf(severityStatus, "%s","");
+    }
+    else{//display if alarm
     	if (status == 0 && severity == 0){
         	sprintf(severityStatus,"%s","");
     	}
     }
-    else if (arguments.stat == 1){//always display
-    	//do nothing
-    }
-    else if (arguments.stat == 2){//never display
-    	sprintf(severityStatus, "%s","");
-    }
 
+    //hide date or time?
+    //we assume that manually specifying dbr_time does not imply -time or -date.
+	if (!arguments.date){
+		sprintf(outDate,"%s","");
+	}
+	if (!arguments.time){
+		sprintf(outTime,"%s","");
+	}
+	//use local instead? TODO: mutually exclusive arguments!!
+	if (arguments.localdate || arguments.localtime){
+		time_t localTime = time(0);
+		if (arguments.localdate){
+			strftime(outDate, LEN_TIMESTAMP, "%Y-%m-%d", localtime(&localTime));
+		}
+		if (arguments.localtime){
+			strftime(outTime, LEN_TIMESTAMP, "%H:%M:%S", localtime(&localTime));
+		}
+	}
+
+
+    //construct output
     //date, time, channel name
-    printf( "%s%c%s%c", timestamp, fieldSeparator, name, fieldSeparator);
+    printf( "%s%c%s%c%s%c", outDate, fieldSeparator, outTime, fieldSeparator, name, fieldSeparator);
 
     //values
     if (outNelm > 0 && outNelm < args.count) args.count = outNelm; //TODO outNelm = zahtevano stevilo elementov
@@ -558,16 +578,19 @@ void caRequest(struct channel *channels, int nChannels){
         if(arguments.count > 0 && arguments.count < channels[i].count) channels[i].count = arguments.count;
 
         channels[i].done = false;
-        if (arguments.d == -1){
-        	//if DBR type not specified, use native.
-        	//default: GR
-        	channels[i].type = dbf_type_to_DBR_GR(ca_field_type(channels[i].id));
-        	//TODO if only time and/or severity&status, use DBR_TIME_native
-        	//TODO if more, make 2 requests: first time, then GBR???
+        if (arguments.d == -1){   //if DBR type not specified, use native and decide based on desired level of detail.
+        	//XXX in what case is time level not enough?
+        	if (arguments.time || arguments.date || arguments.timestamp){
+            	channels[i].type = dbf_type_to_DBR_TIME(ca_field_type(channels[i].id));
+        	}
+        	else{	//default: GR
+        		channels[i].type = dbf_type_to_DBR_GR(ca_field_type(channels[i].id));
+        	}
         }
         else{
         	channels[i].type = arguments.d;
         }
+
        	status = ca_array_get_callback(channels[i].type, channels[i].count, channels[i].id, caCallback, &channels[i]);
         if (status == ECA_DISCONN) {
             printf("Channel %s is unable to connect.\n", channels[i].name);
@@ -590,7 +613,6 @@ void caRequest(struct channel *channels, int nChannels){
         else if (status == ECA_ALLOCMEM) {
             printf("Unable to allocate memory for channel %s.\n", channels[i].name);
         }
-        // TODO add argument -silent
     }
 
     status = ca_pend_io ( arguments.w ); // will wait until channels connect (create channel is without callback)
@@ -632,18 +654,24 @@ int main ( int argc, char ** argv )
     struct channel *channels;
 
     static struct option long_options[] = {
-        {"num",     no_argument,        0,  0 },
-        {"int",     no_argument,        0,  0 },    // same as num
-        {"round",   required_argument,  0,  0 },	//type of rounding:default, ceil, floor
-        {"prec",    required_argument,  0,  0 },	//precision
-        {"hex",     no_argument,        0,  0 },	//display as hex
-        {"bin",     no_argument,        0,  0 },	//display as bin
-        {"oct",     no_argument,        0,  0 },	//display as oct
-        {"plain",   no_argument,        0,  0 },	//ignore formatting switches
-        {"stat",    required_argument,  0,  0 },	//status and severity XXX???
-        {"noname",  no_argument,        0,  0 },	//hide name
-        {"nounit",  no_argument,        0,  0 },	//hide units
-        {0,         0,                  0,  0 }
+        {"num",     	no_argument,        0,  0 },
+        {"int",     	no_argument,        0,  0 },    //same as num
+        {"round",   	required_argument,  0,  0 },	//type of rounding:default, ceil, floor
+        {"prec",    	required_argument,  0,  0 },	//precision
+        {"hex",     	no_argument,        0,  0 },	//display as hex
+        {"bin",     	no_argument,        0,  0 },	//display as bin
+        {"oct",     	no_argument,        0,  0 },	//display as oct
+        {"plain",   	no_argument,        0,  0 },	//ignore formatting switches
+        {"stat",    	no_argument, 		0,  0 },	//status and severity on
+        {"nostat",  	no_argument,  		0,  0 },	//status and severity off
+        {"noname",  	no_argument,        0,  0 },	//hide name
+        {"nounit",  	no_argument,        0,  0 },	//hide units
+        {"timestamp",	required_argument, 	0,  0 },	//timestamp type ruc
+        {"localdate",	no_argument, 		0,  0 },	//client date
+        {"time",		no_argument, 		0,  0 },	//server time
+        {"localtime",	no_argument, 		0,  0 },	//client time
+        {"date",		no_argument, 		0,  0 },	//server date
+        {0,         	0,                 	0,  0 }
     };	//TODO COUNT!
     // TODO mutually exclusive
     while ((opt = getopt_long_only(argc, argv, "w:d:e:f:g:sh", long_options, &opt_long)) != -1) {
@@ -754,15 +782,42 @@ int main ( int argc, char ** argv )
                 arguments.plain = true;
                 break;
             case 8:   // stat
-                //TODO error checking
-                arguments.stat = atoi(optarg);
+                arguments.stat = true;
                 break;
-            case 9:   // noname
+            case 9:	  // nostat
+				arguments.nostat = true;
+				break;
+            case 10:   // noname
                 arguments.noname = true;
                 break;
-            case 10:   // nounit
+            case 11:   // nounit
                 arguments.nounit = true;
                 break;
+            case 12:   // timestamp
+            	if (sscanf(optarg, "%c", &arguments.timestamp) != 1){
+            		fprintf(stderr,	"Invalid argument '%s' "
+            				"for option '-%c' - ignored. Allowed arguments: r,u,c.\n", optarg, opt);
+            		arguments.timestamp = 0;
+            	} else {
+            		if (arguments.timestamp != 'r' || arguments.timestamp == 'u' || arguments.timestamp == 'c') {
+            			fprintf(stderr,	"Invalid argument '%s' "
+							"for option '-%c' - ignored. Allowed arguments: r,u,c.\n", optarg, opt);
+            			arguments.timestamp = 0;
+            		}
+            	}
+            	break;
+            case 13:   // localdate
+            	arguments.localdate = true;
+            	break;
+            case 14:   // time
+            	arguments.time = true;
+            	break;
+            case 15:   // localtime
+            	arguments.localtime = true;
+            	break;
+            case 16:   // date
+            	arguments.date = true;
+            	break;
             }
             break;
         case '?':
