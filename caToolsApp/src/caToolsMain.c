@@ -68,6 +68,7 @@ struct arguments
    bool time;				//server time
    bool localtime;			//client time
    int count;   			// Request and print / write up to <num> elements.
+   char fieldSeparator;		//array field separator
 };
 
 //intialize arguments
@@ -93,10 +94,9 @@ struct arguments arguments = {
     false,				// localdate
     false,				// time
     false,				// localtime
-    0                   // count
+    -1 ,                 // count
+    ' '					// field separator
 };
-
-//struct arguments arguments = arguments_init;
 
 struct channel{
     char            *name;  // the name of the channel
@@ -104,7 +104,17 @@ struct channel{
     long            type;   // dbr type
     long            count;  // element count
     bool            done;   // indicates if callback has done processing this channel
+    int 			i;		// process value id
 };
+
+
+//output strings
+#define LEN_TIMESTAMP 50
+#define LEN_RECORD_NAME 61
+#define LEN_VALUE 100 //XXX max value size?hmk??
+#define LEN_SEVSTAT 30
+#define LEN_UNITS 20+MAX_UNITS_SIZE
+char **outDate,**outTime, **outSev, **outStat, **outUnits, **outName, **outValue;
 
 
 void usage(FILE *stream, char *programName){
@@ -175,151 +185,251 @@ void sprintBits(char *outStr, size_t const size, void const * const ptr)
     }
 }
 
-int valueToString(char *stringValue, unsigned int type, const void *dbr, int i){
+int valueToString(char *stringValue, unsigned int type, const void *dbr, int count){
     dbr_enum_t v;
     unsigned int baseType;
     void *value;
 
     value = dbr_value_ptr(dbr, type);
     baseType = type % (LAST_TYPE+1);   // convert appropriate TIME, GR, CTRL,... type to basic one
-    switch (baseType) {
-        case DBR_STRING:
-            strcpy(stringValue, ((dbr_string_t*) value)[i]);
-            break;
 
-        case DBR_INT:
-        	//display dec, hex, bin, oct if desired
-        	if (arguments.hex){
-        		sprintf(stringValue, "%x", ((dbr_int_t*)value)[i]);
-        	}
-        	else if (arguments.oct){
-        		sprintf(stringValue, "%o", ((dbr_int_t*)value)[i]);
-        	}
-        	else if (arguments.bin){
-        		sprintBits(stringValue, sizeof(((dbr_int_t*)value)[i]), &((dbr_int_t*)value)[i]);
-        	}
-        	else{
-        		sprintf(stringValue, "%d", ((dbr_int_t*)value)[i]);
-        	}
-            break;
+    //loop over the whole array
+    int i; //element counter
+    char *stringCursor = stringValue; //pointer to start of the string
+    for (i=0; i<count; ++i){
+    	stringCursor = stringValue + strlen(stringValue); //move along the string for each element
 
-        //case DBR_SHORT: equals DBR_INT
-        //    sprintf(stringValue, "%d", ((dbr_short_t*)value)[i]);
-        //    break;
+    	if (i){
+    		sprintf (stringCursor, "%c", arguments.fieldSeparator); //insert element separator
+        	stringCursor = stringValue + strlen(stringValue); //move
+    	}
 
-        case DBR_FLOAT:
-        	//round if desired
-        	if (arguments.round == roundType_no_rounding){
-        		sprintf(stringValue, arguments.dblFormatStr, ((dbr_float_t*)value)[i]);
-        	}
-        	else if (arguments.round == roundType_default){
-        		sprintf(stringValue, arguments.dblFormatStr, roundf(((dbr_float_t*)value)[i]));
-        	}
-        	else if (arguments.round == roundType_ceil){
-        		sprintf(stringValue, arguments.dblFormatStr, ceilf(((dbr_float_t*)value)[i]));
-        	}
-        	else if (arguments.round == roundType_floor){
-        		sprintf(stringValue, arguments.dblFormatStr, floorf(((dbr_float_t*)value)[i]));
-        	}
-            break;
+    	switch (baseType) {
+    	case DBR_STRING:
+    		strcpy(stringCursor, ((dbr_string_t*) value)[i]);
+    		break;
 
-         //   POGLEJ KAJ SO TI ENUMI, IN KAJ NAJ ZA -NUM, -INT XXX
-          //  DBR_TIME? kako dela naredi debug caT blabbi -d TIME_STRING
+    	case DBR_INT:
+    		//display dec, hex, bin, oct if desired
+    		if (arguments.hex){
+    			sprintf(stringCursor, "%x", ((dbr_int_t*)value)[i]);
+    		}
+    		else if (arguments.oct){
+    			sprintf(stringCursor, "%o", ((dbr_int_t*)value)[i]);
+    		}
+    		else if (arguments.bin){
+    			sprintBits(stringCursor, sizeof(((dbr_int_t*)value)[i]), &((dbr_int_t*)value)[i]);
+    		}
+    		else{
+    			sprintf(stringCursor, "%d", ((dbr_int_t*)value)[i]);
+    		}
+    		break;
 
-        case DBR_ENUM:
-            v = ((dbr_enum_t *)value)[i];
-            if (!arguments.num && !arguments.bin && !arguments.oct && !arguments.hex) { // if not requested as a number check if we can get string
-                if (dbr_type_is_GR(type)) {
-                    sprintf(stringValue, "%s", ((struct dbr_gr_enum *)dbr)->strs[v]);
-                    break;
-                }
-                else if (dbr_type_is_CTRL(type)) {
-                    sprintf(stringValue, "%s", ((struct dbr_ctrl_enum *)dbr)->strs[v]);
-                    break;
-                }
-            }
+		//case DBR_SHORT: equals DBR_INT
+    		//    sprintf(stringValue, "%d", ((dbr_short_t*)value)[i]);
+    		//    break;
 
-            sprintf(stringValue, "%d", v); // TODO numFormatString?
-            break;
+    	case DBR_FLOAT:
+    		//round if desired
+    		if (arguments.round == roundType_no_rounding){
+    			sprintf(stringCursor, arguments.dblFormatStr, ((dbr_float_t*)value)[i]);
+    		}
+    		else if (arguments.round == roundType_default){
+    			sprintf(stringCursor, arguments.dblFormatStr, roundf(((dbr_float_t*)value)[i]));
+    		}
+    		else if (arguments.round == roundType_ceil){
+    			sprintf(stringCursor, arguments.dblFormatStr, ceilf(((dbr_float_t*)value)[i]));
+    		}
+    		else if (arguments.round == roundType_floor){
+    			sprintf(stringCursor, arguments.dblFormatStr, floorf(((dbr_float_t*)value)[i]));
+    		}
+    		break;
 
-        case DBR_CHAR:
-            sprintf(stringValue, "%c", ((dbr_char_t*) value)[i]);
-            break;
+    	case DBR_ENUM:
+    		v = ((dbr_enum_t *)value)[i];
+    		if (!arguments.num && !arguments.bin && !arguments.hex && !arguments.oct) { // if not requested as a number check if we can get string
+    			if (dbr_type_is_GR(type)) {
+    				sprintf(stringCursor, "%s", ((struct dbr_gr_enum *)dbr)->strs[v]);
+    				break;
+    			}
+    			else if (dbr_type_is_CTRL(type)) {
+    				sprintf(stringCursor, "%s", ((struct dbr_ctrl_enum *)dbr)->strs[v]);
+    				break;
+    			}
+    		}
+    		// else return string value as number.
+    		if (arguments.hex){
+    			sprintf(stringCursor, "%x", v);
+    		}
+    		else if (arguments.oct){
+    			sprintf(stringCursor, "%o", v);
+    		}
+    		else if (arguments.bin){
+    			sprintBits(stringCursor, sizeof(v), &v);
+    		}
+    		else{
+    			sprintf(stringCursor, "%d", v);
+    		}
+    		break;
 
-        case DBR_LONG:
-        	//display dec, hex, bin, oct if desired
-        	if (arguments.hex){
-        		sprintf(stringValue, "%x", ((dbr_long_t*)value)[i]);
-        	}
-        	else if (arguments.oct){
-        		sprintf(stringValue, "%o", ((dbr_long_t*)value)[i]);
-        	}
-        	else if (arguments.bin){
-        		sprintBits(stringValue, sizeof(((dbr_long_t*)value)[i]), &((dbr_long_t*)value)[i]);
-        	}
-        	else{
-        		sprintf(stringValue, "%d", ((dbr_long_t*)value)[i]);
-        	}
-            break;
+    	case DBR_CHAR:
+    		if (!arguments.num) {	//check if requested as a a number
+    			sprintf(stringCursor, "%c", ((dbr_char_t*) value)[i]);
+    		}
+    		else{
+    			sprintf(stringCursor, "%d", ((dbr_char_t*) value)[i]);
+    		}
+    		break;
 
-        case DBR_DOUBLE:
-        	if (arguments.round == roundType_no_rounding){
-        		sprintf(stringValue, arguments.dblFormatStr, ((dbr_double_t*)value)[i]);
-        	}
-        	else if (arguments.round == roundType_default){
-        		sprintf(stringValue, arguments.dblFormatStr, round(((dbr_double_t*)value)[i]));
-        	}
-        	else if (arguments.round == roundType_ceil){
-        		sprintf(stringValue, arguments.dblFormatStr, ceil(((dbr_double_t*)value)[i]));
-        	}
-        	else if (arguments.round == roundType_floor){
-        		sprintf(stringValue, arguments.dblFormatStr, floor(((dbr_double_t*)value)[i]));
-        	}
-            break;
+    	case DBR_LONG:
+    		//display dec, hex, bin, oct if desired
+    		if (arguments.hex){
+    			sprintf(stringCursor, "%x", ((dbr_long_t*)value)[i]);
+    		}
+    		else if (arguments.oct){
+    			sprintf(stringCursor, "%o", ((dbr_long_t*)value)[i]);
+    		}
+    		else if (arguments.bin){
+    			sprintBits(stringCursor, sizeof(((dbr_long_t*)value)[i]), &((dbr_long_t*)value)[i]);
+    		}
+    		else{
+    			sprintf(stringCursor, "%d", ((dbr_long_t*)value)[i]);
+    		}
+    		break;
 
-        default:
-            strcpy(stringValue, "Unrecognized DBR type");
+    	case DBR_DOUBLE:
+    		//round if desired
+    		if (arguments.round == roundType_no_rounding){
+    			sprintf(stringCursor, arguments.dblFormatStr, ((dbr_double_t*)value)[i]);
+    		}
+    		else if (arguments.round == roundType_default){
+    			sprintf(stringCursor, arguments.dblFormatStr, round(((dbr_double_t*)value)[i]));
+    		}
+    		else if (arguments.round == roundType_ceil){
+    			sprintf(stringCursor, arguments.dblFormatStr, ceil(((dbr_double_t*)value)[i]));
+    		}
+    		else if (arguments.round == roundType_floor){
+    			sprintf(stringCursor, arguments.dblFormatStr, floor(((dbr_double_t*)value)[i]));
+    		}
+    		break;
 
-
+    	default:
+    		strcpy(stringCursor, "Unrecognized DBR type");
+    		break;
+    	}
     }
 
     return 0;
 }
 
 
-static void caCallback (evargs args){
-    struct channel *ch = (struct channel *)args.usr;
-    int i;
-    char fieldSeparator = ' ';  // TODO get from arguments XXX ni zahtevano??
-    int outNelm = -1;
+static void enumToString (evargs args){
+//caget callback function which receives read enum data and tries to interpret it
+//as a string, which is then written to memory pointed at by args.usr. If the data
+//can't be read as a string (i.e. dbr type is not ctrl or gr), number is written.
 
-    // output strings
-#define LEN_TIMESTAMP 50
-#define LEN_RECORD_NAME 61
-    char outDate[LEN_TIMESTAMP],outTime[LEN_TIMESTAMP], severityStatus[2*30], units[20+MAX_UNITS_SIZE], ack[2*30], name[LEN_RECORD_NAME];
+	//check if data was returned
+	if (args.status != ECA_NORMAL){
+		fprintf(stderr, "No data received from server, error code: %d.\n", args.status);
+		return;
+	}
+
+	char *outString = (char*)args.usr;	//string to which the output is written
+	void *value = dbr_value_ptr(args.dbr, args.type);; //pointer to value part of the returned structure
+	dbr_enum_t v; //temporary value holder
+
+	//loop over the whole array
+	int i; //element counter
+	char *stringCursor = outString; //pointer to start of the string
+	for (i=0; i<args.count; ++i){
+		stringCursor = outString + strlen(outString); //move along the string for each element
+
+		if (i){
+			sprintf (stringCursor, "%c", arguments.fieldSeparator); //insert element separator
+			stringCursor = outString + strlen(outString); //move
+		}
+
+		v = ((dbr_enum_t *)value)[i];
+		if (!arguments.num && !arguments.bin && !arguments.hex && !arguments.oct) { // if not requested as a number check if we can get string
+			if (dbr_type_is_GR(args.type)) {
+				sprintf(outString, "%s", ((struct dbr_gr_enum *)args.dbr)->strs[v]);
+				return;
+			}
+			else if (dbr_type_is_CTRL(args.type)) {
+				sprintf(outString, "%s", ((struct dbr_ctrl_enum *)args.dbr)->strs[v]);
+				return;
+			}
+		}
+
+		// if this fails return string value as number.
+		if (arguments.bin){
+			sprintBits(outString, sizeof(v), &v);
+		}
+		else if (arguments.oct){
+			sprintf(outString, "%o", v);
+		}
+		else if (arguments.hex){
+			sprintf(outString, "%x", v);
+		}
+		else{
+			sprintf(outString, "%d", v);
+		}
+	}
+}
+
+int printOutput(int i){
+// prints output strings corresponding to i-th channel.
+
+    //date, time, channel name
+    printf( "%s %s %s", outDate[i], outTime[i], outName[i]);
+
+    //value(s)
+    printf(" %s", outValue[i]);
+
+    //egu, severity, status
+    printf( " %s %s %s\n",  outUnits[i], outSev[i], outStat[i]);
+
+    return 0;
+}
+
+static void caCallback (evargs args){
+
+	//check if data was returned
+	if (args.status != ECA_NORMAL){
+		fprintf(stderr, "No data received from server, error code: %d.\n", args.status);
+		return;
+	}
+
+    struct channel *ch = (struct channel *)args.usr;
+
+    // output strings - local copies
+    char locDate[LEN_TIMESTAMP],locTime[LEN_TIMESTAMP], locSev[30], locStat[30], locUnits[20+MAX_UNITS_SIZE], locAck[2*30], locName[LEN_RECORD_NAME];
     //chsr precision[30], grLimits[6*45], ctrLimits[2*45], enums[30 + (MAX_ENUM_STATES * (20 + MAX_ENUM_STRING_SIZE))];
     int precision=-1;
     int status=0, severity=0;
 
-    sprintf(outDate,"%s","");
-    sprintf(outTime,"%s","");
-	sprintf(severityStatus,"%s","");
-	sprintf(units,"%s","");
-	sprintf(name,"%s","");
-	sprintf(ack,"%s","");
+    sprintf(locDate,"%s","");
+    sprintf(locTime,"%s","");
+	sprintf(locSev,"%s","");
+	sprintf(locStat,"%s","");
+	sprintf(locUnits,"%s","");
+	sprintf(locName,"%s","");
+	sprintf(locAck,"%s","");
+
 
 
     //templates for reading requested data
 #define severity_status_get(T) \
     status = ((struct T *)args.dbr)->status; \
 	severity = ((struct T *)args.dbr)->severity; \
-	sprintf(severityStatus, "%s%c%s", epicsAlarmSeverityStrings[severity], fieldSeparator, epicsAlarmConditionStrings[status]);
+	sprintf(locSev, "%s", epicsAlarmSeverityStrings[severity]); \
+	sprintf(locStat, "%s", epicsAlarmConditionStrings[status]);
 
 #define timestamp_get(T) \
-		epicsTimeToStrftime(outDate, LEN_TIMESTAMP, "%Y-%m-%d", (epicsTimeStamp *)&(((struct T *)args.dbr)->stamp.secPastEpoch));\
-		epicsTimeToStrftime(outTime, LEN_TIMESTAMP, "%H:%M:%S.%06f", (epicsTimeStamp *)&(((struct T *)args.dbr)->stamp.secPastEpoch));
+		epicsTimeToStrftime(locDate, LEN_TIMESTAMP, "%Y-%m-%d", (epicsTimeStamp *)&(((struct T *)args.dbr)->stamp.secPastEpoch));\
+		epicsTimeToStrftime(locTime, LEN_TIMESTAMP, "%H:%M:%S.%06f", (epicsTimeStamp *)&(((struct T *)args.dbr)->stamp.secPastEpoch));
 
-#define units_get(T) sprintf(units, "%s", ((struct T *)args.dbr)->units);
+#define units_get(T) sprintf(locUnits, "%s", ((struct T *)args.dbr)->units);
 
     //read requested data
     switch (args.type) {
@@ -464,25 +574,25 @@ static void caCallback (evargs args){
 
         case DBR_STSACK_STRING: // do sutff here XXX kaksen stuff
             severity_status_get(dbr_stsack_string);
-            sprintf(ack, "(ACKT:%d ACKS:%d)", ((struct dbr_stsack_string *)args.dbr)->ackt, ((struct dbr_stsack_string *)args.dbr)->acks);
+            //??sprintf(ack, "(ACKT:%d ACKS:%d)", ((struct dbr_stsack_string *)args.dbr)->ackt, ((struct dbr_stsack_string *)args.dbr)->acks);
             break;
 
         default :
             printf("Can not print %s DBR type. \n", dbr_type_to_text(args.type));
             break;
-    } // TODO add the rest.... XXX kaksen rest
+    }
 
 
 
     //check formating arguments
     //hide name?
     if (!arguments.noname){
-    	sprintf(name, ch->name);
+    	sprintf(locName, ch->name);
     }
 
     //hide units?
     if (arguments.nounit){
-    	sprintf(units,"%s","");
+    	sprintf(locUnits,"%s","");
     }
 
     //hide alarms?
@@ -490,54 +600,86 @@ static void caCallback (evargs args){
     	//do nothing
     }
     if (arguments.nostat){//never display
-    	sprintf(severityStatus, "%s","");
+    	sprintf(locSev, "%s","");
+    	sprintf(locStat, "%s","");
     }
     else{//display if alarm
     	if (status == 0 && severity == 0){
-        	sprintf(severityStatus,"%s","");
+        	sprintf(locSev, "%s","");
+        	sprintf(locStat, "%s","");
     	}
     }
 
     //hide date or time?
     //we assume that manually specifying dbr_time does not imply -time or -date.
 	if (!arguments.date){
-		sprintf(outDate,"%s","");
+		sprintf(locDate,"%s","");
 	}
 	if (!arguments.time){
-		sprintf(outTime,"%s","");
+		sprintf(locTime,"%s","");
 	}
-	//use local instead? TODO: mutually exclusive arguments!!
+	//use local instead?
 	if (arguments.localdate || arguments.localtime){
 		time_t localTime = time(0);
 		if (arguments.localdate){
-			strftime(outDate, LEN_TIMESTAMP, "%Y-%m-%d", localtime(&localTime));
+			strftime(locDate, LEN_TIMESTAMP, "%Y-%m-%d", localtime(&localTime));
 		}
 		if (arguments.localtime){
-			strftime(outTime, LEN_TIMESTAMP, "%H:%M:%S", localtime(&localTime));
+			strftime(locTime, LEN_TIMESTAMP, "%H:%M:%S", localtime(&localTime));
 		}
 	}
 
 
-    //construct output
-    //date, time, channel name
-    printf( "%s%c%s%c%s%c", outDate, fieldSeparator, outTime, fieldSeparator, name, fieldSeparator);
 
-    //values
-    if (outNelm > 0 && outNelm < args.count) args.count = outNelm; //TODO outNelm = zahtevano stevilo elementov
+    //construct values string and write to global string directly
 
-    char valueStr[100];//XXX max size of output string?hmk??
-	sprintf(valueStr,"%s","");
+	if (args.type >= DBR_STS_STRING && args.type <= DBR_TIME_DOUBLE && \
+			arguments.s && ca_field_type(ch->id) == DBF_ENUM){
+		//special case: field type is enum, dbr type is time or sts, and string is requested.
+		//In this case, two requests are needed.
+		//we already have time, but to obtain value in the form of string, another request is needed.
 
-    for(i=0; i < args.count; i++){
-    	if (i) printf ("%c", fieldSeparator);
+		status = ca_array_get_callback(DBR_GR_ENUM, ch->count, ch->id, enumToString, outValue[ch->i]);
+		if (status == ECA_DISCONN) {
+			printf("Channel %s is unable to connect.\n", ch->name);
+		}
+		else if (status == ECA_BADTYPE) {
+			printf("Invalid DBR type requested for channel %s.\n", ch->name);
+		}
+		else if (status == ECA_BADCHID) {
+			printf("Channel %s has a corrupted ID.\n", ch->name);
+		}
+		else if (status == ECA_BADCOUNT) {
+			printf("Channel %s: Requested count larger than native element count.\n", ch->name);
+		}
+		else if (status == ECA_GETFAIL) {
+			printf("Channel %s: A local database get failed.\n", ch->name);
+		}
+		else if (status == ECA_NORDACCESS) {
+			printf("Read access denied for channel %s.\n", ch->name);
+		}
+		else if (status == ECA_ALLOCMEM) {
+			printf("Unable to allocate memory for channel %s.\n", ch->name);
+		}
+		status = ca_flush_io();
+		if(status != ECA_NORMAL){
+			printf ("Problem flushing channel %s.\n", ch->name);
+		}
 
-    	valueToString(valueStr + strlen(valueStr), args.type, args.dbr, i);
-    }
-	printf("%s", valueStr);
 
+	}
+	else{ //get values as usual
+		valueToString(outValue[ch->i], args.type, args.dbr, args.count);
+	}
 
-    //egu, severity, status
-    printf( "%c%s%c%s\n", fieldSeparator, units, fieldSeparator, severityStatus);
+	//sprintf loc -> out
+	sprintf(outDate[ch->i], locDate);
+	sprintf(outTime[ch->i], locTime);
+	sprintf(outName[ch->i], locName);
+	sprintf(outUnits[ch->i], locUnits);
+	sprintf(outSev[ch->i], locSev);
+	sprintf(outStat[ch->i], locStat);
+
 
     //finish
     ch->done = true;
@@ -575,16 +717,21 @@ void caRequest(struct channel *channels, int nChannels){
         channels[i].count = ca_element_count ( channels[i].id );
         printf("# of elements in %s: %lu\n", channels[i].name, channels[i].count);
 
+        //how many elements to request
         if(arguments.count > 0 && arguments.count < channels[i].count) channels[i].count = arguments.count;
 
         channels[i].done = false;
         if (arguments.d == -1){   //if DBR type not specified, use native and decide based on desired level of detail.
-        	//XXX in what case is time level not enough?
+
         	if (arguments.time || arguments.date || arguments.timestamp){
             	channels[i].type = dbf_type_to_DBR_TIME(ca_field_type(channels[i].id));
         	}
         	else{	//default: GR
         		channels[i].type = dbf_type_to_DBR_GR(ca_field_type(channels[i].id));
+        		//since there is no gr_string, use sts_string instead
+        		if (channels[i].type == DBR_GR_STRING){
+        			channels[i].type = DBR_STS_STRING;
+        		}
         	}
         }
         else{
@@ -671,10 +818,12 @@ int main ( int argc, char ** argv )
         {"time",		no_argument, 		0,  0 },	//server time
         {"localtime",	no_argument, 		0,  0 },	//client time
         {"date",		no_argument, 		0,  0 },	//server date
+        {"nelm",		required_argument,	0,  0 },	//number of array elements
+        {"fs",			required_argument,	0,  0 },	//array field separator
         {0,         	0,                 	0,  0 }
-    };	//TODO COUNT!
-    // TODO mutually exclusive
-    while ((opt = getopt_long_only(argc, argv, "w:d:e:f:g:sh", long_options, &opt_long)) != -1) {
+    };
+    // TODO mutually exclusive arguments!
+    while ((opt = getopt_long_only(argc, argv, ":w:d:e:f:g:sth", long_options, &opt_long)) != -1) {
         switch (opt) {
         case 'w':
         	if (sscanf(optarg, "%f", &arguments.w) != 1){    // type was not given as float
@@ -683,24 +832,25 @@ int main ( int argc, char ** argv )
         	}
             break;
         case 'd':
-            if (sscanf(optarg, "%d", &arguments.d) != 1)    // type was not given as an integer
-            {
-                dbr_text_to_type(optarg, arguments.d);
-                if (arguments.d == -1)                   // Invalid? Try prefix DBR_
-                {
-                    char str[30] = "DBR_";
-                    strncat(str, optarg, 25);
-                    dbr_text_to_type(str, arguments.d);
-                }
-            }
-            if (arguments.d < DBR_STRING    || arguments.d > DBR_CLASS_NAME
-             || arguments.d == DBR_PUT_ACKT || arguments.d == DBR_PUT_ACKS)
-            {
-                fprintf(stderr, "Requested dbr type out of range "
-                        "or invalid - ignored. ('%s -h' for help.)\n", argv[0]);
-                arguments.d = -1;
-            }
-            break;
+        	if (sscanf(optarg, "%d", &arguments.d) != 1)     // type was not given as an integer
+        	{
+        		dbr_text_to_type(optarg, arguments.d);
+        		if (arguments.d == -1)                   // Invalid? Try prefix DBR_
+        		{
+        			char str[30] = "DBR_";
+        			strncat(str, optarg, 25);
+        			dbr_text_to_type(str, arguments.d);
+        		}
+        	}
+        	if (arguments.d < DBR_STRING    || arguments.d > DBR_CLASS_NAME
+        			|| arguments.d == DBR_PUT_ACKT || arguments.d == DBR_PUT_ACKS)
+        	{
+        		fprintf(stderr, "Requested dbr type out of range "
+        				"or invalid - ignored. ('%s -h' for help.)\n", argv[0]);
+        		arguments.d = -1;
+        	}
+        	break;
+
         case 'e':	//how to format doubles in strings
         case 'f':
         case 'g':
@@ -720,6 +870,9 @@ int main ( int argc, char ** argv )
         case 's':	//try to interpret values as strings
             arguments.s = true;
             break;
+        case 't':
+        	arguments.time = true;	//show server time
+        	break;
         case 0:   // long options
             switch (opt_long){
             case 0:   // num
@@ -818,14 +971,36 @@ int main ( int argc, char ** argv )
             case 16:   // date
             	arguments.date = true;
             	break;
+            case 17:   // number of elements
+            	if (sscanf(optarg, "%d", &arguments.count) != 1){
+            		fprintf(stderr, "Invalid count argument '%s' "
+            				"for option '-%c' - ignored.\n", optarg, opt);
+            	}
+            	else {
+            		if (arguments.count < 1) {
+            			fprintf(stderr, "Count number for option '-%c' "
+            					"must be positive integer - ignored.\n", opt);
+            			arguments.count = -1;
+            		}
+            	}
+            	break;
+            case 18:   // field separator
+            	if (sscanf(optarg, "%c", &arguments.fieldSeparator) != 1){
+            		fprintf(stderr, "Invalid argument '%s' "
+            				"for option '-%c' - ignored.\n", optarg, opt);
+            	}
+            	break;
             }
             break;
         case '?':
-            fprintf(stderr, "Unrecognized option: '-%c'. ('%s -h' for help.)\n", optopt, argv[0]);
-            return EXIT_FAILURE;
+        	fprintf(stderr, "Unrecognized option: '-%c'. ('%s -h' for help.)\n", optopt, argv[0]);
+        	return EXIT_FAILURE;
+        	break;
         case ':':
-            fprintf(stderr, "Option '-%c' requires an argument. ('%s -h' for help.)\n", optopt, argv[0]);
-            return EXIT_FAILURE;
+        	fprintf(stderr, "Option '-%c' requires an argument. ('%s -h' for help.)\n", optopt, argv[0]);
+        	return EXIT_FAILURE;
+
+        	break;
         case 'h':               /* Print usage */
             usage(stdout, argv[0]);
             return EXIT_SUCCESS;
@@ -850,15 +1025,45 @@ int main ( int argc, char ** argv )
     for (i = 0; optind < argc; i++, optind++){  // Copy PV names from command line
         printf("PV %d: %s\n", i, argv[optind]);
         channels[i].name = argv[optind];
+        channels[i].i = i;	// channel number, serves to synchronise pvs and output.
     }
 
     dumpArguments(&arguments);
+
+    //allocate memory for output strings
+	outValue = malloc(nChannels * sizeof(char *));
+	outDate = malloc(nChannels * sizeof(char *));
+	outTime = malloc(nChannels * sizeof(char *));
+	outSev = malloc(nChannels * sizeof(char *));
+	outStat = malloc(nChannels * sizeof(char *));
+	outUnits = malloc(nChannels * sizeof(char *));
+	outName = malloc(nChannels * sizeof(char *));
+	if (!outValue || !outDate || !outTime || !outSev || !outStat || !outUnits || !outName){
+		fprintf(stderr, "Memory allocation error.\n");
+	}
+	for(i = 0; i < nChannels; i++){
+		outValue[i] = malloc(LEN_VALUE * sizeof(char));
+		outDate[i] = malloc(LEN_TIMESTAMP * sizeof(char));
+		outTime[i] = malloc(LEN_TIMESTAMP * sizeof(char));
+		outSev[i] = malloc(LEN_SEVSTAT * sizeof(char));
+		outStat[i] = malloc(LEN_SEVSTAT * sizeof(char));
+		outUnits[i] = malloc(LEN_UNITS * sizeof(char));
+		outName[i] = malloc(LEN_RECORD_NAME * sizeof(char));
+		if (!outValue[i] || !outDate[i] || !outTime[i] || !outSev[i] || !outStat[i] || !outUnits[i] || !outName[i]){
+			fprintf(stderr, "Memory allocation error.\n");
+		}
+	}
+
 
     if(caInit(channels, nChannels) != EXIT_SUCCESS) return EXIT_FAILURE;
     caRequest(channels, nChannels);
     if (caDisconnect(channels, nChannels) != EXIT_SUCCESS) return EXIT_FAILURE;
 
     free(channels);
+
+    for (i=0; i<nChannels; ++i){
+    	printOutput(i);
+    }
 
     return EXIT_SUCCESS;
 }
