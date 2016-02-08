@@ -45,7 +45,13 @@ enum roundType{
 
 enum tool{
 	caget=1,
-	camon=2
+	camon=2,
+	caput=3,
+	caputq=4,
+	cagets=5,
+	cado=6,
+	cawait=7,
+	cainfo=8
 };
 
 struct arguments
@@ -113,6 +119,7 @@ struct channel{
     long            count;  // element count
     bool            done;   // indicates if callback has done processing this channel
     int 			i;		// process value id
+    char			*writeStr;	// value to be written
 };
 
 
@@ -157,7 +164,7 @@ void dumpArguments(struct arguments *args){
 }
 
 
-/*rabimo to?? ne dela v C XXX
+/*rabimo to?? XXX
 void channelStatusCallback(connection_handler_args args){
     printf("Connection status changed:\n"
            "Channel id: %ld went %ld [6 = up\t7 = down]\n",
@@ -261,10 +268,16 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int cou
     		v = ((dbr_enum_t *)value)[i];
     		if (!arguments.num && !arguments.bin && !arguments.hex && !arguments.oct) { // if not requested as a number check if we can get string
     			if (dbr_type_is_GR(type)) {
+    				if (v > ((struct dbr_gr_enum *)dbr)->no_str) {
+    					fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
+    				}
     				sprintf(stringCursor, "%s", ((struct dbr_gr_enum *)dbr)->strs[v]);
     				break;
     			}
     			else if (dbr_type_is_CTRL(type)) {
+    				if (v > ((struct dbr_ctrl_enum *)dbr)->no_str) {
+    					fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
+    				}
     				sprintf(stringCursor, "%s", ((struct dbr_ctrl_enum *)dbr)->strs[v]);
     				break;
     			}
@@ -365,12 +378,19 @@ static void enumToString (evargs args){
 		}
 
 		v = ((dbr_enum_t *)value)[i];
+		if (v > ((struct dbr_gr_enum *)args.dbr)->no_str) fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
 		if (!arguments.num && !arguments.bin && !arguments.hex && !arguments.oct) { // if not requested as a number check if we can get string
 			if (dbr_type_is_GR(args.type)) {
+				if (v > ((struct dbr_gr_enum *)args.dbr)->no_str) {
+					fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
+				}
 				sprintf(outString, "%s", ((struct dbr_gr_enum *)args.dbr)->strs[v]);
 				continue;
 			}
 			else if (dbr_type_is_CTRL(args.type)) {
+				if (v > ((struct dbr_ctrl_enum *)args.dbr)->no_str) {
+					fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
+				}
 				sprintf(outString, "%s", ((struct dbr_ctrl_enum *)args.dbr)->strs[v]);
 				continue;
 			}
@@ -448,11 +468,11 @@ int epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp * pLeft, const 
 
 }
 
-static void caCallback (evargs args){
+static void caReadCallback (evargs args){
 
 	//check if data was returned
 	if (args.status != ECA_NORMAL){
-		fprintf(stderr, "No data received from server, error code: %d.\n", args.status);
+		fprintf(stderr, "Error in read callback. %s.\n", ca_message(args.status));
 		return;
 	}
 
@@ -707,41 +727,28 @@ static void caCallback (evargs args){
 
 
     //construct values string and write to global string directly
+	//special case: enum
+	if ((args.type == DBR_STS_STRING || DBR_TIME_STRING) && (arguments.num || arguments.bin || arguments.hex || arguments.oct)){
+		//special case 1: field type is enum, dbr type is string, and number is requested.
+		//to obtain value number, another request is needed.
+		status = ca_array_get_callback(DBR_TIME_ENUM, ch->count, ch->id, enumToString, ch);
+		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
 
-	if (args.type >= DBR_STS_STRING && args.type <= DBR_TIME_DOUBLE && \
+		status = ca_flush_io();
+		if(status != ECA_NORMAL) fprintf (stderr,"Problem flushing channel %s.\n", ch->name);
+		//ch->done is set by enum2string callback.
+	}
+	else if (args.type >= DBR_STS_SHORT && args.type <= DBR_TIME_DOUBLE && \
 			arguments.s && ca_field_type(ch->id) == DBF_ENUM){
-		//special case: field type is enum, dbr type is time or sts, and string is requested.
-		//In this case, two requests are needed.
+		//special case 2: field type is enum, dbr type is time or sts but not string, and string is requested.
 		//we already have time, but to obtain value in the form of string, another request is needed.
 
 		status = ca_array_get_callback(DBR_GR_ENUM, ch->count, ch->id, enumToString, ch);
-		if (status == ECA_DISCONN) {
-			printf("Channel %s is unable to connect.\n", ch->name);
-		}
-		else if (status == ECA_BADTYPE) {
-			printf("Invalid DBR type requested for channel %s.\n", ch->name);
-		}
-		else if (status == ECA_BADCHID) {
-			printf("Channel %s has a corrupted ID.\n", ch->name);
-		}
-		else if (status == ECA_BADCOUNT) {
-			printf("Channel %s: Requested count larger than native element count.\n", ch->name);
-		}
-		else if (status == ECA_GETFAIL) {
-			printf("Channel %s: A local database get failed.\n", ch->name);
-		}
-		else if (status == ECA_NORDACCESS) {
-			printf("Read access denied for channel %s.\n", ch->name);
-		}
-		else if (status == ECA_ALLOCMEM) {
-			printf("Unable to allocate memory for channel %s.\n", ch->name);
-		}
+		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
+
 		status = ca_flush_io();
-		if(status != ECA_NORMAL){
-			printf ("Problem flushing channel %s.\n", ch->name);
-		}
-
-
+		if(status != ECA_NORMAL) fprintf (stderr,"Problem flushing channel %s.\n", ch->name);
+		//ch->done is set by enum2string callback.
 	}
 	else{ //get values as usual
 		valueToString(outValue[ch->i], args.type, args.dbr, args.count);
@@ -751,7 +758,18 @@ static void caCallback (evargs args){
 	}
 }
 
+static void caWriteCallback (evargs args){
 
+	//check if status is ok
+	if (args.status != ECA_NORMAL){
+		fprintf(stderr, "Error in write callback. %s.\n", ca_message(args.status));
+		return;
+	}
+
+    struct channel *ch = (struct channel *)args.usr;
+
+    ch->done = true;
+}
 
 
 int caInit(struct channel *channels, int nChannels){
@@ -774,17 +792,17 @@ int caInit(struct channel *channels, int nChannels){
 }
 
 void caRequest(struct channel *channels, int nChannels){
-    int status, i, retry = 0;
-    bool done = false;
+    int status, i;
 
     for(i=0; i < nChannels; i++){
         channels[i].count = ca_element_count ( channels[i].id );
         printf("# of elements in %s: %lu\n", channels[i].name, channels[i].count);
 
-        //how many elements to request
+        //how many array elements to request
         if(arguments.count > 0 && arguments.count < channels[i].count) channels[i].count = arguments.count;
 
         channels[i].done = false;
+
         if (arguments.d == -1){   //if DBR type not specified, use native and decide based on desired level of detail.
 
         	if (arguments.time || arguments.date || arguments.timestamp){
@@ -803,54 +821,170 @@ void caRequest(struct channel *channels, int nChannels){
         }
 
         if (arguments.tool == caget){
-			status = ca_array_get_callback(channels[i].type, channels[i].count, channels[i].id, caCallback, &channels[i]);
-			if (status == ECA_DISCONN) {
-				printf("Channel %s is unable to connect.\n", channels[i].name);
-			}
-			else if (status == ECA_BADTYPE) {
-				printf("Invalid DBR type requested for channel %s.\n", channels[i].name);
-			}
-			else if (status == ECA_BADCHID) {
-				printf("Channel %s has a corrupted ID.\n", channels[i].name);
-			}
-			else if (status == ECA_BADCOUNT) {
-				printf("Channel %s: Requested count larger than native element count.\n", channels[i].name);
-			}
-			else if (status == ECA_GETFAIL) {
-				printf("Channel %s: A local database get failed.\n", channels[i].name);
-			}
-			else if (status == ECA_NORDACCESS) {
-				printf("Read access denied for channel %s.\n", channels[i].name);
-			}
-			else if (status == ECA_ALLOCMEM) {
-				printf("Unable to allocate memory for channel %s.\n", channels[i].name);
-			}
-        }
+			status = ca_array_get_callback(channels[i].type, channels[i].count, channels[i].id, caReadCallback, &channels[i]);
+			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
+		}
         else if (arguments.tool == camon){
 			status = ca_create_subscription(channels[i].type, channels[i].count, channels[i].id, DBE_VALUE | DBE_ALARM | DBE_LOG,\
-					caCallback, &channels[i], NULL);
+					caReadCallback, &channels[i], NULL);
 			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create monitor.\n", ca_message(status));
         }
+        if (arguments.tool == caput){ //XXX or caputq? or cagets?
+            long nakedType = channels[i].type % (LAST_TYPE+1);   // use naked dbr_xx type for put
+
+            //input will be one of these
+        	int inputI;
+        	float inputF;
+        	char inputC;
+        	long inputL;
+        	double inputD;
+
+            //convert input string to the nakedType
+        	status = ECA_BADTYPE;
+            switch (nakedType){
+            case DBR_STRING:
+    			status = ca_array_put_callback(nakedType, channels[i].count, channels[i].id, channels[i].writeStr, caWriteCallback, &channels[i]);
+    			break;
+            case DBR_INT://and short
+            	if (sscanf(channels[i].writeStr,"%d",&inputI)){
+            		status = ca_array_put_callback(nakedType, channels[i].count, channels[i].id, &inputI, caWriteCallback, &channels[i]);
+            	}
+            	else fprintf(stderr, "Impossible to convert input %s to format %s\n",channels[i].writeStr, dbr_type_to_text(nakedType));
+            	break;
+            case DBR_FLOAT:
+            	if (sscanf(channels[i].writeStr,"%f",&inputF)){
+            		status = ca_array_put_callback(nakedType, channels[i].count, channels[i].id, &inputF, caWriteCallback, &channels[i]);
+            	}
+            	else fprintf(stderr, "Impossible to convert input %s to format %s\n",channels[i].writeStr, dbr_type_to_text(nakedType));
+        		break;
+            case DBR_ENUM:
+                //check if put data is provided as a number
+            	if (sscanf(channels[i].writeStr,"%d",&inputI)){
+            		if (inputI>15) fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", inputI);
+            		status = ca_array_put_callback(nakedType, channels[i].count, channels[i].id, &inputI, caWriteCallback, &channels[i]);
+            	}
+            	else{
+            		//send as a string
+            		status = ca_array_put_callback(DBR_STRING, channels[i].count, channels[i].id, channels[i].writeStr, caWriteCallback, &channels[i]);
+            	}
+            	break;
+            case DBR_CHAR:
+            	if (sscanf(channels[i].writeStr,"%c",&inputC)){
+            		status = ca_array_put_callback(nakedType, channels[i].count, channels[i].id, &inputC, caWriteCallback, &channels[i]);
+            	}
+            	break;
+            case DBR_LONG:
+            	if (sscanf(channels[i].writeStr,"%li",&inputL)){
+            		status = ca_array_put_callback(nakedType, channels[i].count, channels[i].id, &inputL, caWriteCallback, &channels[i]);
+            	}
+            	else fprintf(stderr, "Impossible to convert input %s to format %s\n",channels[i].writeStr, dbr_type_to_text(nakedType));
+            	break;
+            case DBR_DOUBLE:
+            	if (sscanf(channels[i].writeStr,"%lf",&inputD)){
+            		status = ca_array_put_callback(nakedType, channels[i].count, channels[i].id, &inputD, caWriteCallback, &channels[i]);
+            	}
+            	else fprintf(stderr, "Impossible to convert input %s to format %s\n",channels[i].writeStr, dbr_type_to_text(nakedType));
+            	break;
+            }
+			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create monitor.\n", ca_message(status));
 
 
-    }
-
-    status = ca_pend_io ( arguments.w ); // will wait until channels connect (create channel is without callback)
-    if(status == ECA_TIMEOUT){
-        printf ("Some of the channels are not connected\n");
-    }
-
-    while(!done || retry < 5){ // TODO set retry
-        done = true;
-        for(i=0; i < nChannels; i++){
-            done &= channels[i].done;
         }
-        retry++;
-#ifdef _WIN32
-        Sleep(1);
-#else
-        usleep(1000);  /* sleep for 1000 milliSeconds */
-#endif
+
+    }
+
+    status = ca_flush_io ();
+    if(status == ECA_TIMEOUT){
+    	printf ("Flush error: %s.\n", ca_message(status));
+    }
+
+    //if caput or cagets, wait for put callback and issue a new read request.
+    if (arguments.tool == caput || arguments.tool == cagets){
+
+    	epicsTimeStamp waitStart;
+    	epicsTimeGetCurrent(&waitStart);
+
+    	epicsTimeStamp waitNow;
+    	epicsTimeStamp elapsed;
+
+    	bool doneEach[nChannels];
+    	for (i=0; i<nChannels; ++i) doneEach[i]=false;
+
+    	while(1){
+    		for (i=0; i<nChannels; ++i){
+    			if (channels[i].done){
+    				status = ca_array_get_callback(channels[i].type, channels[i].count, channels[i].id, caReadCallback, &channels[i]);
+    				if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
+
+    				doneEach[i] = true;		//replaces ch.done
+    				channels[i].done = false; //reset ch.done in order to reuse it by callback fcn
+    			}
+    		}
+
+    		//exit if all of callbacks completed
+    		bool doneAll = true;
+    		for (i=0; i<nChannels; ++i){
+    			doneAll &= doneEach[i];
+    		}
+    		if (doneAll) break;
+
+    		//or if timeout
+    		epicsTimeGetCurrent(&waitNow);
+    		epicsTimeDiffFull(&elapsed, &waitStart, &waitNow);
+
+    		if (elapsed.secPastEpoch + 1e-9*elapsed.nsec > arguments.w){
+    			fprintf(stderr,"Timeout while waiting for an answer (put) from channel(s): ");
+    			for (i=0; i<nChannels; ++i){
+    				if (!doneEach[i]){
+    					fprintf(stderr,"%s ", channels[i].name);
+    				}
+    			}
+				fprintf(stderr,".\n");
+    			break;
+    		}
+    	}
+
+    	status = ca_flush_io ();
+    	if(status == ECA_TIMEOUT) fprintf (stderr,"Flush error: %s.\n", ca_message(status));
+    }
+
+    //wait for read callbacks
+    epicsTimeStamp waitStart;
+    epicsTimeGetCurrent(&waitStart);
+
+    epicsTimeStamp waitNow;
+    epicsTimeStamp elapsed;
+    bool doneEach[nChannels];
+    for (i=0; i<nChannels; ++i) doneEach[i]=false;
+
+    while(1){
+		for (i=0; i<nChannels; ++i){
+			if (channels[i].done){
+				doneEach[i] = true;
+			}
+		}
+
+		//break if all callbacks completed
+		bool doneAll = true;
+		for (i=0; i<nChannels; ++i){
+			doneAll &= doneEach[i];
+		}
+		if (doneAll) break;
+
+		//or if timeout
+		epicsTimeGetCurrent(&waitNow);
+		epicsTimeDiffFull(&elapsed, &waitStart, &waitNow);
+
+		if (elapsed.secPastEpoch + 1e-9*elapsed.nsec > arguments.w){
+			fprintf(stderr,"Timeout while waiting for an answer (get) from channel(s): ");
+			for (i=0; i<nChannels; ++i){
+				if (!doneEach[i]){
+					fprintf(stderr,"%s ", channels[i].name);
+				}
+			}
+			fprintf(stderr,".\n");
+			break;
+		}
     }
 }
 
@@ -897,6 +1031,7 @@ int main ( int argc, char ** argv )
         {0,         	0,                 	0,  0 }
     };
     // TODO mutually exclusive arguments!
+    putenv("POSIXLY_CORRECT="); //Behave correct on GNU getopt systems = stop parsing after 1st non option is encountered
     while ((opt = getopt_long_only(argc, argv, ":w:d:e:f:g:n:sth", long_options, &opt_long)) != -1) {
         switch (opt) {
         case 'w':
@@ -1082,13 +1217,25 @@ int main ( int argc, char ** argv )
             			arguments.tool = caget;
             		} else if(!strcmp("camon", optarg)){
             			arguments.tool = camon;
+            		} else if(!strcmp("caput", optarg)){
+            			arguments.tool = caput;
+            		} else if(!strcmp("caputq", optarg)){
+            			arguments.tool = caputq;
+            		} else if(!strcmp("cagets", optarg)){
+            			arguments.tool = cagets;
+            		} else if(!strcmp("cado", optarg)){
+            			arguments.tool = cado;
+            		} else if(!strcmp("cawait", optarg)){
+            			arguments.tool = cawait;
+            		} else if(!strcmp("cainfo", optarg)){
+            			arguments.tool = cainfo;
             		} else {
             			arguments.tool = caget;
             			fprintf(stderr,	"Invalid tool call '%s' "
             					"for option '-%c' - caget assumed.\n", optarg, opt);
             		}
             	} else{ // type was given as a number
-            		if(tool < caget|| tool > camon){   // out of range check
+            		if(tool < caget|| tool > cainfo){   // out of range check
             			arguments.round = caget;
             			fprintf(stderr,	"Invalid tool call '%s' "
             					"for option '-%c' - caget assumed.\n", optarg, opt);
@@ -1120,7 +1267,19 @@ int main ( int argc, char ** argv )
     epicsTimeStamp startTime;	//timestamp indicating program start, needed by -timestamp
 	epicsTimeGetCurrent(&startTime);
 
-    nChannels = argc - optind;       // Remaining arg list are PV names
+	//Remaining arg list refers to PVs
+	if (arguments.tool == caget || arguments.tool == camon){
+		nChannels = argc - optind;       // Remaining arg list are PV names
+	}
+	else if (arguments.tool == caput || arguments.tool == caputq){
+		if ((argc - optind) % 2){
+			fprintf(stderr, "One of the PVs is missing the value to be written ('%s -h' for help).\n", argv[0]);
+			return EXIT_FAILURE;
+		}
+		nChannels = (argc - optind)/2;	// half of the args are PV names, rest are values
+
+	}
+
     if (nChannels < 1)
     {
         fprintf(stderr, "No channel name specified. ('%s -h' for help.)\n", argv[0]);
@@ -1136,7 +1295,18 @@ int main ( int argc, char ** argv )
         printf("PV %d: %s\n", i, argv[optind]);
         channels[i].name = argv[optind];
         channels[i].i = i;	// channel number, serves to synchronise pvs and output.
+
+        if (arguments.tool == caput || arguments.tool == caputq){
+        	channels[i].writeStr = argv[optind+1];	//next argument is the value to be written
+        	optind++;
+        }
     }
+
+
+    for (i=0; i<nChannels; ++i){
+    	printf("channel %d: name %s, writeStr %s\n", i, channels[i].name, channels[i].writeStr);
+    }
+
 
     dumpArguments(&arguments);
 
@@ -1174,7 +1344,7 @@ int main ( int argc, char ** argv )
     if(caInit(channels, nChannels) != EXIT_SUCCESS) return EXIT_FAILURE;
     caRequest(channels, nChannels);
 
-    if (arguments.tool == caget){
+    if (arguments.tool == caget || arguments.tool == caput){
     	for (i=0; i<nChannels; ++i){
     		printOutput(i);
     	}
