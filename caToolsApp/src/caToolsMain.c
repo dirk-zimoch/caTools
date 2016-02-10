@@ -120,6 +120,7 @@ struct channel{
     bool            done;   // indicates if callback has done processing this channel
     int 			i;		// process value id
     char			*writeStr;	// value to be written
+    char 			*conditionStr;	//cawait condition
 };
 
 
@@ -129,7 +130,7 @@ struct channel{
 #define LEN_VALUE 100 //XXX max value size?hmk??
 #define LEN_SEVSTAT 30
 #define LEN_UNITS 20+MAX_UNITS_SIZE
-char **outDate,**outTime, **outSev, **outStat, **outUnits, **outName, **outValue;
+char **outDate,**outTime, **outSev, **outStat, **outUnits, **outName, **outValue, **outLocalDate, **outLocalTime;
 char **outTimestamp; //relative timestamps for camon
 
 //timestamps of received data (per channel)
@@ -181,6 +182,116 @@ int checkStatus(int status){
     return EXIT_SUCCESS;
 }
 
+
+int cawaitCondition(struct channel channel, int k){
+//evaluates output of channel i against the corresponding condition.
+//returns 1 if matching, 0 otherwise, and -1 if error.
+//Before evaluation, channel output is converted to double. If this is
+//not successful, the function returns -1. If the channel is question
+//is an array, the condition is evaluated against the first element.
+//Supported operators: >,<,<=,>=,==,!=, ==A...B(in interval), !=A...B(out of interval).
+
+
+	int i,j;				//counters
+	bool interval=false;	//indicates if interval is desired
+	int output;				//1,0,-1
+
+	double channelValue;
+	if (sscanf(outValue[k], "%lf", &channelValue) <= 0){
+		fprintf(stderr, "Channel %s value %s cannot be converted to double.", channel.name, outValue[k]);
+		return -1;
+	}
+
+	//create a local copy of condition string without spaces, and replace '...' with ':', which is easier to parse
+	char *conditionStr;
+	conditionStr = calloc(strlen(channel.conditionStr) ,sizeof(char));
+	if (!conditionStr) fprintf(stderr, "Memory allocation error.\n");
+	for (i=0, j=0; i<strlen(channel.conditionStr); ++i){
+		if (channel.conditionStr[i] != ' '){
+			if (channel.conditionStr[i] == '.' && channel.conditionStr[i+1] == '.' && channel.conditionStr[i+2] == '.'){
+				conditionStr[j++] = ':';
+				i += 2;
+				interval=true;
+				continue;
+			}
+			conditionStr[j++] = channel.conditionStr[i];
+		}
+	}
+
+	//string to hold parsing format
+	char *format;
+	format = calloc(2*strlen(channel.conditionStr) ,sizeof(char));
+	if (!format) fprintf(stderr, "Memory allocation error.\n");
+
+	//string to hold operator
+	char operator[3] = {0,0,0};
+
+
+	//Parse the conditions string. The first character is always an operator.
+	//The second character is operator if it is not numerical. The operator is followed by
+	//a double. Optionally, this is followed by ':' and another double.
+	if (conditionStr[1]>='0' && conditionStr[1]<='9'){
+		strcpy(format, "%c%lf:%lf");
+	}
+	else{
+		strcpy(format, "%2c%lf:%lf");
+	}
+
+	double operand1, operand2;
+	int nParsed;
+	nParsed = sscanf(conditionStr, format, operator, &operand1, &operand2);
+
+	if (nParsed == 2 && interval == false){
+
+		if (strcmp(operator, ">")==0){
+			output = channelValue > operand1 ? 1 : 0;
+		}
+		else if (strcmp(operator, "<")==0){
+			output = channelValue < operand1 ? 1 : 0;
+		}
+		else if (strcmp(operator, ">=")==0){
+			output = channelValue >= operand1 ? 1 : 0;
+		}
+		else if (strcmp(operator, "<=")==0){
+			output = channelValue <= operand1 ? 1 : 0;
+		}
+		else if (strcmp(operator, "==")==0){
+			output = channelValue == operand1 ? 1 : 0;
+		}
+		else if (strcmp(operator, "!=")==0){
+			output = channelValue != operand1 ? 1 : 0;
+		}
+		else{
+			fprintf(stderr, "Problem interpreting condition string: %s. Unknown operator %s.", conditionStr, operator);
+			output = -1;
+		}
+
+	}
+	else if (nParsed == 3 && interval == interval){
+		if (strcmp(operator, "==")==0){
+			output = (channelValue >= operand1) && (channelValue <= operand2) ? 1 : 0;
+		}
+		else if (strcmp(operator, "!=")==0){
+			output = (channelValue <= operand1) || (channelValue >= operand2) ? 1 : 0;
+		}
+		else{
+			fprintf(stderr, "Problem interpreting condition string: %s. Only operators == and != are supported if the"\
+					"value is to be compared to an interval.",conditionStr);
+			output = -1;
+		}
+	}
+	else{
+		fprintf(stderr, "Problem interpreting condition string: %s. Wrong number of operands.", conditionStr);
+		output = -1;
+	}
+
+
+
+	free(conditionStr);
+	free(format);
+
+	return output;
+}
 
 void sprintBits(char *outStr, size_t const size, void const * const ptr)
 //Converts a decimal number to binary and saves it to outStr.
@@ -418,11 +529,25 @@ static void enumToString (evargs args){
 int printOutput(int i){
 // prints output strings corresponding to i-th channel.
 
-    //date
-	if (strcmp(outDate[i],"") != 0)	printf("%s ",outDate[i]);
+	//if both local and server times are requested, clarify which is which
+	if ((arguments.localdate || arguments.localtime) && (arguments.date || arguments.time)){
+		printf("server time: ");
+	}
 
-	//time
+    //server date
+	if (strcmp(outDate[i],"") != 0)	printf("%s ",outDate[i]);
+	//server time
 	if (strcmp(outTime[i],"") != 0)	printf("%s ",outTime[i]);
+
+	if ((arguments.localdate || arguments.localtime) && (arguments.date || arguments.time)){
+		printf("local time: ");
+	}
+
+	//local date
+	if (strcmp(outLocalDate[i],"") != 0)	printf("%s ",outLocalDate[i]);
+	//local time
+	if (strcmp(outLocalTime[i],"") != 0)	printf("%s ",outLocalTime[i]);
+
 
     //timestamp if monitor and if requested
     if (arguments.tool == camon && arguments.timestamp)	printf("%s ", outTimestamp[i]);
@@ -479,7 +604,8 @@ static void caReadCallback (evargs args){
     struct channel *ch = (struct channel *)args.usr;
 
     // output strings - local copies
-    char locDate[LEN_TIMESTAMP],locTime[LEN_TIMESTAMP], locSev[30], locStat[30], locUnits[20+MAX_UNITS_SIZE], locAck[2*30], locName[LEN_RECORD_NAME];
+    char locDate[LEN_TIMESTAMP],locTime[LEN_TIMESTAMP], locSev[30], locStat[30], locUnits[20+MAX_UNITS_SIZE];
+    char locAck[2*30], locName[LEN_RECORD_NAME], locLocalDate[LEN_TIMESTAMP],locLocalTime[LEN_TIMESTAMP];
     //chsr precision[30], grLimits[6*45], ctrLimits[2*45], enums[30 + (MAX_ENUM_STATES * (20 + MAX_ENUM_STRING_SIZE))];
     int precision=-1;
     int status=0, severity=0;
@@ -491,6 +617,8 @@ static void caReadCallback (evargs args){
 	sprintf(locStat,"%s","");
 	sprintf(locUnits,"%s","");
 	sprintf(locName,"%s","");
+	sprintf(locLocalDate,"%s","");
+	sprintf(locLocalTime,"%s","");
 	//there is no locValue
 	sprintf(locAck,"%s","");//?
 
@@ -502,7 +630,8 @@ static void caReadCallback (evargs args){
 	sprintf(outUnits[ch->i],"%s","");
 	sprintf(outName[ch->i],"%s","");
 	sprintf(outValue[ch->i],"%s","");
-
+	sprintf(outLocalDate[ch->i],"%s","");
+	sprintf(outLocalTime[ch->i],"%s","");
 
     //templates for reading requested data
 #define severity_status_get(T) \
@@ -705,14 +834,15 @@ static void caReadCallback (evargs args){
 	if (!arguments.time){
 		sprintf(locTime,"%s","");
 	}
-	//use local instead?
+
+	//show local date or time?
 	if (arguments.localdate || arguments.localtime){
 		time_t localTime = time(0);
 		if (arguments.localdate){
-			strftime(locDate, LEN_TIMESTAMP, "%Y-%m-%d", localtime(&localTime));
+			strftime(locLocalDate, LEN_TIMESTAMP, "%Y-%m-%d", localtime(&localTime));
 		}
 		if (arguments.localtime){
-			strftime(locTime, LEN_TIMESTAMP, "%H:%M:%S", localtime(&localTime));
+			strftime(locLocalTime, LEN_TIMESTAMP, "%H:%M:%S", localtime(&localTime));
 		}
 	}
 
@@ -824,7 +954,7 @@ void caRequest(struct channel *channels, int nChannels){
 			status = ca_array_get_callback(channels[i].type, channels[i].count, channels[i].id, caReadCallback, &channels[i]);
 			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
 		}
-        else if (arguments.tool == camon){
+        else if (arguments.tool == camon || arguments.tool == cawait){
 			status = ca_create_subscription(channels[i].type, channels[i].count, channels[i].id, DBE_VALUE | DBE_ALARM | DBE_LOG,\
 					caReadCallback, &channels[i], NULL);
 			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create monitor.\n", ca_message(status));
@@ -1003,7 +1133,7 @@ int main ( int argc, char ** argv )
 {
     int opt;                    // getopt() current option
     int opt_long;               // getopt_long() current long option
-    int nChannels;              // Number of channels
+    int nChannels=0;              // Number of channels
     int i;                      // counter
     struct channel *channels;
 
@@ -1271,12 +1401,12 @@ int main ( int argc, char ** argv )
 	if (arguments.tool == caget || arguments.tool == camon){
 		nChannels = argc - optind;       // Remaining arg list are PV names
 	}
-	else if (arguments.tool == caput || arguments.tool == caputq){
+	else if (arguments.tool == caput || arguments.tool == caputq || arguments.tool == cawait){
 		if ((argc - optind) % 2){
 			fprintf(stderr, "One of the PVs is missing the value to be written ('%s -h' for help).\n", argv[0]);
 			return EXIT_FAILURE;
 		}
-		nChannels = (argc - optind)/2;	// half of the args are PV names, rest are values
+		nChannels = (argc - optind)/2;	// half of the args are PV names, rest are values or conditions (cawait)
 
 	}
 
@@ -1300,11 +1430,20 @@ int main ( int argc, char ** argv )
         	channels[i].writeStr = argv[optind+1];	//next argument is the value to be written
         	optind++;
         }
+        else if (arguments.tool == cawait){
+        	channels[i].conditionStr = argv[optind+1]; //next arguments is the condition string
+        	optind++;
+
+        }
     }
 
-
+    /*POGLEJ KAJ DELA Z BLAARRAY ! XXX
     for (i=0; i<nChannels; ++i){
     	printf("channel %d: name %s, writeStr %s\n", i, channels[i].name, channels[i].writeStr);
+    }*/
+
+    for (i=0; i<nChannels; ++i){
+    	printf("channel %d: name %s, condition %s\n", i, channels[i].name, channels[i].conditionStr);
     }
 
 
@@ -1319,6 +1458,9 @@ int main ( int argc, char ** argv )
 	outUnits = malloc(nChannels * sizeof(char *));
 	outName = malloc(nChannels * sizeof(char *));
 	outTimestamp = malloc(nChannels * sizeof(char *));
+	outLocalDate = malloc(nChannels * sizeof(char *));
+	outLocalTime = malloc(nChannels * sizeof(char *));
+
 	if (!outValue || !outDate || !outTime || !outSev || !outStat || !outUnits || !outName || !outTimestamp){
 		fprintf(stderr, "Memory allocation error.\n");
 	}
@@ -1331,8 +1473,10 @@ int main ( int argc, char ** argv )
 		outUnits[i] = malloc(LEN_UNITS * sizeof(char));
 		outName[i] = malloc(LEN_RECORD_NAME * sizeof(char));
 		outTimestamp[i] = malloc(LEN_TIMESTAMP * sizeof(char));
+		outLocalDate[i] = malloc(LEN_TIMESTAMP * sizeof(char));
+		outLocalTime[i] = malloc(LEN_TIMESTAMP * sizeof(char));
 		if (!outValue[i] || !outDate[i] || !outTime[i] || !outSev[i] || !outStat[i] ||\
-				!outUnits[i] || !outName[i] || !outTimestamp[i]){
+				!outUnits[i] || !outName[i] || !outTimestamp[i] || !outDate[i] || !outTime[i]){
 			fprintf(stderr, "Memory allocation error.\n");
 		}
 	}
@@ -1349,7 +1493,7 @@ int main ( int argc, char ** argv )
     		printOutput(i);
     	}
     }
-    else if (arguments.tool == camon){
+    else if (arguments.tool == camon || arguments.tool == cawait){
 
     	int numUpdates = 0;	//needed if -n
     	epicsTimeStamp lastUpdate[nChannels]; //needed if -timestamp u,c
@@ -1362,6 +1506,15 @@ int main ( int argc, char ** argv )
     		for (i=0; i<nChannels; ++i){
 
     			if (channels[i].done){
+
+    				if (arguments.tool == cawait){
+    					if (cawaitCondition(channels[i], i) != 1) {
+    						channels[i].done = false;
+    						continue;
+    					}
+    				}
+
+
 
     				if (arguments.timestamp == 'r') {
     					//calculate elapsed time since startTime
@@ -1383,7 +1536,7 @@ int main ( int argc, char ** argv )
 						//calculate elapsed time since last update; if using 'c' keep
     					//timestamps separate for each channel, otherwise use lastUpdate[0]
     					//for all channels.
-    					int ii;
+    					int ii=0;
     					if (arguments.timestamp == 'c') ii = i;
     					else if (arguments.timestamp == 'u') ii = 0;
 
@@ -1411,7 +1564,6 @@ int main ( int argc, char ** argv )
     					//reset
     					lastUpdate[ii] = timestampRead[i];
     				}
-
 
 					printOutput(i);
 					channels[i].done = false;
