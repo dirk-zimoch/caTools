@@ -117,11 +117,13 @@ struct arguments arguments = {
 struct channel{
     char            *name;  // the name of the channel
     chid            id;     // channel id
+    char			*procName;	//sibling channel for writing to proc field
+    chid			procId;	// id of sibling channel for writing to proc field
     long            type;   // dbr type
     long            count;  // element count
     long            inNelm;  // requested number of elements for writing
     long            outNelm;  // requested number of elements for reading
-    bool            done;   // indicates if callback has done processing this channel
+    bool            done;   // indicates if callback has finished processing this channel
     int 			i;		// process value id
     char			*writeStr;	// value(s) to be written
     char 			*conditionStr;	//cawait condition
@@ -916,6 +918,13 @@ int caInit(struct channel *channels, int nChannels){
     for(i=0; i < nChannels; i++){
         status = ca_create_channel(channels[i].name, 0 , 0, CA_PRIORITY, &channels[i].id);
         if(checkStatus(status) != EXIT_SUCCESS) return EXIT_FAILURE;    // we exit if the channels are not created
+
+        //if tool = cagets or cado, each channel has a sibling connecting to the proc field
+        if (arguments.tool == cagets || arguments.tool == cado){
+        	status = ca_create_channel(channels[i].procName, 0 , 0, CA_PRIORITY, &channels[i].procId);
+        	if(checkStatus(status) != EXIT_SUCCESS) return EXIT_FAILURE;
+        }
+
     }
 
     status = ca_pend_io ( arguments.w ); // will wait until channels connect because create channel is not using a callback
@@ -934,12 +943,12 @@ void caRequest(struct channel *channels, int nChannels){
         printf("# of elements in %s: %lu\n", channels[i].name, channels[i].count);
 
         //how many array elements to request
-        if(arguments.inNelm > 0 && arguments.inNelm < channels[i].count){
+        if(arguments.inNelm > 0 && arguments.inNelm <= channels[i].count){
         	channels[i].inNelm = arguments.inNelm;
         }
         else{
         	channels[i].inNelm = 1;
-        	fprintf(stderr, "Invalid number %d of requested elements to write.", arguments.inNelm);
+        	fprintf(stderr, "Invalid number %d of requested elements to write. Defaulting to 1.", arguments.inNelm);
         }
         if (arguments.outNelm == -1){
         	channels[i].outNelm = channels[i].count;
@@ -983,7 +992,7 @@ void caRequest(struct channel *channels, int nChannels){
 					caReadCallback, &channels[i], NULL);
 			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create monitor.\n", ca_message(status));
         }
-        if (arguments.tool == caput){ //XXX or caputq? or cagets?
+        else if (arguments.tool == caput || arguments.tool == caputq){ //XXX or caputq? or cagets?
             long nakedType = channels[i].type % (LAST_TYPE+1);   // use naked dbr_xx type for put
 
             //input will be one of these
@@ -1060,6 +1069,11 @@ void caRequest(struct channel *channels, int nChannels){
 			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create a put request.\n", ca_message(status));
 
 
+        }
+        else if(arguments.tool == cagets || arguments.tool == cado){
+
+        	int inputI=1;
+        	status = ca_array_put_callback(DBF_CHAR, 1, channels[i].procId, &inputI, caWriteCallback, &channels[i]);
         }
 
     }
@@ -1177,6 +1191,7 @@ int main ( int argc, char ** argv )
     int nChannels=0;              // Number of channels
     int i,j;                      // counter
     struct channel *channels;
+
 
     static struct option long_options[] = {
         {"num",     	no_argument,        0,  0 },
@@ -1453,7 +1468,7 @@ int main ( int argc, char ** argv )
 	epicsTimeGetCurrent(&startTime);
 
 	//Remaining arg list refers to PVs
-	if (arguments.tool == caget || arguments.tool == camon){
+	if (arguments.tool == caget || arguments.tool == camon || arguments.tool == cagets || arguments.tool == cado ){
 		nChannels = argc - optind;       // Remaining arg list are PV names
 	}
 	else if (arguments.tool == caput || arguments.tool == caputq){
@@ -1478,13 +1493,40 @@ int main ( int argc, char ** argv )
         return EXIT_FAILURE;
     }
 
+    //allocate memory for channel structures
     channels = (struct channel *) calloc (nChannels, sizeof(struct channel));
-    channels->writeStr = calloc (arguments.inNelm*MAX_STRING_SIZE, sizeof(char));
     if (!channels) {
-        fprintf(stderr, "Memory allocation for channel structures failed.\n");
-        return EXIT_FAILURE;
+    	fprintf(stderr, "Memory allocation for channel structures failed.\n");
+    	return EXIT_FAILURE;
     }
-    for (i = 0; optind < argc; i++, optind++){  // Copy PV names from command line
+    for (i=0;i<nChannels;++i){
+    	channels[i].writeStr = calloc (arguments.inNelm*MAX_STRING_SIZE, sizeof(char));
+    	channels[i].procName = calloc (LEN_RECORD_NAME, sizeof(char));
+        //name and condition strings dont have to be allocated because they merely point somewhere else
+    	if (!channels[i].writeStr) {
+    		fprintf(stderr, "Memory allocation for channel structures failed.\n");
+    		return EXIT_FAILURE;
+    	}
+    }
+
+/*    if (arguments.tool == cagets || arguments.tool == cado){
+   		channelsToProc = (struct channel *) calloc (nChannels, sizeof(struct channel));
+    	if (!channelsToProc) {
+    		fprintf(stderr, "Memory allocation for channel structures failed.\n");
+    		return EXIT_FAILURE;
+    	}
+    	for (i=0;i<nChannels;++i){
+    		channelsToProc[i].name = calloc (LEN_RECORD_NAME, sizeof(char));
+    		//here we have to allocate name because we may modify it
+    		if (!channelsToProc[i].name) {
+    			fprintf(stderr, "Memory allocation for channel structures failed.\n");
+    			return EXIT_FAILURE;
+    		}
+    	}
+    }*/
+
+    // Copy PV names from command line
+    for (i = 0; optind < argc; i++, optind++){
         printf("PV %d: %s\n", i, argv[optind]);
         channels[i].name = argv[optind];
         channels[i].i = i;	// channel number, serves to synchronise pvs and output.
@@ -1499,6 +1541,33 @@ int main ( int argc, char ** argv )
         else if (arguments.tool == cawait){
         	channels[i].conditionStr = argv[optind+1]; //next argument is the condition string
         	optind++;
+
+        }
+        else if(arguments.tool == cagets || arguments.tool == cado){
+
+        	strcpy(channels[i].procName, channels[i].name);
+
+        	//append .PROC
+        	if (strcmp(&channels[i].procName[strlen(channels[i].procName) - 4], ".VAL") == 0){
+        		//if last 4 elements equal .VAL, channels them
+        		strcpy(&channels[i].procName[strlen(channels[i].procName) - 4],".PROC");
+        	}
+        	else{
+        		//simply append
+        		strcat(&channels[i].procName[strlen(channels[i].procName)],".PROC");
+        	}
+
+    /*    	strcpy(channelsToProc[i].name, channels[i].name);
+
+        	//append .PROC
+        	if (strcmp(&channelsToProc[i].name[strlen(channelsToProc[i].name) - 4], ".VAL") == 0){
+        		//if last 4 elements equal .VAL, replace them
+        		strcpy(&channelsToProc[i].name[strlen(channelsToProc[i].name) - 4],".PROC");
+        	}
+        	else{
+        		//simply append
+        		strcat(&channelsToProc[i].name[strlen(channelsToProc[i].name)],".PROC");
+        	}*/
 
         }
     }
@@ -1557,6 +1626,9 @@ int main ( int argc, char ** argv )
     if(caInit(channels, nChannels) != EXIT_SUCCESS) return EXIT_FAILURE;
     caRequest(channels, nChannels);
 
+
+
+// XXX to gre v request
     if (arguments.tool == caget || arguments.tool == caput){
     	for (i=0; i<nChannels; ++i){
     		printOutput(i);
@@ -1650,9 +1722,9 @@ int main ( int argc, char ** argv )
 
     if (caDisconnect(channels, nChannels) != EXIT_SUCCESS) return EXIT_FAILURE;
 
-    free(channels->writeStr);
+    free(channels->writeStr);//MORA BITI V LOOPU NAJBRZ
     free(channels);
-    //TODO free everything
+    //TODO free everything, vse output stringe
 
     return EXIT_SUCCESS;
 }
