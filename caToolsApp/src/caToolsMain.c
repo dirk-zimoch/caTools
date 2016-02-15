@@ -9,7 +9,7 @@
 
 #include "cadef.h"  // for channel access
 #include "alarmString.h"  // XXX is ok?
-#include <getopt.h> // for getopt() epicsGetopt.h ???
+#include <getopt.h> // TODO change to  epicsGetopt.h
 
 #include <stdbool.h>
 #ifndef __bool_true_false_are_defined
@@ -307,11 +307,12 @@ int cawaitCondition(struct channel channel, int k){
 	return output;
 }
 
-void sprintBits(char *outStr, size_t const size, void const * const ptr)
+
+void sprintBits(char *outStr, size_t const size, void const * const ptr){
 //Converts a decimal number to binary and saves it to outStr.
 //The decimal number is pointed to by ptr and is of memory size size.
 //Assumes little endian.
-{
+
     unsigned char *b = (unsigned char*) ptr;
     unsigned char byte;
     int i, j;
@@ -330,6 +331,9 @@ void sprintBits(char *outStr, size_t const size, void const * const ptr)
 }
 
 int valueToString(char *stringValue, unsigned int type, const void *dbr, int count){
+//Parses the data fetched by ca_get callback according to the data type and formatting arguments.
+//The result is saved into the global value output string.
+
     dbr_enum_t v;
     unsigned int baseType;
     void *value;
@@ -477,6 +481,7 @@ static void enumToString (evargs args){
 //caget callback function which receives read enum data and tries to interpret it
 //as a string, which is then written to memory pointed at by args.usr. If the data
 //can't be read as a string (i.e. dbr type is not ctrl or gr), number is written.
+//The result is written to the global value output string.
 
 	//check if data was returned
 	if (args.status != ECA_NORMAL){
@@ -541,7 +546,7 @@ static void enumToString (evargs args){
 }
 
 int printOutput(int i){
-// prints output strings corresponding to i-th channel.
+// prints global output strings corresponding to i-th channel.
 
 	//if both local and server times are requested, clarify which is which
 	if ((arguments.localdate || arguments.localtime) && (arguments.date || arguments.time)){
@@ -585,9 +590,12 @@ int printOutput(int i){
     return 0;
 }
 
+
 int epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp * pLeft, const epicsTimeStamp * pRight ){
-// left - right: like epicsTimeDiffInSeconds but also taking nanoseconds into account.
-// The timestamp is always positive, sign is output by the return value.
+// Calculates difference between two epicsTimeStampst: like epicsTimeDiffInSeconds but also taking nanoseconds
+//into account. The absolute value of the difference pLeft - pRight is saved to the timestamp diff, and the sign
+//of the said difference is returned.
+
 	double timeLeft = pLeft->secPastEpoch + 1e-9 * pLeft->nsec;
 	double timeRight = pRight->secPastEpoch + 1e-9 * pRight->nsec;
 
@@ -596,18 +604,22 @@ int epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp * pLeft, const 
 	diff->secPastEpoch = fabs(trunc(difference));	//number of seconds is the integer part.
 	diff->nsec = 1e9 * (fabs(difference) - fabs(trunc(difference)));	//number of nanoseconds is the decimal part.
 	if (difference > 0){
-		return 1;
+		return 1;//positive
 	}
 	else if(difference < 0){
-		return -1;
+		return -1;//negative
 	}
 	else{
-		return 0;
+		return 0;//equal
 	}
 
 }
 
 static void caReadCallback (evargs args){
+//reads and parses data fetched by calls. First, the global strings holding the output are cleared. Then, depending
+//on the type of the returned data, the available information is extracted. The extracted info is then saved to the
+//global strings. The actual value of the PV is an exception; its reading, parsing, and storing are performed by
+//calling valueToString or enumToString. Note that the latter is actually a callback function for another get request.
 
 	//check if data was returned
 	if (args.status != ECA_NORMAL){
@@ -619,7 +631,7 @@ static void caReadCallback (evargs args){
 
     // output strings - local copies
     char locDate[LEN_TIMESTAMP],locTime[LEN_TIMESTAMP], locSev[30], locStat[30], locUnits[20+MAX_UNITS_SIZE];
-    char locAck[2*30], locName[LEN_RECORD_NAME], locLocalDate[LEN_TIMESTAMP],locLocalTime[LEN_TIMESTAMP];
+    char locName[LEN_RECORD_NAME], locLocalDate[LEN_TIMESTAMP],locLocalTime[LEN_TIMESTAMP];
     int precision=-1;
     int status=0, severity=0;
 
@@ -898,6 +910,7 @@ static void caReadCallback (evargs args){
 }
 
 static void caWriteCallback (evargs args){
+//does nothing except signal that writing is finished.
 
 	//check if status is ok
 	if (args.status != ECA_NORMAL){
@@ -913,6 +926,9 @@ static void caWriteCallback (evargs args){
 
 
 void caRequest(struct channel *channels, int nChannels){
+//sends get or put requests for all tools except cainfo. ca_get or ca_put are called multiple times, depending
+//on the tool. The reading and parsing of returned data is performed in callbacks. Once the callbacks finish,
+//the the data is printed. If the tool type is monitor, a loop is entered in which the data is printed repeatedly.
     int status, i, j;
 
     for(i=0; i < nChannels; i++){
@@ -1246,6 +1262,7 @@ void caRequest(struct channel *channels, int nChannels){
 }
 
 void cainfoRequest(struct channel *channels, int nChannels){
+//this function does all the work for caInfo tool. Reads channel data using ca_get and then prints.
 	int i,j, status;
 
 	char locSev[30]="", locStat[30]="", locUnits[20+MAX_UNITS_SIZE]="";
@@ -1467,6 +1484,7 @@ void cainfoRequest(struct channel *channels, int nChannels){
 
 
 int caInit(struct channel *channels, int nChannels){
+//creates contexts and channels.
     int status, i;
 
     status = ca_context_create(ca_enable_preemptive_callback);
@@ -1537,8 +1555,10 @@ int caDisconnect(struct channel * channels, int nChannels){
     return exitStatus;
 }
 
+
 int main ( int argc, char ** argv )
-{
+{//main function: reads arguments, allocates memory, calls ca* functions, frees memory and exits.
+
     int opt;                    // getopt() current option
     int opt_long;               // getopt_long() current long option
     int nChannels=0;              // Number of channels
