@@ -9,7 +9,8 @@
 
 #include "cadef.h"  // for channel access
 #include "alarmString.h"  // XXX is ok?
-#include <getopt.h> // TODO change to  epicsGetopt.h
+#include <getopt.h>
+
 
 #include <stdbool.h>
 #ifndef __bool_true_false_are_defined
@@ -23,14 +24,6 @@
     #define __bool_true_false_are_defined   1
 #endif
 
-//*******************************//
-//      in order to use sleep()  //
-#ifdef _WIN32
-#include <Windows.h>
-#else
-#include <unistd.h>
-#endif
-//*******************************//
 
 
 #define CA_PRIORITY CA_PRIORITY_MIN
@@ -158,7 +151,34 @@ epicsTimeStamp programStartTime;	//timestamp indicating program start, needed by
 
 
 void usage(FILE *stream, char *programName){
-    fprintf(stream, "Usage: %s [-w] [-d <type>] pvList\n", programName);
+
+	if (!strcmp(programName, "caget") || !strcmp(programName, "cagets") || !strcmp(programName, "camon") || !strcmp(programName, "cado") ){
+		fprintf(stream, "Usage: %s [flags] [channel] [channel] ... [channel]\n", programName);
+		fprintf(stream, "Accepted flags:\n");
+		//
+	}
+
+	if (!strcmp(programName, "caput") || !strcmp(programName, "caputq") ){
+		fprintf(stream, "Usage: %s [flags] [channel] [value] [channel] [value] ... [channel] [value]\n", programName);
+		fprintf(stream, "Accepted flags:\n");
+		//
+	}
+
+
+	if (!strcmp(programName, "cawait") ){
+		fprintf(stream, "Usage: %s [flags] [channel] [condition] [channel] [condition] ... [channel] [condition]\n", programName);
+		fprintf(stream, "Accepted flags:\n");
+		//
+		//displays
+	}
+
+	if (!strcmp(programName, "cainfo") ){
+		fprintf(stream, "Usage: %s [flags] [channel] [channel] ... [channel]\n", programName);
+		//displays ...
+	}
+
+
+
 }
 
 void dumpArguments(struct arguments *args){
@@ -330,7 +350,7 @@ void sprintBits(char *outStr, size_t const size, void const * const ptr){
     }
 }
 
-int valueToString(char *stringValue, unsigned int type, const void *dbr, int count){
+int valueToString(char *stringValue, unsigned int type, const void *dbr, int count, int precision){
 //Parses the data fetched by ca_get callback according to the data type and formatting arguments.
 //The result is saved into the global value output string.
 
@@ -380,7 +400,18 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int cou
     	case DBR_FLOAT:
     		//round if desired
     		if (arguments.round == roundType_no_rounding){
-    			sprintf(stringCursor, arguments.dblFormatStr, ((dbr_float_t*)value)[i]);
+    			if (arguments.digits == -1 && arguments.prec == -1){
+    				//display with precision defined by the record
+        			sprintf(stringCursor, "%-.*g", precision, ((dbr_float_t*)value)[i]);
+    			}
+    			else if (arguments.digits == -1 && arguments.prec != -1){
+    				//display with precision defined by arguments.prec
+        			sprintf(stringCursor, "%-.*g", arguments.prec, ((dbr_float_t*)value)[i]);
+    			}
+    			else if (arguments.digits != -1 && arguments.prec == -1){
+    				//use precision and format as specified by -efg flags
+        			sprintf(stringCursor, arguments.dblFormatStr, ((dbr_float_t*)value)[i]);
+    			}
     		}
     		else if (arguments.round == roundType_default){
     			sprintf(stringCursor, arguments.dblFormatStr, roundf(((dbr_float_t*)value)[i]));
@@ -454,7 +485,18 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int cou
     	case DBR_DOUBLE:
     		//round if desired
     		if (arguments.round == roundType_no_rounding){
-    			sprintf(stringCursor, arguments.dblFormatStr, ((dbr_double_t*)value)[i]);
+    			if (arguments.digits == -1 && arguments.prec == -1){
+    				//display with precision defined by the record
+    				sprintf(stringCursor, "%-.*g", precision, ((dbr_double_t*)value)[i]);
+    			}
+    			else if (arguments.digits == -1 && arguments.prec != -1){
+    				//display with precision defined by arguments.prec
+    				sprintf(stringCursor, "%-.*g", arguments.prec, ((dbr_double_t*)value)[i]);
+    			}
+    			else if (arguments.digits != -1 && arguments.prec == -1){
+    				//use precision and format as specified by -efg flags
+    				sprintf(stringCursor, arguments.dblFormatStr, ((dbr_double_t*)value)[i]);
+    			}
     		}
     		else if (arguments.round == roundType_default){
     			sprintf(stringCursor, arguments.dblFormatStr, round(((dbr_double_t*)value)[i]));
@@ -902,7 +944,7 @@ static void caReadCallback (evargs args){
 		//ch->done is set by enum2string callback.
 	}
 	else{ //get values as usual
-		valueToString(outValue[ch->i], args.type, args.dbr, args.count);
+		valueToString(outValue[ch->i], args.type, args.dbr, args.count, precision);
 		//finish
 		ch->done = true;
 
@@ -939,12 +981,13 @@ void caRequest(struct channel *channels, int nChannels){
         }
 
         //how many array elements to request
-        if(arguments.inNelm > 0 && arguments.inNelm <= channels[i].count){
+        if(arguments.inNelm > 0 && arguments.inNelm <= channels[i].count ){
         	channels[i].inNelm = arguments.inNelm;
         }
         else{
         	channels[i].inNelm = 1;
-        	fprintf(stderr, "Invalid number %d of requested elements to write. Defaulting to 1.", arguments.inNelm);
+        	if (channels[i].count == 0) fprintf(stderr, "Channel %s is probably not connected.\n", channels[i].name);
+        	else fprintf(stderr, "Invalid number %d of requested elements to write. Defaulting to 1.\n", arguments.inNelm);
         }
         if (arguments.outNelm == -1){
         	channels[i].outNelm = channels[i].count;
@@ -1869,6 +1912,10 @@ int main ( int argc, char ** argv )
     if (arguments.num && arguments.s){
     	fprintf(stderr, "Options -num and -s are mutually exclusive.\n");
     }
+    if (arguments.digits != -1 && arguments.prec != -1){
+		fprintf(stderr, "Precision -prec already specified as argument to -e, -f or -g - ignored.\n");
+		arguments.prec = -1;
+	}
 
 	epicsTimeGetCurrent(&programStartTime);
 
