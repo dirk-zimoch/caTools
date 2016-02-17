@@ -66,11 +66,13 @@ struct arguments
    bool noname;				//hide name
    bool nounit;				//hide units
    char timestamp;			//timestamp type ruc
+   float timeout;			//cawait timeout
    bool date;				//server date
    bool localdate;			//client date
    bool time;				//server time
    bool localtime;			//client time
-   char fieldSeparator;		//array field separator
+   char fieldSeparator;		//array field separator for output
+   char inputSeparator;		//array field separator for input
    enum tool tool;			//tool type
    int numUpdates;			//number of monitor updates after which to quit
    int inNelm;				//number of array elements to write
@@ -97,11 +99,13 @@ struct arguments arguments = {
     0,                  // noname
     0,                  // nounit
     0,					// timestamp
+    -1,					// cawait timeout
     false,				// server date
     false,				// localdate
     false,				// time
     false,				// localtime
-    ' '	,				// field separator
+    ' '	,				// field separator output
+    ' '	,				// field separator input
     caget,				// tool
     -1,					// numUpdates
     1,					// inNelm
@@ -152,33 +156,157 @@ epicsTimeStamp programStartTime;	//timestamp indicating program start, needed by
 
 void usage(FILE *stream, char *programName){
 
-	if (!strcmp(programName, "caget") || !strcmp(programName, "cagets") || !strcmp(programName, "camon") || !strcmp(programName, "cado") ){
+	//usage:
+	if (!strcmp(programName, "caget") || !strcmp(programName, "cagets") || !strcmp(programName, "camon") ){
 		fprintf(stream, "Usage: %s [flags] [channel] [channel] ... [channel]\n", programName);
-		fprintf(stream, "Accepted flags:\n");
-		//
 	}
-
-	if (!strcmp(programName, "caput") || !strcmp(programName, "caputq") ){
-		fprintf(stream, "Usage: %s [flags] [channel] [value] [channel] [value] ... [channel] [value]\n", programName);
-		fprintf(stream, "Accepted flags:\n");
-		//
-	}
-
-
-	if (!strcmp(programName, "cawait") ){
+	else if (!strcmp(programName, "cawait")){
 		fprintf(stream, "Usage: %s [flags] [channel] [condition] [channel] [condition] ... [channel] [condition]\n", programName);
-		fprintf(stream, "Accepted flags:\n");
-		//
-		//displays
+	}
+	else if (!strcmp(programName, "caput") || !strcmp(programName, "caputq") ){
+		fprintf(stream, "Usage: %s [flags] [channel] [value] [channel] [value] ... [channel] [value]\n", programName);
+	}
+	else if (!strcmp(programName, "cainfo") ){
+		fprintf(stream, "Usage: %s [channel] [channel] ... [channel]\n", programName);
+	}
+	else { //program name not recognized, display help based on argument to -tool
+		if (arguments.tool == caget){
+			fprintf(stream, "Program name %s not recognized. Try -tool option with any of the following arguments: caget, caput, cagets, "\
+					"caputq, cado, camon, cawait, cainfo.\n", programName);
+			fprintf(stream, "Displaying help for caget.\n");
+			usage(stream, "caget");
+			return;
+		}
+		else if (arguments.tool == cagets){
+			usage(stream, "cagets");
+			return;
+		}
+		else if (arguments.tool == caput){
+			usage(stream, "caput");
+			return;
+		}
+		else if (arguments.tool == caputq){
+			usage(stream, "caputq");
+			return;
+		}
+		else if (arguments.tool == cado){
+			usage(stream, "cado");
+			return;
+		}
+		else if (arguments.tool == camon){
+			usage(stream, "camon");
+			return;
+		}
+		else if (arguments.tool == cawait){
+			usage(stream, "cawait");
+			return;
+		}
+		else if (arguments.tool == cainfo){
+			usage(stream, "cawait");
+			return;
+		}
+		return;
 	}
 
+	//descriptions
+	fprintf(stream, "\n\n");
+
+	if (!strcmp(programName, "caget") ){
+		fprintf(stream, "Reads values from channel(s).\n");
+	}
+	if (!strcmp(programName, "cagets") ){
+		fprintf(stream, "First writes 1 to PROC fields of the provided channels. Then reads the values.\n");
+	}
+	if (!strcmp(programName, "caput") ){
+		fprintf(stream, "Writes value(s) to channels(s). Then reads the updated values and displays them.\n");
+		fprintf(stream, "Arrays can be handled either by specifying number of elements as an argument to -inNelm option"\
+				" or grouping the elements to write in a string following pv name. E.g. the following two commands produce the same"\
+				" result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n");
+		fprintf(stream, "caput -inNelm 3 pvA 1 2 3 pvB 4 5 6 \ncaput pvA '1 2 3' pvB '4 5 6'\n");
+		fprintf(stream, "The following tries to write '1 2 3', 'pvB' and '4 5 6' into pvA record:\n");
+		fprintf(stream, "caput -inNelm 3 pvA '1 2 3' pvB '4 5 6'\n");
+	}
+	if (!strcmp(programName, "caputq") ){
+		fprintf(stream, "Writes value(s) to channels(s), then exits. Does not have any output (except if an error occurs).\n");
+		fprintf(stream, "Arrays can be handled either by specifying number of elements as an argument to -inNelm option"\
+				" or grouping the elements to write in a string following pv name. E.g. the following two commands produce the same"\
+				" result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n");
+		fprintf(stream, "caputq -inNelm 3 pvA 1 2 3 pvB 4 5 6 \ncaputq pvA '1 2 3' pvB '4 5 6'\n");
+		fprintf(stream, "The following tries to write '1 2 3', 'pvB' and '4 5 6' into pvA record:\n");
+		fprintf(stream, "caputq -inNelm 3 pvA '1 2 3' pvB '4 5 6'\n");
+	}
+	if (!strcmp(programName, "cado") ){
+		fprintf(stream, "First writes 1 to PROC fields of the provided channels, then exits. Does not have any output (except if an error occurs).\n");
+	}
+	if (!strcmp(programName, "camon") ){
+		fprintf(stream, "Monitors the provided channels.\n");
+	}
+	if (!strcmp(programName, "cawait") ){
+		fprintf(stream, "Monitors the channels, but only displays values when they match the provided conditions. The conditions are specified as a"\
+				" string containing the operator together with the values.\n");
+		fprintf(stream, "The following operators are supported:  >,<,<=,>=,==,!=, ==A...B(in interval), !=A...B(out of interval). For example, "\
+				"cawait pv '==1...5' ignores all pv values except those inside the interval [1,5].\n");
+	}
 	if (!strcmp(programName, "cainfo") ){
-		fprintf(stream, "Usage: %s [flags] [channel] [channel] ... [channel]\n", programName);
-		//displays ...
+		fprintf(stream, "Displays detailed information about the provided channels.\n");
+		return; //does not have any flags
 	}
 
 
+	//flags
+	fprintf(stream, "\n\n");
+	fprintf(stream, "Accepted flags:\n");
 
+	//common for all tools (except cainfo)
+	fprintf(stream, "-d	<type>	    type of DBR request to use for communicating with the server\n");
+	fprintf(stream, "-w <number>    timeout for CA calls\n");
+
+	//flags associated with reading
+	if (!strcmp(programName, "caget") || !strcmp(programName, "cagets") || !strcmp(programName, "camon") \
+			|| !strcmp(programName, "cawait") ||  !strcmp(programName, "caput") ){
+		fprintf(stream, "-num 							display enum/char values as numbers\n");
+		fprintf(stream, "-int 							same as -num\n");
+		fprintf(stream, "-round <type>          		rounding of floating point values. Arguments: ceil, floor, default.\n");
+		fprintf(stream, "-prec <number>          		precision for displaying floating point values. Default is equal to PREC field of the record.\n");
+		fprintf(stream, "-hex           	display integer values in hexadecimal format\n");
+		fprintf(stream, "-oct           	display integer values in octal format\n");
+		fprintf(stream, "-plain           	ignore formatting switches\n");
+		fprintf(stream, "-stat           	always display alarm status and severity\n");
+		fprintf(stream, "-nostat           	never display alarm status and severity\n");
+		fprintf(stream, "-noname           	hide record name\n");
+		fprintf(stream, "-date           	display server date\n");
+		fprintf(stream, "-localdate         display client date\n");
+		fprintf(stream, "-time           	display server time\n\n");
+		fprintf(stream, "-localtime         display client time\n");
+		fprintf(stream, "-outNelm  <number>       	number of array elements to read\n");
+		fprintf(stream, "-outFs <number>        	field separator for displaying array elements\n");
+		fprintf(stream, "-nord         		display number of array elements before their values\n");
+		fprintf(stream, "-w <number>        timeout for CA calls\n");
+		fprintf(stream, "-d			        same as -date\n");													//XXX XXX
+		fprintf(stream, "-e <number>		format doubles using scientific notation with precition <number>. Overrides -prec option.\n");
+		fprintf(stream, "-f <number>		format doubles using floating point with precition <number>. Overrides -prec option.\n");
+		fprintf(stream, "-g <number>		format doubles using shortest representation with precition <number>. Overrides -prec option.\n");
+		fprintf(stream, "-s				    interpret values as strings\n");
+		fprintf(stream, "-t			        same as -time\n");
+
+		if (!strcmp(programName, "camon") || !strcmp(programName, "cawait")){
+			fprintf(stream, "-timestamp <char>  	display relative timestamps. <char> = r displays time elapsed since start " \
+					"of the program. <char> = u displays time elapsed since last update of any channel.  <char> = c displays "\
+					"time elapsed since last update separately for each channel");
+			fprintf(stream, "-n <number>        	exit the program after <number> updates\n");
+
+			if (!strcmp(programName, "cawait")){
+				fprintf(stream, "-timeout <number>        	exit the program after <number> seconds without an update\n");
+			}
+		}
+	}
+
+	//flags associated with writing
+	if (!strcmp(programName, "caput") || !strcmp(programName, "caputq") ){
+		fprintf(stream, "-inNelm		number of array elements to write. Needs to match the number of provided values.\n");
+		fprintf(stream, "-inFs			field separator used in the string containing array elements to write\n");
+
+	}
 }
 
 void dumpArguments(struct arguments *args){
@@ -981,14 +1109,14 @@ void caRequest(struct channel *channels, int nChannels){
         }
 
         //how many array elements to request
-        if(arguments.inNelm > 0 && arguments.inNelm <= channels[i].count ){
+        /*if(arguments.inNelm > 0 && arguments.inNelm <= channels[i].count ){
         	channels[i].inNelm = arguments.inNelm;
         }
         else{
         	channels[i].inNelm = 1;
         	if (channels[i].count == 0) fprintf(stderr, "Channel %s is probably not connected.\n", channels[i].name);
         	else fprintf(stderr, "Invalid number %d of requested elements to write. Defaulting to 1.\n", arguments.inNelm);
-        }
+        }*/
         if (arguments.outNelm == -1){
         	channels[i].outNelm = channels[i].count;
         }
@@ -1220,10 +1348,17 @@ void caRequest(struct channel *channels, int nChannels){
     else if (arguments.tool == camon || arguments.tool == cawait){
 
     	int numUpdates = 0;	//needed if -n
+
     	epicsTimeStamp lastUpdate[nChannels]; //needed if -timestamp u,c
     	for (i=0; i<=nChannels;++i){
     		lastUpdate[i].secPastEpoch=0;
     	}
+
+    	epicsTimeStamp timeoutUpdate; //needed by cawait if timeout specified
+		if (arguments.timeout!=-1){
+			epicsTimeGetCurrent(&timeoutUpdate);
+		}
+
 
     	while (1){
 
@@ -1232,9 +1367,27 @@ void caRequest(struct channel *channels, int nChannels){
     			if (channels[i].done){
 
     				if (arguments.tool == cawait){
+
+    					if (arguments.timeout!=-1){
+							//calculate time since last update
+    						epicsTimeStamp timeoutNow;
+    						epicsTimeStamp timeoutElapsed;
+    						epicsTimeGetCurrent(&timeoutNow);
+    						epicsTimeDiffFull(&timeoutElapsed, &timeoutUpdate, &timeoutNow);
+							if (timeoutElapsed.secPastEpoch + 1e-9*timeoutElapsed.nsec > arguments.timeout){
+								//we are done waiting
+								printf("No updates for %f seconds - exiting.\n",arguments.timeout);
+								return;
+							}
+    					}
+
+    					//check condition
     					if (cawaitCondition(channels[i], i) != 1) {
     						channels[i].done = false;
     						continue;
+    					}
+    					else if(arguments.timeout!=-1){ // if condition matches, reset timeout
+    						epicsTimeGetCurrent(&timeoutUpdate);
     					}
     				}
 
@@ -1629,9 +1782,11 @@ int main ( int argc, char ** argv )
         {"date",		no_argument, 		0,  0 },	//server date
         {"inNelm",		required_argument,	0,  0 },	//number of array elements - write
         {"outNelm",		required_argument,	0,  0 },	//number of array elements - read
-        {"fs",			required_argument,	0,  0 },	//array field separator
+        {"outFs",		required_argument,	0,  0 },	//array field separator - read
+        {"inFs",		required_argument,	0,  0 },	//array field separator - write
         {"nord",		no_argument,		0,  0 },	//display number of array elements
         {"tool",		required_argument, 	0,	0 },	//tool
+        {"timeout",		required_argument, 	0,	0 },	//timeout
         {0,         	0,                 	0,  0 }
     };
     putenv("POSIXLY_CORRECT="); //Behave correctly on GNU getopt systems = stop parsing after 1st non option is encountered
@@ -1819,16 +1974,22 @@ int main ( int argc, char ** argv )
             		}
             	}
             	break;
-            case 19:   // field separator
+            case 19:   // field separator for output
             	if (sscanf(optarg, "%c", &arguments.fieldSeparator) != 1){
             		fprintf(stderr, "Invalid argument '%s' "
             				"for option '-%c' - ignored.\n", optarg, opt);
             	}
             	break;
-            case 20:   // nord
+            case 20:   // field separator for input
+            	if (sscanf(optarg, "%c", &arguments.inputSeparator) != 1){
+            		fprintf(stderr, "Invalid argument '%s' "
+            				"for option '-%c' - ignored.\n", optarg, opt);
+            	}
+            	break;
+            case 21:   // nord
             	arguments.nord = true;
             	break;
-            case 21:	// tool
+            case 22:	// tool
             	;//c
             	int tool;
             	if (sscanf(optarg, "%d", &tool) != 1){   // type was not given as a number [0, 1, 2]
@@ -1855,11 +2016,23 @@ int main ( int argc, char ** argv )
             		}
             	} else{ // type was given as a number
             		if(tool < caget|| tool > cainfo){   // out of range check
-            			arguments.round = caget;
+            			arguments.tool = caget;
             			fprintf(stderr,	"Invalid tool call '%s' "
             					"for option '-%c' - caget assumed.\n", optarg, opt);
             		} else{
             			arguments.round = tool;
+            		}
+            	}
+            	break;
+            case 23:
+            	if (sscanf(optarg, "%f", &arguments.timeout) != 1){
+            		fprintf(stderr, "Invalid timeout argument '%s' "
+            				"for option '-%c' - ignored.\n", optarg, opt);
+            	}
+            	else {
+            		if (arguments.timeout <= 0) {
+            			fprintf(stderr, "Timeout argument must be positive - ignored.\n");
+            			arguments.timeout = -1;
             		}
             	}
             	break;
@@ -1916,6 +2089,15 @@ int main ( int argc, char ** argv )
 		fprintf(stderr, "Precision -prec already specified as argument to -e, -f or -g - ignored.\n");
 		arguments.prec = -1;
 	}
+    if (arguments.plain && (arguments.num || arguments.hex ||arguments.bin||arguments.oct || arguments.digits != -1 || arguments.prec != -1 \
+    		|| arguments.s || arguments.round != roundType_no_rounding || strcmp(arguments.dblFormatStr,"%g") || arguments.fieldSeparator != ' ' )){
+    	printf("Warning: -plain option overrides all formatting switches.\n");
+    	arguments.num =false; arguments.hex =false; arguments.bin = false; arguments.oct =false; arguments.s =false;
+    	arguments.digits = -1; arguments.prec = -1;
+    	arguments.round = roundType_no_rounding;
+    	strcpy(arguments.dblFormatStr,"%g");
+    	arguments.fieldSeparator = ' ' ;
+    }
 
 	epicsTimeGetCurrent(&programStartTime);
 
@@ -1924,11 +2106,21 @@ int main ( int argc, char ** argv )
 		nChannels = argc - optind;       // Remaining arg list are PV names
 	}
 	else if (arguments.tool == caput || arguments.tool == caputq){
-		if ((argc - optind) % (arguments.inNelm +1)){ //it takes (inNelm+pv name) elements to define each channel
-			fprintf(stderr, "One of the PVs is missing the value to be written ('%s -h' for help).\n", argv[0]);
-			return EXIT_FAILURE;
-		}
-		nChannels = (argc - optind)/(arguments.inNelm +1);
+//		if (arguments.inputSeparator == ' '){
+			//default case, it takes (inNelm+pv name) elements to define each channel
+			if ((argc - optind) % (arguments.inNelm +1)){
+				fprintf(stderr, "One of the PVs is missing the value to be written ('%s -h' for help).\n", argv[0]);
+				return EXIT_FAILURE;
+			}
+			nChannels = (argc - optind)/(arguments.inNelm +1);
+/*		}
+		else{ //each pv name is followed by a string of values separated by the separator
+			if ((argc - optind) % 2){
+				fprintf(stderr, "One of the PVs is missing the condition ('%s -h' for help).\n", argv[0]);
+				return EXIT_FAILURE;
+			}
+			nChannels = (argc - optind)/2;
+		}*/
 	}
 	else if (arguments.tool == cawait){
 		if ((argc - optind) % 2){
@@ -1952,7 +2144,6 @@ int main ( int argc, char ** argv )
     	return EXIT_FAILURE;
     }
     for (i=0;i<nChannels;++i){
-    	channels[i].writeStr = calloc (arguments.inNelm*MAX_STRING_SIZE, sizeof(char));
     	channels[i].procName = calloc (LEN_RECORD_NAME, sizeof(char));
     	channels[i].descName = calloc (LEN_RECORD_NAME, sizeof(char));
     	channels[i].hhsvName = calloc (LEN_RECORD_NAME, sizeof(char));
@@ -1960,7 +2151,7 @@ int main ( int argc, char ** argv )
     	channels[i].lsvName = calloc (LEN_RECORD_NAME, sizeof(char));
     	channels[i].llsvName = calloc (LEN_RECORD_NAME, sizeof(char));
         //name and condition strings dont have to be allocated because they merely point somewhere else
-    	if (!channels[i].writeStr || !channels[i].procName || !channels[i].descName || !channels[i].hhsvName || \
+    	if (!channels[i].procName || !channels[i].descName || !channels[i].hhsvName || \
     			!channels[i].hsvName || !channels[i].lsvName || !channels[i].llsvName ) {
     		fprintf(stderr, "Memory allocation for channel structures failed.\n");
     		return EXIT_FAILURE;
@@ -1976,11 +2167,51 @@ int main ( int argc, char ** argv )
         channels[i].i = i;	// channel number, serves to synchronise pvs and output.
 
         if (arguments.tool == caput || arguments.tool == caputq){
-        	for (j=0; j<arguments.inNelm; ++j){	//the nelm next arguments are values
-        		strcpy(&channels[i].writeStr[j*MAX_STRING_SIZE], argv[optind+1]);
+        	if (arguments.inNelm > 1){ //treat next nelm arguments as values
+        		channels[i].writeStr = calloc (arguments.inNelm*MAX_STRING_SIZE, sizeof(char));
+        		if (!channels[i].writeStr ) {
+        			fprintf(stderr, "Memory allocation for channel structures failed.\n");
+        			return EXIT_FAILURE;
+        		}
+
+				for (j=0; j<arguments.inNelm; ++j){
+					strcpy(&channels[i].writeStr[j*MAX_STRING_SIZE], argv[optind+1]);
+					optind++;
+				}
+        	}
+        	else{ //next argument is a string of values separated by inputSeparator
+        		//count the number of values in it (= number of separators +1)
+        		int count;
+        		//char *str = arg;
+        		for (j=0, count=0; argv[optind+1][j]; j++) {
+        			count += (argv[optind+1][j] == arguments.inputSeparator);
+        		}
+        		count+=1;
+        		//and use it to allocate the string
+        		channels[i].writeStr = calloc (count *MAX_STRING_SIZE, sizeof(char));
+        		if (!channels[i].writeStr ) {
+        			fprintf(stderr, "Memory allocation for channel structures failed.\n");
+        			return EXIT_FAILURE;
+        		}
+
+        		if (count == 1){//the argument to write consists of just a single element.
+					strcpy(&channels[i].writeStr[0], argv[optind+1]);
+					channels[i].inNelm = 1;
+        		}
+        		else{//parse the string assuming each element is delimited by the inputSeparator char
+        			char inFs[2] = {arguments.inputSeparator, 0};
+        			j=0;
+        			char *token = strtok(argv[optind+1], inFs);
+        			while(token) {
+        				strcpy(&channels[i].writeStr[j*MAX_STRING_SIZE], token);
+        				j++;
+        				token = strtok(NULL, inFs);
+        			}
+        			channels[i].inNelm = j;
+        		}
+        		//finally advance to the next argument
         		optind++;
         	}
-        	//xXx CE JE tu dolocen input separator, potem naredi parsing funkcijo ki sestavi writeStr iz enega samega argumenta.
         }
         else if (arguments.tool == cawait){
         	channels[i].conditionStr = argv[optind+1]; //next argument is the condition string
