@@ -1,5 +1,5 @@
-/* caToolsMain.cpp */
-/* Author:  Sašo Skube Date:    30JUL2015 */
+/* caToolsMain.c */
+/* Author:  Rok Vuga Date:    FEB 2016 */
 
 
 #include <stdio.h>
@@ -142,17 +142,20 @@ struct channel{
 //output strings
 #define LEN_TIMESTAMP 50
 #define LEN_RECORD_NAME 61
-#define LEN_VALUE 100 //XXX max value size?hmk??
+static unsigned int LEN_VALUE = 100; //XXX max value size?hmk??
 #define LEN_SEVSTAT 30
 #define LEN_UNITS 20+MAX_UNITS_SIZE
 char **outDate,**outTime, **outSev, **outStat, **outUnits, **outName, **outValue, **outLocalDate, **outLocalTime;
 char **outTimestamp; //relative timestamps for camon
 
+//timestamps needed by -timestamp
 epicsTimeStamp *timestampRead;		//timestamps of received data (per channel)
+epicsTimeStamp programStartTime;	//timestamp indicating program start
+epicsTimeStamp *lastUpdate;			//timestamp indicating last update per channel
+epicsTimeStamp timeoutUpdate;		//same but used by -timeout
 
-epicsTimeStamp programStartTime;	//timestamp indicating program start, needed by -timestamp
-
-
+bool runMonitor;					//indicates when to stop monitoring according to -timeout or -n
+unsigned int numMonitorUpdates;		//counts updates needed by -n
 
 void usage(FILE *stream, char *programName){
 
@@ -359,7 +362,7 @@ int cawaitCondition(struct channel channel, int k){
 	int output;				//1,0,-1
 
 	double channelValue;
-	if (sscanf(outValue[k], "%lf", &channelValue) <= 0){
+	if (sscanf(outValue[k], "%lf", &channelValue) <= 0){ //XXX get value from somewhere else
 		fprintf(stderr, "Channel %s value %s cannot be converted to double.", channel.name, outValue[k]);
 		return -1;
 	}
@@ -478,7 +481,8 @@ void sprintBits(char *outStr, size_t const size, void const * const ptr){
     }
 }
 
-int valueToString(char *stringValue, unsigned int type, const void *dbr, int count, int precision){
+//int valueToString(char *stringValue, unsigned int type, const void *dbr, int count, int precision){
+int valueToString(int i, unsigned int type, const void *dbr, int count, int precision){
 //Parses the data fetched by ca_get callback according to the data type and formatting arguments.
 //The result is saved into the global value output string.
 
@@ -490,34 +494,39 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int cou
     baseType = type % (LAST_TYPE+1);   // convert appropriate TIME, GR, CTRL,... type to basic one
 
     //loop over the whole array
-    int i; //element counter
-    char *stringCursor = stringValue; //pointer to start of the string
-    for (i=0; i<count; ++i){
-    	stringCursor = stringValue + strlen(stringValue); //move along the string for each element
+    int j; //element counter
+    int spaceLeft; //free space available in allocated memory
+    char *stringCursor = outValue[i]; //pointer to start of the string
+    int charsToWrite; //number of formatted chars
+    for (j=0; j<count; ++j){
+    	stringCursor = outValue[i] + strlen(outValue[i]); //move along the string for each element
 
-    	if (i){
-    		sprintf (stringCursor, "%c", arguments.fieldSeparator); //insert element separator
-        	stringCursor = stringValue + strlen(stringValue); //move
+    	spaceLeft = LEN_VALUE - strlen(outValue[i]);
+
+    	if (j){
+    		charsToWrite = snprintf (stringCursor, spaceLeft, "%c", arguments.fieldSeparator); //insert element separator
+        	stringCursor = outValue[i] + strlen(outValue[i]); //move
+        	spaceLeft = LEN_VALUE - strlen(outValue[i]);	//one element less
     	}
 
     	switch (baseType) {
     	case DBR_STRING:
-    		strcpy(stringCursor, ((dbr_string_t*) value)[i]);
+    		charsToWrite = snprintf(stringCursor, spaceLeft, "%s", ((dbr_string_t*) value)[j]);
     		break;
 
     	case DBR_INT:
     		//display dec, hex, bin, oct if desired
     		if (arguments.hex){
-    			sprintf(stringCursor, "%x", ((dbr_int_t*)value)[i]);
+    			charsToWrite = snprintf(stringCursor, spaceLeft, "%x", ((dbr_int_t*)value)[j]);
     		}
     		else if (arguments.oct){
-    			sprintf(stringCursor, "%o", ((dbr_int_t*)value)[i]);
+    			charsToWrite = snprintf(stringCursor, spaceLeft, "%o", ((dbr_int_t*)value)[j]);
     		}
     		else if (arguments.bin){
-    			sprintBits(stringCursor, sizeof(((dbr_int_t*)value)[i]), &((dbr_int_t*)value)[i]);
+    			sprintBits(stringCursor, sizeof(((dbr_int_t*)value)[i]), &((dbr_int_t*)value)[j]); //TODO memory
     		}
     		else{
-    			sprintf(stringCursor, "%d", ((dbr_int_t*)value)[i]);
+    			charsToWrite = snprintf(stringCursor, spaceLeft, "%d", ((dbr_int_t*)value)[j]);
     		}
     		break;
 
@@ -530,83 +539,83 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int cou
     		if (arguments.round == roundType_no_rounding){
     			if (arguments.digits == -1 && arguments.prec == -1){
     				//display with precision defined by the record
-        			sprintf(stringCursor, "%-.*g", precision, ((dbr_float_t*)value)[i]);
+    				charsToWrite = snprintf(stringCursor, spaceLeft, "%-.*g", precision, ((dbr_float_t*)value)[j]);
     			}
     			else if (arguments.digits == -1 && arguments.prec != -1){
     				//display with precision defined by arguments.prec
-        			sprintf(stringCursor, "%-.*g", arguments.prec, ((dbr_float_t*)value)[i]);
+    				charsToWrite = snprintf(stringCursor, spaceLeft, "%-.*g", arguments.prec, ((dbr_float_t*)value)[j]);
     			}
     			else if (arguments.digits != -1 && arguments.prec == -1){
     				//use precision and format as specified by -efg flags
-        			sprintf(stringCursor, arguments.dblFormatStr, ((dbr_float_t*)value)[i]);
+    				charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, ((dbr_float_t*)value)[j]);
     			}
     		}
     		else if (arguments.round == roundType_default){
-    			sprintf(stringCursor, arguments.dblFormatStr, roundf(((dbr_float_t*)value)[i]));
+    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, roundf(((dbr_float_t*)value)[j]));
     		}
     		else if (arguments.round == roundType_ceil){
-    			sprintf(stringCursor, arguments.dblFormatStr, ceilf(((dbr_float_t*)value)[i]));
+    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, ceilf(((dbr_float_t*)value)[j]));
     		}
     		else if (arguments.round == roundType_floor){
-    			sprintf(stringCursor, arguments.dblFormatStr, floorf(((dbr_float_t*)value)[i]));
+    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, floorf(((dbr_float_t*)value)[j]));
     		}
     		break;
 
     	case DBR_ENUM:
-    		v = ((dbr_enum_t *)value)[i];
+    		v = ((dbr_enum_t *)value)[j];
     		if (!arguments.num && !arguments.bin && !arguments.hex && !arguments.oct) { // if not requested as a number check if we can get string
     			if (dbr_type_is_GR(type)) {
     				if (v > ((struct dbr_gr_enum *)dbr)->no_str) {
     					fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
     				}
-    				sprintf(stringCursor, "%s", ((struct dbr_gr_enum *)dbr)->strs[v]);
+    				charsToWrite = snprintf(stringCursor, spaceLeft, "%s", ((struct dbr_gr_enum *)dbr)->strs[v]);
     				break;
     			}
     			else if (dbr_type_is_CTRL(type)) {
     				if (v > ((struct dbr_ctrl_enum *)dbr)->no_str) {
     					fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
     				}
-    				sprintf(stringCursor, "%s", ((struct dbr_ctrl_enum *)dbr)->strs[v]);
+    				charsToWrite = snprintf(stringCursor, spaceLeft, "%s", ((struct dbr_ctrl_enum *)dbr)->strs[v]);
     				break;
     			}
     		}
     		// else return string value as number.
     		if (arguments.hex){
-    			sprintf(stringCursor, "%x", v);
+    			charsToWrite = snprintf(stringCursor, spaceLeft, "%x", v);
     		}
     		else if (arguments.oct){
-    			sprintf(stringCursor, "%o", v);
+    			charsToWrite = snprintf(stringCursor, spaceLeft, "%o", v);
     		}
     		else if (arguments.bin){
     			sprintBits(stringCursor, sizeof(v), &v);
     		}
     		else{
-    			sprintf(stringCursor, "%d", v);
+    			charsToWrite = snprintf(stringCursor, spaceLeft, "%d", v);
     		}
     		break;
 
     	case DBR_CHAR:
     		if (!arguments.num) {	//check if requested as a a number
-    			sprintf(stringCursor, "%c", ((dbr_char_t*) value)[i]);
+    			charsToWrite = snprintf(stringCursor, spaceLeft, "%c", ((dbr_char_t*) value)[j]);
     		}
     		else{
-    			sprintf(stringCursor, "%d", ((dbr_char_t*) value)[i]);
+    			charsToWrite = snprintf(stringCursor, spaceLeft, "%d", ((dbr_char_t*) value)[j]);
     		}
     		break;
 
     	case DBR_LONG:
     		//display dec, hex, bin, oct if desired
     		if (arguments.hex){
-    			sprintf(stringCursor, "%x", ((dbr_long_t*)value)[i]);
+    			charsToWrite = snprintf(stringCursor, spaceLeft, "%x", ((dbr_long_t*)value)[j]);
     		}
     		else if (arguments.oct){
-    			sprintf(stringCursor, "%o", ((dbr_long_t*)value)[i]);
+    			charsToWrite = snprintf(stringCursor, spaceLeft, "%o", ((dbr_long_t*)value)[j]);
     		}
     		else if (arguments.bin){
-    			sprintBits(stringCursor, sizeof(((dbr_long_t*)value)[i]), &((dbr_long_t*)value)[i]);
+    			sprintBits(stringCursor, sizeof(((dbr_long_t*)value)[i]), &((dbr_long_t*)value)[j]);
     		}
     		else{
-    			sprintf(stringCursor, "%d", ((dbr_long_t*)value)[i]);
+    			charsToWrite = snprintf(stringCursor, spaceLeft, "%d", ((dbr_long_t*)value)[j]);
     		}
     		break;
 
@@ -615,43 +624,108 @@ int valueToString(char *stringValue, unsigned int type, const void *dbr, int cou
     		if (arguments.round == roundType_no_rounding){
     			if (arguments.digits == -1 && arguments.prec == -1){
     				//display with precision defined by the record
-    				sprintf(stringCursor, "%-.*g", precision, ((dbr_double_t*)value)[i]);
+    				charsToWrite = snprintf(stringCursor, spaceLeft, "%-.*g", precision, ((dbr_double_t*)value)[j]);
     			}
     			else if (arguments.digits == -1 && arguments.prec != -1){
     				//display with precision defined by arguments.prec
-    				sprintf(stringCursor, "%-.*g", arguments.prec, ((dbr_double_t*)value)[i]);
+    				charsToWrite = snprintf(stringCursor, spaceLeft, "%-.*g", arguments.prec, ((dbr_double_t*)value)[j]);
     			}
     			else if (arguments.digits != -1 && arguments.prec == -1){
     				//use precision and format as specified by -efg flags
-    				sprintf(stringCursor, arguments.dblFormatStr, ((dbr_double_t*)value)[i]);
+    				charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, ((dbr_double_t*)value)[j]);
     			}
     		}
     		else if (arguments.round == roundType_default){
-    			sprintf(stringCursor, arguments.dblFormatStr, round(((dbr_double_t*)value)[i]));
+    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, round(((dbr_double_t*)value)[j]));
     		}
     		else if (arguments.round == roundType_ceil){
-    			sprintf(stringCursor, arguments.dblFormatStr, ceil(((dbr_double_t*)value)[i]));
+    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, ceil(((dbr_double_t*)value)[j]));
     		}
     		else if (arguments.round == roundType_floor){
-    			sprintf(stringCursor, arguments.dblFormatStr, floor(((dbr_double_t*)value)[i]));
+    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, floor(((dbr_double_t*)value)[j]));
     		}
     		break;
 
     	default:
-    		strcpy(stringCursor, "Unrecognized DBR type");
+    		charsToWrite = snprintf(stringCursor, spaceLeft, "Unrecognized DBR type");
     		break;
     	}
+
+    	//check if string needs to be extended
+		if (charsToWrite >= spaceLeft){
+			char *new_ptr = realloc(outValue[i], LEN_VALUE*2*sizeof(char));
+			//if (!outValue[i]){
+			if (!new_ptr){
+				fprintf(stderr,"Memory allocation error\n");
+				return -1;
+			}
+//XXX segmentation fault here
+			outValue[i] = new_ptr;
+
+			outValue[i][LEN_VALUE-spaceLeft] = '\0';//remove last entry
+			LEN_VALUE *= 2;
+			i--;
+printf("REALLOCATING\n");
+			continue;
+		}
     }
 
     return 0;
 }
+
+int printOutput(int i){
+// prints global output strings corresponding to i-th channel.
+
+	//if both local and server times are requested, clarify which is which
+	if ((arguments.localdate || arguments.localtime) && (arguments.date || arguments.time)){
+		printf("server time: ");
+	}
+
+    //server date
+	if (strcmp(outDate[i],"") != 0)	printf("%s ",outDate[i]);
+	//server time
+	if (strcmp(outTime[i],"") != 0)	printf("%s ",outTime[i]);
+
+	if ((arguments.localdate || arguments.localtime) && (arguments.date || arguments.time)){
+		printf("local time: ");
+	}
+
+	//local date
+	if (strcmp(outLocalDate[i],"") != 0)	printf("%s ",outLocalDate[i]);
+	//local time
+	if (strcmp(outLocalTime[i],"") != 0)	printf("%s ",outLocalTime[i]);
+
+
+    //timestamp if monitor and if requested
+    if (arguments.tool == camon && arguments.timestamp)	printf("%s ", outTimestamp[i]);
+
+    //channel name
+    if (strcmp(outName[i],"") != 0)	printf("%s ",outName[i]);
+
+    //value(s)
+    printf("%s ", outValue[i]);
+
+    //egu
+    if (strcmp(outUnits[i],"") != 0)printf("%s ",outUnits[i]);
+
+    //severity
+    if (strcmp(outSev[i],"") != 0) printf("%s ",outSev[i]);
+
+    //status
+	if (strcmp(outStat[i],"") != 0) printf("%s ",outStat[i]);
+
+	printf("\n");
+    return 0;
+}
+
 
 
 static void enumToString (evargs args){
 //caget callback function which receives read enum data and tries to interpret it
 //as a string, which is then written to memory pointed at by args.usr. If the data
 //can't be read as a string (i.e. dbr type is not ctrl or gr), number is written.
-//The result is written to the global value output string.
+//The result is written to the global value output string, and the printing
+//function is called.
 
 	//check if data was returned
 	if (args.status != ECA_NORMAL){
@@ -713,52 +787,9 @@ static void enumToString (evargs args){
 
 	//finish
 	ch->done = true;
+	printOutput(ch->i);
 }
 
-int printOutput(int i){
-// prints global output strings corresponding to i-th channel.
-
-	//if both local and server times are requested, clarify which is which
-	if ((arguments.localdate || arguments.localtime) && (arguments.date || arguments.time)){
-		printf("server time: ");
-	}
-
-    //server date
-	if (strcmp(outDate[i],"") != 0)	printf("%s ",outDate[i]);
-	//server time
-	if (strcmp(outTime[i],"") != 0)	printf("%s ",outTime[i]);
-
-	if ((arguments.localdate || arguments.localtime) && (arguments.date || arguments.time)){
-		printf("local time: ");
-	}
-
-	//local date
-	if (strcmp(outLocalDate[i],"") != 0)	printf("%s ",outLocalDate[i]);
-	//local time
-	if (strcmp(outLocalTime[i],"") != 0)	printf("%s ",outLocalTime[i]);
-
-
-    //timestamp if monitor and if requested
-    if (arguments.tool == camon && arguments.timestamp)	printf("%s ", outTimestamp[i]);
-
-    //channel name
-    if (strcmp(outName[i],"") != 0)	printf("%s ",outName[i]);
-
-    //value(s)
-    printf("%s ", outValue[i]);
-
-    //egu
-    if (strcmp(outUnits[i],"") != 0)printf("%s ",outUnits[i]);
-
-    //severity
-    if (strcmp(outSev[i],"") != 0) printf("%s ",outSev[i]);
-
-    //status
-	if (strcmp(outStat[i],"") != 0) printf("%s ",outStat[i]);
-
-	printf("\n");
-    return 0;
-}
 
 
 int epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp * pLeft, const epicsTimeStamp * pRight ){
@@ -785,6 +816,63 @@ int epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp * pLeft, const 
 
 }
 
+int getTimeStamp(int i){
+//calculates timestamp for monitor tool, formats it and saves it into the global string.
+
+	if (arguments.timestamp == 'r') {
+		//calculate elapsed time since startTime
+		epicsTimeStamp elapsed;
+		int iSign;
+		iSign = epicsTimeDiffFull(&elapsed, &timestampRead[i], &programStartTime);
+
+		//convert to h,m,s,ns
+		struct tm tm;
+		unsigned long nsec;
+		epicsTimeToGMTM(&tm, &nsec, &elapsed);
+
+		//save to outTs string
+		char cSign = ' ';
+		if (iSign<0) cSign='-';
+		sprintf(outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
+	}
+	else if(arguments.timestamp == 'c' || arguments.timestamp == 'u'){
+		//calculate elapsed time since last update; if using 'c' keep
+		//timestamps separate for each channel, otherwise use lastUpdate[0]
+		//for all channels.
+		int ii=0;
+		if (arguments.timestamp == 'c') ii = i;
+		else if (arguments.timestamp == 'u') ii = 0;
+
+		if (lastUpdate[ii].secPastEpoch != 0){
+
+			epicsTimeStamp elapsed;
+			int iSign;
+			iSign = epicsTimeDiffFull(&elapsed, &timestampRead[i], &lastUpdate[ii]);
+
+			//convert to h,m,s,ns
+			struct tm tm;
+			unsigned long nsec;
+			epicsTimeToGMTM(&tm, &nsec, &elapsed);
+
+			//save to outTs string
+			char cSign = ' ';
+			if (iSign<0) cSign='-';
+			sprintf(outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
+		}
+		else{
+			//this is the first update for this channel
+			sprintf(outTimestamp[i],"%19c",' ');
+		}
+
+		//reset
+		lastUpdate[ii] = timestampRead[i];
+	}
+
+
+
+	return 0;
+}
+
 static void caReadCallback (evargs args){
 //reads and parses data fetched by calls. First, the global strings holding the output are cleared. Then, depending
 //on the type of the returned data, the available information is extracted. The extracted info is then saved to the
@@ -796,7 +884,6 @@ static void caReadCallback (evargs args){
 		fprintf(stderr, "Error in read callback. %s.\n", ca_message(args.status));
 		return;
 	}
-
     struct channel *ch = (struct channel *)args.usr;
 
     // output strings - local copies
@@ -1044,6 +1131,46 @@ static void caReadCallback (evargs args){
 	sprintf(outSev[ch->i], locSev);
 	sprintf(outStat[ch->i], locStat);
 
+	//if monitor, there is extra stuff to do before printing data out.
+	if (arguments.tool == cawait || arguments.tool == camon){
+		if (arguments.timestamp) getTimeStamp(ch->i);	//calculate relative timestamps
+
+		//check stop conditions fom -n (camon)
+		if (arguments.tool == camon && arguments.numUpdates != -1 && numMonitorUpdates >= arguments.numUpdates){
+			runMonitor = false;
+			return;
+		}
+		numMonitorUpdates++;	//increase counter of updates
+
+		if (arguments.tool == cawait){
+			//check stop condition
+			if (arguments.timeout!=-1){
+				//calculate time since last update
+				epicsTimeStamp timeoutNow;
+				epicsTimeStamp timeoutElapsed;
+				epicsTimeGetCurrent(&timeoutNow);
+				epicsTimeDiffFull(&timeoutElapsed, &timeoutUpdate, &timeoutNow);
+				if (timeoutElapsed.secPastEpoch + 1e-9*timeoutElapsed.nsec > arguments.timeout){
+					//we are done waiting
+					//printf("No updates for %f seconds - exiting.\n",arguments.timeout);
+					runMonitor = false;
+					return;
+				}
+			}
+
+			//check display condition
+			if (cawaitCondition(*ch, ch->i) != 1) { //XXX need value before !!
+				return;
+			}
+			else if(arguments.timeout!=-1){ // if condition matches, reset timeout and proceed
+				epicsTimeGetCurrent(&timeoutUpdate);
+			}
+
+		}
+
+		//if the monitor is about to stop and we are just waiting for the program to exit, don't proceed to printing.
+		if (runMonitor == false) return;
+	}
 
 
     //construct values string and write to global string directly
@@ -1069,12 +1196,14 @@ static void caReadCallback (evargs args){
 
 		status = ca_flush_io();
 		if(status != ECA_NORMAL) fprintf (stderr,"Problem flushing channel %s.\n", ch->name);
-		//ch->done is set by enum2string callback.
+		//ch->done and printing is set by enum2string callback.
 	}
 	else{ //get values as usual
-		valueToString(outValue[ch->i], args.type, args.dbr, args.count, precision);
+		//valueToString(outValue[ch->i], args.type, args.dbr, args.count, precision);
+		valueToString(ch->i, args.type, args.dbr, args.count, precision);
 		//finish
 		ch->done = true;
+		printOutput(ch->i);
 
 	}
 }
@@ -1109,14 +1238,6 @@ void caRequest(struct channel *channels, int nChannels){
         }
 
         //how many array elements to request
-        /*if(arguments.inNelm > 0 && arguments.inNelm <= channels[i].count ){
-        	channels[i].inNelm = arguments.inNelm;
-        }
-        else{
-        	channels[i].inNelm = 1;
-        	if (channels[i].count == 0) fprintf(stderr, "Channel %s is probably not connected.\n", channels[i].name);
-        	else fprintf(stderr, "Invalid number %d of requested elements to write. Defaulting to 1.\n", arguments.inNelm);
-        }*/
         if (arguments.outNelm == -1){
         	channels[i].outNelm = channels[i].count;
         }
@@ -1127,7 +1248,6 @@ void caRequest(struct channel *channels, int nChannels){
         	channels[i].outNelm = channels[i].count;
         	fprintf(stderr, "Invalid number %d of requested elements to read.", arguments.outNelm);
         }
-
 
 
 
@@ -1158,6 +1278,10 @@ void caRequest(struct channel *channels, int nChannels){
 			status = ca_create_subscription(channels[i].type, channels[i].outNelm, channels[i].id, DBE_VALUE | DBE_ALARM | DBE_LOG,\
 					caReadCallback, &channels[i], NULL);
 			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create monitor.\n", ca_message(status));
+	    	runMonitor = true;
+	    	if (arguments.tool == cawait && arguments.timeout!=-1){
+	    		epicsTimeGetCurrent(&timeoutUpdate);//start timeout timer
+	    	}
         }
         else if (arguments.tool == caput || arguments.tool == caputq){
             long nakedType = channels[i].type % (LAST_TYPE+1);   // use naked dbr_xx type for put
@@ -1245,214 +1369,33 @@ void caRequest(struct channel *channels, int nChannels){
 
     }
 
-    status = ca_flush_io ();
-    if(status == ECA_TIMEOUT){
-    	printf ("Flush error: %s.\n", ca_message(status));
-    }
+    status = ca_pend_event (arguments.w);
+    if (status != ECA_TIMEOUT) fprintf (stderr,"Some of the callbacks have not completed.\n");
+
 
     //if caput or cagets, wait for put callback and issue a new read request.
     if (arguments.tool == caput || arguments.tool == cagets){
 
-    	epicsTimeStamp waitStart;
-    	epicsTimeGetCurrent(&waitStart);
-
-    	epicsTimeStamp waitNow;
-    	epicsTimeStamp elapsed;
-
-    	bool doneEach[nChannels];
-    	for (i=0; i<nChannels; ++i) doneEach[i]=false;
-
-    	while(1){
-    		for (i=0; i<nChannels; ++i){
-    			if (channels[i].done){
-    				status = ca_array_get_callback(channels[i].type, channels[i].count, channels[i].id, caReadCallback, &channels[i]);
-    				if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
-
-    				doneEach[i] = true;		//replaces ch.done
-    				channels[i].done = false; //reset ch.done in order to reuse it by callback fcn
-    			}
-    		}
-
-    		//exit if all of callbacks completed
-    		bool doneAll = true;
-    		for (i=0; i<nChannels; ++i){
-    			doneAll &= doneEach[i];
-    		}
-    		if (doneAll) break;
-
-    		//or if timeout
-    		epicsTimeGetCurrent(&waitNow);
-    		epicsTimeDiffFull(&elapsed, &waitStart, &waitNow);
-
-    		if (elapsed.secPastEpoch + 1e-9*elapsed.nsec > arguments.w){
-    			fprintf(stderr,"Timeout while waiting for an answer (put) from channel(s): ");
-    			for (i=0; i<nChannels; ++i){
-    				if (!doneEach[i]){
-    					fprintf(stderr,"%s ", channels[i].name);
-    				}
-    			}
-				fprintf(stderr,".\n");
-    			break;
-    		}
-    	}
-
-    	status = ca_flush_io ();
-    	if(status == ECA_TIMEOUT) fprintf (stderr,"Flush error: %s.\n", ca_message(status));
-    }
-
-    //wait for read callbacks
-    epicsTimeStamp waitStart;
-    epicsTimeGetCurrent(&waitStart);
-
-    epicsTimeStamp waitNow;
-    epicsTimeStamp elapsed;
-    bool doneEach[nChannels];
-    for (i=0; i<nChannels; ++i) doneEach[i]=false;
-
-    while(1){
-		for (i=0; i<nChannels; ++i){
-			if (channels[i].done){
-				doneEach[i] = true;
-			}
-		}
-
-		//break if all callbacks completed
-		bool doneAll = true;
-		for (i=0; i<nChannels; ++i){
-			doneAll &= doneEach[i];
-		}
-		if (doneAll) break;
-
-		//or if timeout
-		epicsTimeGetCurrent(&waitNow);
-		epicsTimeDiffFull(&elapsed, &waitStart, &waitNow);
-
-		if (elapsed.secPastEpoch + 1e-9*elapsed.nsec > arguments.w){
-			fprintf(stderr,"Timeout while waiting for an answer (get) from channel(s): ");
-			for (i=0; i<nChannels; ++i){
-				if (!doneEach[i]){
-					fprintf(stderr,"%s ", channels[i].name);
-				}
-			}
-			fprintf(stderr,".\n");
-			break;
-		}
-    }
-
-    //print final output or enter monitoring loop
-    if (arguments.tool == caget || arguments.tool == caput){
     	for (i=0; i<nChannels; ++i){
-    		printOutput(i);
-    	}
-    }
-    else if (arguments.tool == camon || arguments.tool == cawait){
-
-    	int numUpdates = 0;	//needed if -n
-
-    	epicsTimeStamp lastUpdate[nChannels]; //needed if -timestamp u,c
-    	for (i=0; i<=nChannels;++i){
-    		lastUpdate[i].secPastEpoch=0;
-    	}
-
-    	epicsTimeStamp timeoutUpdate; //needed by cawait if timeout specified
-		if (arguments.timeout!=-1){
-			epicsTimeGetCurrent(&timeoutUpdate);
-		}
-
-
-    	while (1){
-
-    		for (i=0; i<nChannels; ++i){
-
-    			if (channels[i].done){
-
-    				if (arguments.tool == cawait){
-
-    					if (arguments.timeout!=-1){
-							//calculate time since last update
-    						epicsTimeStamp timeoutNow;
-    						epicsTimeStamp timeoutElapsed;
-    						epicsTimeGetCurrent(&timeoutNow);
-    						epicsTimeDiffFull(&timeoutElapsed, &timeoutUpdate, &timeoutNow);
-							if (timeoutElapsed.secPastEpoch + 1e-9*timeoutElapsed.nsec > arguments.timeout){
-								//we are done waiting
-								printf("No updates for %f seconds - exiting.\n",arguments.timeout);
-								return;
-							}
-    					}
-
-    					//check condition
-    					if (cawaitCondition(channels[i], i) != 1) {
-    						channels[i].done = false;
-    						continue;
-    					}
-    					else if(arguments.timeout!=-1){ // if condition matches, reset timeout
-    						epicsTimeGetCurrent(&timeoutUpdate);
-    					}
-    				}
-
-
-
-    				if (arguments.timestamp == 'r') {
-    					//calculate elapsed time since startTime
-    					epicsTimeStamp elapsed;
-    					int iSign;
-    					iSign = epicsTimeDiffFull(&elapsed, &timestampRead[i], &programStartTime);
-
-    					//convert to h,m,s,ns
-    					struct tm tm;
-    					unsigned long nsec;
-    					epicsTimeToGMTM(&tm, &nsec, &elapsed);
-
-    					//save to outTs string
-    					char cSign = ' ';
-    					if (iSign<0) cSign='-';
-    					sprintf(outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
-    				}
-    				else if(arguments.timestamp == 'c' || arguments.timestamp == 'u'){
-						//calculate elapsed time since last update; if using 'c' keep
-    					//timestamps separate for each channel, otherwise use lastUpdate[0]
-    					//for all channels.
-    					int ii=0;
-    					if (arguments.timestamp == 'c') ii = i;
-    					else if (arguments.timestamp == 'u') ii = 0;
-
-    					if (lastUpdate[ii].secPastEpoch != 0){
-
-    						epicsTimeStamp elapsed;
-    						int iSign;
-    						iSign = epicsTimeDiffFull(&elapsed, &timestampRead[i], &lastUpdate[ii]);
-
-    						//convert to h,m,s,ns
-    						struct tm tm;
-    						unsigned long nsec;
-    						epicsTimeToGMTM(&tm, &nsec, &elapsed);
-
-    						//save to outTs string
-    						char cSign = ' ';
-    						if (iSign<0) cSign='-';
-    						sprintf(outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
-    					}
-    					else{
-    						//this is the first update for this channel
-    						sprintf(outTimestamp[i],"%19c",' ');
-    					}
-
-    					//reset
-    					lastUpdate[ii] = timestampRead[i];
-    				}
-
-					printOutput(i);
-					channels[i].done = false;
-
-			    	if (arguments.numUpdates != -1)	{
-			    		++numUpdates;
-			    		if (numUpdates >= arguments.numUpdates) break;
-			    	}
-				}
+    		if (channels[i].done){
+    			status = ca_array_get_callback(channels[i].type, channels[i].count, channels[i].id, caReadCallback, &channels[i]);
+    			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
     		}
-    		//check if numUpdates is enough to exit program
-    		if (arguments.numUpdates != -1 && numUpdates >= arguments.numUpdates) break;
+    		else{
+    			fprintf(stderr, "Put callback for channel %s did not complete.\n", channels[i].name);
+    		}
+    	}
+
+    	//wait for read callbacks
+    	status = ca_pend_event(arguments.w);
+    	if (status != ECA_TIMEOUT) fprintf (stderr,"Some of the read callbacks have not completed.\n");
+
+    }
+
+    //enter monitor loop
+    if (arguments.tool == camon || arguments.tool == cawait){
+    	while (runMonitor){
+    		ca_pend_event(0.1);
     	}
     }
 }
@@ -1467,7 +1410,7 @@ void cainfoRequest(struct channel *channels, int nChannels){
 	char upperCtrlLimit[45]="", lowerCtrlLimit[45]="";
 	char upperDispLimit[45]="", lowerDispLimit[45]="";
 	char enumStrs[MAX_ENUM_STATES][MAX_ENUM_STRING_SIZE], enumNoStr[30]="";
-	char value[LEN_VALUE]="";
+	char value[LEN_VALUE]; value[0]='\0';
 	bool readAccess, writeAccess;
 	char description[MAX_STRING_SIZE]="", hhSevr[30]="", hSevr[30]="", lSevr[30]="", llSevr[30]="";
 
@@ -1683,7 +1626,9 @@ int caInit(struct channel *channels, int nChannels){
 //creates contexts and channels.
     int status, i;
 
-    status = ca_context_create(ca_enable_preemptive_callback);
+    //status = ca_context_create(ca_enable_preemptive_callback);
+    status = ca_context_create(ca_disable_preemptive_callback);
+
     if (checkStatus(status) != EXIT_SUCCESS) return EXIT_FAILURE;
 
     for(i=0; i < nChannels; i++){
@@ -2106,21 +2051,12 @@ int main ( int argc, char ** argv )
 		nChannels = argc - optind;       // Remaining arg list are PV names
 	}
 	else if (arguments.tool == caput || arguments.tool == caputq){
-//		if (arguments.inputSeparator == ' '){
-			//default case, it takes (inNelm+pv name) elements to define each channel
-			if ((argc - optind) % (arguments.inNelm +1)){
-				fprintf(stderr, "One of the PVs is missing the value to be written ('%s -h' for help).\n", argv[0]);
-				return EXIT_FAILURE;
-			}
-			nChannels = (argc - optind)/(arguments.inNelm +1);
-/*		}
-		else{ //each pv name is followed by a string of values separated by the separator
-			if ((argc - optind) % 2){
-				fprintf(stderr, "One of the PVs is missing the condition ('%s -h' for help).\n", argv[0]);
-				return EXIT_FAILURE;
-			}
-			nChannels = (argc - optind)/2;
-		}*/
+		//default case, it takes (inNelm+pv name) elements to define each channel
+		if ((argc - optind) % (arguments.inNelm +1)){
+			fprintf(stderr, "One of the PVs is missing the value to be written ('%s -h' for help).\n", argv[0]);
+			return EXIT_FAILURE;
+		}
+		nChannels = (argc - optind)/(arguments.inNelm +1);
 	}
 	else if (arguments.tool == cawait){
 		if ((argc - optind) % 2){
@@ -2175,7 +2111,8 @@ int main ( int argc, char ** argv )
         		}
 
 				for (j=0; j<arguments.inNelm; ++j){
-					strcpy(&channels[i].writeStr[j*MAX_STRING_SIZE], argv[optind+1]);
+					int charsToWrite = snprintf(&channels[i].writeStr[j*MAX_STRING_SIZE], MAX_STRING_SIZE, "%s", argv[optind+1]);
+					if (charsToWrite >= MAX_STRING_SIZE) fprintf(stderr,"Input %s is longer than the allowed size %d - truncating.\n", argv[optind+1], MAX_STRING_SIZE);
 					optind++;
 				}
         	}
@@ -2195,7 +2132,8 @@ int main ( int argc, char ** argv )
         		}
 
         		if (count == 1){//the argument to write consists of just a single element.
-					strcpy(&channels[i].writeStr[0], argv[optind+1]);
+					int charsToWrite = snprintf(&channels[i].writeStr[0], MAX_STRING_SIZE, "%s", argv[optind+1]);
+					if (charsToWrite >= MAX_STRING_SIZE) fprintf(stderr,"Input %s is longer than the allowed size %d - truncating.\n", argv[optind+1], MAX_STRING_SIZE);
 					channels[i].inNelm = 1;
         		}
         		else{//parse the string assuming each element is delimited by the inputSeparator char
@@ -2203,7 +2141,8 @@ int main ( int argc, char ** argv )
         			j=0;
         			char *token = strtok(argv[optind+1], inFs);
         			while(token) {
-        				strcpy(&channels[i].writeStr[j*MAX_STRING_SIZE], token);
+        				int charsToWrite = snprintf(&channels[i].writeStr[j*MAX_STRING_SIZE] , MAX_STRING_SIZE, "%s", token);
+        				if (charsToWrite >= MAX_STRING_SIZE) fprintf(stderr,"Input %s is longer than the allowed size %d - truncating.\n", token, MAX_STRING_SIZE);
         				j++;
         				token = strtok(NULL, inFs);
         			}
@@ -2298,7 +2237,8 @@ int main ( int argc, char ** argv )
 	//memory for timestamp
 	timestampRead = malloc(nChannels * sizeof(epicsTimeStamp));
 	if (!timestampRead) fprintf(stderr, "Memory allocation error.\n");
-
+	lastUpdate = malloc(nChannels * sizeof(epicsTimeStamp));
+	if (!lastUpdate) fprintf(stderr, "Memory allocation error.\n");
 
     if(caInit(channels, nChannels) != EXIT_SUCCESS) return EXIT_FAILURE;
 
@@ -2349,6 +2289,7 @@ int main ( int argc, char ** argv )
 
     //free monitor's timestamp
     free(timestampRead);
+    free(lastUpdate);
 
     return EXIT_SUCCESS;
 }
