@@ -5,7 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h> // XXX is ok?
+#include <math.h>
+#include <inttypes.h>
+
 
 #include "cadef.h"  // for channel access
 #include "alarmString.h"  // XXX is ok?
@@ -145,7 +147,7 @@ struct channel{
 static unsigned int LEN_VALUE = 100; //XXX max value size?hmk??
 #define LEN_SEVSTAT 30
 #define LEN_UNITS 20+MAX_UNITS_SIZE
-char **outDate,**outTime, **outSev, **outStat, **outUnits, **outName, **outValue, **outLocalDate, **outLocalTime;
+char **outDate,**outTime, **outSev, **outStat, **outUnits, **outValue, **outLocalDate, **outLocalTime;
 char **outTimestamp; //relative timestamps for camon
 
 //timestamps needed by -timestamp
@@ -459,221 +461,166 @@ int cawaitCondition(struct channel channel, int k){
 }
 
 
-void sprintBits(char *outStr, size_t const size, void const * const ptr){
-//Converts a decimal number to binary and saves it to outStr.
-//The decimal number is pointed to by ptr and is of memory size size.
-//Assumes little endian.
 
-    unsigned char *b = (unsigned char*) ptr;
-    unsigned char byte;
-    int i, j;
-    int k=0;
 
-    for (i=size-1;i>=0;i--)
-    {
-        for (j=7;j>=0;j--)
-        {
-            byte = b[i] & (1<<j);
-            byte >>= j;
-            sprintf(outStr + k, "%u", byte);
-            k++;
-        }
-    }
-}
 
-//int valueToString(char *stringValue, unsigned int type, const void *dbr, int count, int precision){
-int valueToString(int i, unsigned int type, const void *dbr, int count, int precision){
+#define printBits(x) \
+	size_t int_size = sizeof(x) * 8; \
+	int i;\
+	for (i = int_size-1; i >= 0; i--) { \
+		printf("%c", '0' + ((x >> i) & 1) ); \
+	}
+
+int printValue(evargs args, int precision){
 //Parses the data fetched by ca_get callback according to the data type and formatting arguments.
-//The result is saved into the global value output string.
+//The result is printed to stdout.
 
     dbr_enum_t v;
     unsigned int baseType;
     void *value;
 
-    value = dbr_value_ptr(dbr, type);
-    baseType = type % (LAST_TYPE+1);   // convert appropriate TIME, GR, CTRL,... type to basic one
+    value = dbr_value_ptr(args.dbr, args.type);
+    baseType = args.type % (LAST_TYPE+1);   // convert appropriate TIME, GR, CTRL,... type to basic one
 
     //loop over the whole array
     int j; //element counter
-    int spaceLeft; //free space available in allocated memory
-    char *stringCursor = outValue[i]; //pointer to start of the string
-    int charsToWrite; //number of formatted chars
-    for (j=0; j<count; ++j){
-    	stringCursor = outValue[i] + strlen(outValue[i]); //move along the string for each element
 
-    	spaceLeft = LEN_VALUE - strlen(outValue[i]);
+    for (j=0; j<args.count; ++j){
 
     	if (j){
-    		charsToWrite = snprintf (stringCursor, spaceLeft, "%c", arguments.fieldSeparator); //insert element separator
-        	stringCursor = outValue[i] + strlen(outValue[i]); //move
-        	spaceLeft = LEN_VALUE - strlen(outValue[i]);	//one element less
+    		printf ("%c", arguments.fieldSeparator); //insert element separator
     	}
 
     	switch (baseType) {
     	case DBR_STRING:
-    		charsToWrite = snprintf(stringCursor, spaceLeft, "%s", ((dbr_string_t*) value)[j]);
+    		printf("%.*s", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);
     		break;
-
     	case DBR_INT:
+    		; int16_t valueInt16 = ((dbr_int_t*)value)[j];
     		//display dec, hex, bin, oct if desired
     		if (arguments.hex){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, "%x", ((dbr_int_t*)value)[j]);
+    			printf("%" PRIx16, (uint16_t)valueInt16);
     		}
     		else if (arguments.oct){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, "%o", ((dbr_int_t*)value)[j]);
+    			printf("%" PRIo16, (uint16_t)valueInt16);
     		}
     		else if (arguments.bin){
-    			sprintBits(stringCursor, sizeof(((dbr_int_t*)value)[i]), &((dbr_int_t*)value)[j]); //TODO memory
+    			printBits((uint16_t)valueInt16);
     		}
     		else{
-    			charsToWrite = snprintf(stringCursor, spaceLeft, "%d", ((dbr_int_t*)value)[j]);
+    			printf("%" PRId16, valueInt16);
     		}
     		break;
-
 		//case DBR_SHORT: equals DBR_INT
-    		//    sprintf(stringValue, "%d", ((dbr_short_t*)value)[i]);
-    		//    break;
-
     	case DBR_FLOAT:
+    	case DBR_DOUBLE:
+    		; double valueDbl;
+    		if (baseType == DBR_FLOAT) valueDbl = ((dbr_float_t*)value)[j];
+    		else valueDbl = ((dbr_double_t*)value)[j];
+
     		//round if desired
-    		if (arguments.round == roundType_no_rounding){
-    			if (arguments.digits == -1 && arguments.prec == -1){
-    				//display with precision defined by the record
-    				charsToWrite = snprintf(stringCursor, spaceLeft, "%-.*g", precision, ((dbr_float_t*)value)[j]);
-    			}
-    			else if (arguments.digits == -1 && arguments.prec != -1){
-    				//display with precision defined by arguments.prec
-    				charsToWrite = snprintf(stringCursor, spaceLeft, "%-.*g", arguments.prec, ((dbr_float_t*)value)[j]);
-    			}
-    			else if (arguments.digits != -1 && arguments.prec == -1){
-    				//use precision and format as specified by -efg flags
-    				charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, ((dbr_float_t*)value)[j]);
-    			}
+    		if (arguments.round == roundType_default) valueDbl = round(valueDbl);
+    		else if (arguments.round == roundType_ceil) valueDbl = ceil(valueDbl);
+    		else if (arguments.round == roundType_floor) valueDbl = floor(valueDbl);
+
+    		if (arguments.digits == -1 && arguments.prec == -1){
+    			//display with precision defined by the record
+    			printf("%-.*g", precision, valueDbl);
     		}
-    		else if (arguments.round == roundType_default){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, roundf(((dbr_float_t*)value)[j]));
-    		}
-    		else if (arguments.round == roundType_ceil){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, ceilf(((dbr_float_t*)value)[j]));
-    		}
-    		else if (arguments.round == roundType_floor){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, floorf(((dbr_float_t*)value)[j]));
-    		}
+			else{
+				//use precision and format as specified by -efg or -prec arguments
+				printf(arguments.dblFormatStr, valueDbl);
+			}
+//XXX g is hardcoded because of the way options have been set up. -e -f and -g require an argument specifying precision,
+// therefore it is not possible to specify an arbitrary format combined with precision from the record. I asked Tom and
+// he said that options have been previously set up in the code in order to ensure compatibility with previous tools, so
+// I left this alone.
     		break;
 
     	case DBR_ENUM:
     		v = ((dbr_enum_t *)value)[j];
+    		if (v >= MAX_ENUM_STATES){
+    			fprintf(stderr, "Illegal enum index '%d'.\n", v);
+    			break;
+    		}
+
     		if (!arguments.num && !arguments.bin && !arguments.hex && !arguments.oct) { // if not requested as a number check if we can get string
-    			if (dbr_type_is_GR(type)) {
-    				if (v > ((struct dbr_gr_enum *)dbr)->no_str) {
-    					fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
+    			if (dbr_type_is_GR(args.type)) {
+    				if (v >= ((struct dbr_gr_enum *)args.dbr)->no_str) {
+    					fprintf(stderr, "Enum index value '%d' greater than the number of strings.\n", v);
     				}
-    				charsToWrite = snprintf(stringCursor, spaceLeft, "%s", ((struct dbr_gr_enum *)dbr)->strs[v]);
+    				else{
+    					printf("%*s", MAX_STRING_SIZE, ((struct dbr_gr_enum *)args.dbr)->strs[v]);
+    				}
     				break;
     			}
-    			else if (dbr_type_is_CTRL(type)) {
-    				if (v > ((struct dbr_ctrl_enum *)dbr)->no_str) {
-    					fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
+    			else if (dbr_type_is_CTRL(args.type)) {
+    				if (v >= ((struct dbr_ctrl_enum *)args.dbr)->no_str) {
+    					fprintf(stderr, "Enum index value '%d' greater than the number of strings.\n", v);
     				}
-    				charsToWrite = snprintf(stringCursor, spaceLeft, "%s", ((struct dbr_ctrl_enum *)dbr)->strs[v]);
+    				else{
+    					printf("%*s", MAX_STRING_SIZE, ((struct dbr_ctrl_enum *)args.dbr)->strs[v]);
+    				}
     				break;
     			}
     		}
     		// else return string value as number.
     		if (arguments.hex){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, "%x", v);
+    			printf("%" PRIx16, v);
     		}
     		else if (arguments.oct){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, "%o", v);
+    			printf("%" PRIo16, v);
     		}
     		else if (arguments.bin){
-    			sprintBits(stringCursor, sizeof(v), &v);
+    			printBits(v);
     		}
     		else{
-    			charsToWrite = snprintf(stringCursor, spaceLeft, "%d", v);
+    			printf("%" PRId16, v);
     		}
     		break;
 
     	case DBR_CHAR:
+    		; char valueChr = ((dbr_char_t*) value)[j];
     		if (!arguments.num) {	//check if requested as a a number
-    			charsToWrite = snprintf(stringCursor, spaceLeft, "%c", ((dbr_char_t*) value)[j]);
+    			printf("%c", valueChr);
     		}
     		else{
-    			charsToWrite = snprintf(stringCursor, spaceLeft, "%d", ((dbr_char_t*) value)[j]);
+    			printf("%d", valueChr);
     		}
     		break;
 
     	case DBR_LONG:
+    		; int32_t valueInt32 = ((dbr_long_t*)value)[j];
     		//display dec, hex, bin, oct if desired
     		if (arguments.hex){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, "%x", ((dbr_long_t*)value)[j]);
+    			printf("%" PRIx32, (uint32_t)valueInt32);
     		}
     		else if (arguments.oct){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, "%o", ((dbr_long_t*)value)[j]);
+    			printf("%" PRIo32, (uint32_t)valueInt32);
     		}
     		else if (arguments.bin){
-    			sprintBits(stringCursor, sizeof(((dbr_long_t*)value)[i]), &((dbr_long_t*)value)[j]);
+    			printBits((uint16_t)valueInt32);
     		}
     		else{
-    			charsToWrite = snprintf(stringCursor, spaceLeft, "%d", ((dbr_long_t*)value)[j]);
-    		}
-    		break;
-
-    	case DBR_DOUBLE:
-    		//round if desired
-    		if (arguments.round == roundType_no_rounding){
-    			if (arguments.digits == -1 && arguments.prec == -1){
-    				//display with precision defined by the record
-    				charsToWrite = snprintf(stringCursor, spaceLeft, "%-.*g", precision, ((dbr_double_t*)value)[j]);
-    			}
-    			else if (arguments.digits == -1 && arguments.prec != -1){
-    				//display with precision defined by arguments.prec
-    				charsToWrite = snprintf(stringCursor, spaceLeft, "%-.*g", arguments.prec, ((dbr_double_t*)value)[j]);
-    			}
-    			else if (arguments.digits != -1 && arguments.prec == -1){
-    				//use precision and format as specified by -efg flags
-    				charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, ((dbr_double_t*)value)[j]);
-    			}
-    		}
-    		else if (arguments.round == roundType_default){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, round(((dbr_double_t*)value)[j]));
-    		}
-    		else if (arguments.round == roundType_ceil){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, ceil(((dbr_double_t*)value)[j]));
-    		}
-    		else if (arguments.round == roundType_floor){
-    			charsToWrite = snprintf(stringCursor, spaceLeft, arguments.dblFormatStr, floor(((dbr_double_t*)value)[j]));
+    			printf("%" PRId32, valueInt32);
     		}
     		break;
 
     	default:
-    		charsToWrite = snprintf(stringCursor, spaceLeft, "Unrecognized DBR type");
+    		fprintf(stderr, "Unrecognized DBR type.\n");
     		break;
     	}
 
-    	//check if string needs to be extended
-		if (charsToWrite >= spaceLeft){
-			char *new_ptr = realloc(outValue[i], LEN_VALUE*2*sizeof(char));
-			//if (!outValue[i]){
-			if (!new_ptr){
-				fprintf(stderr,"Memory allocation error\n");
-				return -1;
-			}
-//XXX segmentation fault here
-			outValue[i] = new_ptr;
-
-			outValue[i][LEN_VALUE-spaceLeft] = '\0';//remove last entry
-			LEN_VALUE *= 2;
-			i--;
-printf("REALLOCATING\n");
-			continue;
-		}
     }
 
     return 0;
 }
 
-int printOutput(int i){
+
+
+
+
+int printOutput(int i, evargs args, int precision){
 // prints global output strings corresponding to i-th channel.
 
 	//if both local and server times are requested, clarify which is which
@@ -700,10 +647,13 @@ int printOutput(int i){
     if (arguments.tool == camon && arguments.timestamp)	printf("%s ", outTimestamp[i]);
 
     //channel name
-    if (strcmp(outName[i],"") != 0)	printf("%s ",outName[i]);
+    if (!arguments.noname)	printf("%s ",((struct channel *)args.usr)->name);
 
     //value(s)
-    printf("%s ", outValue[i]);
+  //  printf("%s ", outValue[i]);
+    printValue(args, precision);
+
+    printf(" ");
 
     //egu
     if (strcmp(outUnits[i],"") != 0)printf("%s ",outUnits[i]);
@@ -772,7 +722,7 @@ static void enumToString (evargs args){
 
 		// if this fails return string value as number.
 		if (arguments.bin){
-			sprintBits(outString, sizeof(v), &v);
+			//sprintBits(outString, sizeof(v), &v);//XXX
 		}
 		else if (arguments.oct){
 			sprintf(outString, "%o", v);
@@ -787,7 +737,7 @@ static void enumToString (evargs args){
 
 	//finish
 	ch->done = true;
-	printOutput(ch->i);
+	printOutput(ch->i, args, NULL);
 }
 
 
@@ -888,7 +838,7 @@ static void caReadCallback (evargs args){
 
     // output strings - local copies
     char locDate[LEN_TIMESTAMP],locTime[LEN_TIMESTAMP], locSev[30], locStat[30], locUnits[20+MAX_UNITS_SIZE];
-    char locName[LEN_RECORD_NAME], locLocalDate[LEN_TIMESTAMP],locLocalTime[LEN_TIMESTAMP];
+    char locLocalDate[LEN_TIMESTAMP],locLocalTime[LEN_TIMESTAMP];
     int precision=-1;
     int status=0, severity=0;
 
@@ -898,7 +848,6 @@ static void caReadCallback (evargs args){
 	sprintf(locSev,"%s","");
 	sprintf(locStat,"%s","");
 	sprintf(locUnits,"%s","");
-	sprintf(locName,"%s","");
 	sprintf(locLocalDate,"%s","");
 	sprintf(locLocalTime,"%s","");
 	//there is no locValue
@@ -909,7 +858,6 @@ static void caReadCallback (evargs args){
 	sprintf(outSev[ch->i],"%s","");
 	sprintf(outStat[ch->i],"%s","");
 	sprintf(outUnits[ch->i],"%s","");
-	sprintf(outName[ch->i],"%s","");
 	sprintf(outValue[ch->i],"%s","");
 	sprintf(outLocalDate[ch->i],"%s","");
 	sprintf(outLocalTime[ch->i],"%s","");
@@ -1078,10 +1026,6 @@ static void caReadCallback (evargs args){
 
 
     //check formating arguments
-    //hide name?
-    if (!arguments.noname){
-    	sprintf(locName, ch->name);
-    }
 
     //hide units?
     if (arguments.nounit){
@@ -1126,7 +1070,6 @@ static void caReadCallback (evargs args){
 	//sprintf loc -> out
 	sprintf(outDate[ch->i], locDate);
 	sprintf(outTime[ch->i], locTime);
-	sprintf(outName[ch->i], locName);
 	sprintf(outUnits[ch->i], locUnits);
 	sprintf(outSev[ch->i], locSev);
 	sprintf(outStat[ch->i], locStat);
@@ -1175,7 +1118,7 @@ static void caReadCallback (evargs args){
 
     //construct values string and write to global string directly
 	//special case: enum
-	if ((args.type == DBR_STS_STRING || DBR_TIME_STRING) && (arguments.num || arguments.bin || arguments.hex || arguments.oct) \
+	if ((args.type == DBR_STS_STRING || args.type == DBR_TIME_STRING) && (arguments.num || arguments.bin || arguments.hex || arguments.oct) \
 			&& ca_field_type(ch->id) == DBF_ENUM){
 		//special case 1: field type is enum, dbr type is string, and number is requested.
 		//to obtain value number, another request is needed.
@@ -1199,11 +1142,11 @@ static void caReadCallback (evargs args){
 		//ch->done and printing is set by enum2string callback.
 	}
 	else{ //get values as usual
-		//valueToString(outValue[ch->i], args.type, args.dbr, args.count, precision);
-		valueToString(ch->i, args.type, args.dbr, args.count, precision);
+
 		//finish
+
 		ch->done = true;
-		printOutput(ch->i);
+		printOutput(ch->i, args, precision);
 
 	}
 }
@@ -1410,7 +1353,7 @@ void cainfoRequest(struct channel *channels, int nChannels){
 	char upperCtrlLimit[45]="", lowerCtrlLimit[45]="";
 	char upperDispLimit[45]="", lowerDispLimit[45]="";
 	char enumStrs[MAX_ENUM_STATES][MAX_ENUM_STRING_SIZE], enumNoStr[30]="";
-	char value[LEN_VALUE]; value[0]='\0';
+	char value[LEN_VALUE]; value[0]='\0'; //XXX string size / direct printing
 	bool readAccess, writeAccess;
 	char description[MAX_STRING_SIZE]="", hhSevr[30]="", hSevr[30]="", lSevr[30]="", llSevr[30]="";
 
@@ -1837,11 +1780,15 @@ int main ( int argc, char ** argv )
                             "Invalid precision argument '%s' "
                             "for option '-%c' - ignored.\n", optarg, opt);
                 } else {
-                    if (arguments.prec < 0) {
-                        fprintf(stderr, "Precision %d for option '-%c' "
-                                "out of range - ignored.\n", arguments.prec, opt);
-                        arguments.prec = -1;
-                    }
+                	if (arguments.prec < 0) {
+                		fprintf(stderr, "Precision %d for option '-%c' "
+                				"out of range - ignored.\n", arguments.prec, opt);
+                		arguments.prec = -1;
+                	}
+                	else{ //write to dblFormatStr, keeping the format type
+                		char formatType = arguments.dblFormatStr[strlen(arguments.dblFormatStr)];
+                        sprintf(arguments.dblFormatStr, "%%-.%d%c", arguments.prec, formatType);
+                	}
                 }
                 break;
             case 4:   //hex
@@ -2031,8 +1978,8 @@ int main ( int argc, char ** argv )
     	fprintf(stderr, "Options -num and -s are mutually exclusive.\n");
     }
     if (arguments.digits != -1 && arguments.prec != -1){
-		fprintf(stderr, "Precision -prec already specified as argument to -e, -f or -g - ignored.\n");
-		arguments.prec = -1;
+    	fprintf(stderr, "Precision specified twice: by -prec as well as argument to -e, -f or -g.\n");
+//		arguments.prec = -1;
 	}
     if (arguments.plain && (arguments.num || arguments.hex ||arguments.bin||arguments.oct || arguments.digits != -1 || arguments.prec != -1 \
     		|| arguments.s || arguments.round != roundType_no_rounding || strcmp(arguments.dblFormatStr,"%g") || arguments.fieldSeparator != ' ' )){
@@ -2211,11 +2158,10 @@ int main ( int argc, char ** argv )
 	outSev = malloc(nChannels * sizeof(char *));
 	outStat = malloc(nChannels * sizeof(char *));
 	outUnits = malloc(nChannels * sizeof(char *));
-	outName = malloc(nChannels * sizeof(char *));
 	outTimestamp = malloc(nChannels * sizeof(char *));
 	outLocalDate = malloc(nChannels * sizeof(char *));
 	outLocalTime = malloc(nChannels * sizeof(char *));
-	if (!outValue || !outDate || !outTime || !outSev || !outStat || !outUnits || !outName || !outTimestamp){
+	if (!outValue || !outDate || !outTime || !outSev || !outStat || !outUnits || !outTimestamp){
 		fprintf(stderr, "Memory allocation error.\n");
 	}
 	for(i = 0; i < nChannels; i++){
@@ -2225,12 +2171,11 @@ int main ( int argc, char ** argv )
 		outSev[i] = malloc(LEN_SEVSTAT * sizeof(char));
 		outStat[i] = malloc(LEN_SEVSTAT * sizeof(char));
 		outUnits[i] = malloc(LEN_UNITS * sizeof(char));
-		outName[i] = malloc(LEN_RECORD_NAME * sizeof(char));
 		outTimestamp[i] = malloc(LEN_TIMESTAMP * sizeof(char));
 		outLocalDate[i] = malloc(LEN_TIMESTAMP * sizeof(char));
 		outLocalTime[i] = malloc(LEN_TIMESTAMP * sizeof(char));
 		if (!outValue[i] || !outDate[i] || !outTime[i] || !outSev[i] || !outStat[i] ||\
-				!outUnits[i] || !outName[i] || !outTimestamp[i] || !outDate[i] || !outTime[i]){
+				!outUnits[i] || !outTimestamp[i] || !outDate[i] || !outTime[i]){
 			fprintf(stderr, "Memory allocation error.\n");
 		}
 	}
@@ -2271,7 +2216,6 @@ int main ( int argc, char ** argv )
     	free(outSev[i]);
     	free(outStat[i]);
     	free(outUnits[i]);
-    	free(outName[i]);
     	free(outTimestamp[i]);
     	free(outLocalDate[i]);
     	free(outLocalTime[i]);
@@ -2282,7 +2226,6 @@ int main ( int argc, char ** argv )
     free(outSev);
     free(outStat);
     free(outUnits);
-    free(outName);
     free(outTimestamp);
     free(outLocalDate);
     free(outLocalTime);
