@@ -7,29 +7,21 @@
 #include <string.h>
 #include <math.h>
 #include <inttypes.h>
-
-
-#include "cadef.h"  // for channel access
-#include "alarmString.h"  // XXX is ok?
 #include <getopt.h>
-
-
 #include <stdbool.h>
-#ifndef __bool_true_false_are_defined
-    #ifdef _Bool
-        #define bool                        _Bool
-    #else
-        #define bool                        char
-    #endif
-    #define true                            1
-    #define false                           0
-    #define __bool_true_false_are_defined   1
-#endif
+#include <cantProceed.h>
+#include <assert.h>
+
+#include "cadef.h"
+#include "alarmString.h"
+#include "alarm.h"
+
+
 
 
 
 #define CA_PRIORITY CA_PRIORITY_MIN
-#define CA_TIMEOUT 1
+#define CA_DEFAULT_TIMEOUT 1
 
 enum roundType{
 	roundType_no_rounding=-1,
@@ -39,6 +31,7 @@ enum roundType{
 };
 
 enum tool{
+	tool_unknown=0,
 	caget=1,
 	camon=2,
 	caput=3,
@@ -52,7 +45,7 @@ enum tool{
 struct arguments
 {
    float w;					//ca timeout
-   int  d;					//precision
+   int  d;					//dbr request type
    bool num;    			//same as -int
    enum roundType round;	//type of rounding:default, ceil, floor
    int prec;				//precision
@@ -84,69 +77,82 @@ struct arguments
 
 //intialize arguments
 struct arguments arguments = {
-    CA_TIMEOUT,         // w
-    -1,                 // d
-    false,              // num
-    roundType_no_rounding,  // round
-    -1,                 // prec
-    false,              // hex
-    false,              // bin
-    false,              // oct
-    false,              // plain
-    -1,                 // digits
-    "%g",               // dblFormatStr
-    false,              // s
-    false,              // stat
-    false,              // nostat
-    0,                  // noname
-    0,                  // nounit
-    0,					// timestamp
-    -1,					// cawait timeout
-    false,				// server date
-    false,				// localdate
-    false,				// time
-    false,				// localtime
-    ' '	,				// field separator output
-    ' '	,				// field separator input
-    caget,				// tool
-    -1,					// numUpdates
-    1,					// inNelm
-    -1,					// outNelm
-    false,				// nord
+		.w = CA_DEFAULT_TIMEOUT,
+		.d = -1,	//decide type based on requested data
+		.num = false,
+		.round = roundType_no_rounding,
+		.prec = -1,	//use precision from the record
+		.hex = false,
+		.bin = false,
+		.oct = false,
+		.plain = false,
+		.digits = -1,
+		.dblFormatStr = "%g",
+		.s = false,
+		.stat = false,
+		.nostat = false,
+		.noname = false,
+		.nounit = false,
+		.timestamp = '\0',
+		.timeout = -1,	//no timeout for cawait
+		.date = false,
+		.localdate = false,
+		.time = false,
+		.localtime = false,
+		.fieldSeparator = ' ' ,
+		.inputSeparator = ' ',
+		.tool = tool_unknown,
+		.numUpdates = -1,	//never exit
+		.inNelm = 1,
+		.outNelm = -1,	//number of elements equal to field count
+		.nord = false
 };
 
+enum operator{	//possible conditions for cawait
+	gt =1,
+	gte=2,
+	lt =3,
+	lte=4,
+	eq =5,
+	neq=6,
+	in =7,
+	out=8
+};
+
+
 struct channel{
-    char            *name;  // the name of the channel
-    chid            id;     // channel id
-    char			*procName;	//sibling channel for writing to proc field
-    chid			procId;	// id of sibling channel for writing to proc field
-    char			*descName;	//sibling channel for writing to desc field
-    chid			descId;	// id of sibling channel for writing to desc field
-    char			*hhsvName;	//sibling channel for writing to hhsv field
-    chid			hhsvId;	// id of sibling channel for writing to hhsv field
-    char			*hsvName;	//sibling channel for writing to hsv field
-    chid			hsvId;	// id of sibling channel for writing to hsv field
-    char			*lsvName;	//sibling channel for writing to lsv field
-    chid			lsvId;	// id of sibling channel for writing to lsv field
-    char			*llsvName;	//sibling channel for writing to llsv field
-    chid			llsvId;	// id of sibling channel for writing to llsv field
-    long            type;   // dbr type
-    long            count;  // element count
-    long            inNelm;  // requested number of elements for writing
-    long            outNelm;  // requested number of elements for reading
-    bool            done;   // indicates if callback has finished processing this channel
-    int 			i;		// process value id
+    char            *name;  	// the name of the channel
+    chid            id;     	// channel id
+    char			*procName;	// sibling channel for writing to proc field
+    chid			procId;		// sibling channel for writing to proc field
+    char			*descName;	// sibling channel for reading desc field
+    chid			descId;		// sibling channel for reading desc field
+    char			*hhsvName;	// sibling channel for reading hhsv field
+    chid			hhsvId;		// sibling channel for reading hhsv field
+    char			*hsvName;	// sibling channel for reading hsv field
+    chid			hsvId;		// sibling channel for reading hsv field
+    char			*lsvName;	// sibling channel for reading lsv field
+    chid			lsvId;		// sibling channel for reading lsv field
+    char			*llsvName;	// sibling channel for reading llsv field
+    chid			llsvId;		// sibling channel for reading llsv field
+    long            type;   	// dbr type
+    long            count;  	// element count
+    long            inNelm;  	// requested number of elements for writing
+    long            outNelm;  	// requested number of elements for reading
+    bool            done;   	// indicates if callback has finished processing this channel
+    int 			i;			// process value id
     char			*writeStr;	// value(s) to be written
-    char 			*conditionStr;	//cawait condition
+    enum operator	conditionOperator; //cawait operator
+    double 			conditionOperands[2]; //cawait operands
 };
 
 
 //output strings
-#define LEN_TIMESTAMP 50
-#define LEN_RECORD_NAME 61
-static unsigned int LEN_VALUE = 100; //XXX max value size?hmk??
-#define LEN_SEVSTAT 30
-#define LEN_UNITS 20+MAX_UNITS_SIZE
+static int const LEN_TIMESTAMP = 50;
+static int const LEN_RECORD_NAME = 61;
+static int const LEN_VALUE = 100;
+static int const LEN_SEVSTAT = 30;
+static int const LEN_UNITS = 20+MAX_UNITS_SIZE;
 char **outDate,**outTime, **outSev, **outStat, **outUnits, **outValue, **outLocalDate, **outLocalTime;
 char **outTimestamp; //relative timestamps for camon
 
@@ -154,15 +160,16 @@ char **outTimestamp; //relative timestamps for camon
 epicsTimeStamp *timestampRead;		//timestamps of received data (per channel)
 epicsTimeStamp programStartTime;	//timestamp indicating program start
 epicsTimeStamp *lastUpdate;			//timestamp indicating last update per channel
-epicsTimeStamp timeoutUpdate;		//same but used by -timeout
+bool *firstUpdate;					//indicates that lastUpdate has not been initialized
+epicsTimeStamp timeoutTime;			//when to stop monitoring (-timeout)
 
 bool runMonitor;					//indicates when to stop monitoring according to -timeout or -n
 unsigned int numMonitorUpdates;		//counts updates needed by -n
 
-void usage(FILE *stream, char *programName){
+void usage(FILE *stream, enum tool programName){//TODO
 
 	//usage:
-	if (!strcmp(programName, "caget") || !strcmp(programName, "cagets") || !strcmp(programName, "camon") ){
+/*	if (!strcmp(programName, "caget") || !strcmp(programName, "cagets") || !strcmp(programName, "camon") ){
 		fprintf(stream, "Usage: %s [flags] [channel] [channel] ... [channel]\n", programName);
 	}
 	else if (!strcmp(programName, "cawait")){
@@ -294,16 +301,16 @@ void usage(FILE *stream, char *programName){
 		fprintf(stream, "-s				    interpret values as strings\n");
 		fprintf(stream, "-t			        same as -time\n");
 
-		if (!strcmp(programName, "camon") || !strcmp(programName, "cawait")){
+		if (!strcmp(programName, "camon")){
 			fprintf(stream, "-timestamp <char>  	display relative timestamps. <char> = r displays time elapsed since start " \
 					"of the program. <char> = u displays time elapsed since last update of any channel.  <char> = c displays "\
 					"time elapsed since last update separately for each channel");
 			fprintf(stream, "-n <number>        	exit the program after <number> updates\n");
-
-			if (!strcmp(programName, "cawait")){
-				fprintf(stream, "-timeout <number>        	exit the program after <number> seconds without an update\n");
-			}
 		}
+		if (!strcmp(programName, "cawait")){
+			fprintf(stream, "-timeout <number>        	exit the program after <number> seconds without an update\n");
+		}
+
 	}
 
 	//flags associated with writing
@@ -311,7 +318,7 @@ void usage(FILE *stream, char *programName){
 		fprintf(stream, "-inNelm		number of array elements to write. Needs to match the number of provided values.\n");
 		fprintf(stream, "-inFs			field separator used in the string containing array elements to write\n");
 
-	}
+	}*/
 }
 
 void dumpArguments(struct arguments *args){
@@ -339,7 +346,7 @@ void dumpArguments(struct arguments *args){
 
 
 
-int checkStatus(int status){
+bool checkStatus(int status){
     if (status != ECA_NORMAL){
         fprintf(stderr, "CA error %s occurred while trying "
                 "to start channel access.\n", ca_message(status));
@@ -350,116 +357,149 @@ int checkStatus(int status){
 }
 
 
-int cawaitCondition(struct channel channel, int k){
-//evaluates output of channel i against the corresponding condition.
-//returns 1 if matching, 0 otherwise, and -1 if error.
-//Before evaluation, channel output is converted to double. If this is
-//not successful, the function returns -1. If the channel is question
-//is an array, the condition is evaluated against the first element.
+bool cawaitParseCondition(struct channel *channel, char *argumentConditionStr){
+//parses input string and extracts operators and numerals,
+//then saves them to the channel structure.
 //Supported operators: >,<,<=,>=,==,!=, ==A...B(in interval), !=A...B(out of interval).
-
 
 	int i,j;				//counters
 	bool interval=false;	//indicates if interval is desired
-	int output;				//1,0,-1
 
-	double channelValue;
-	if (sscanf(outValue[k], "%lf", &channelValue) <= 0){ //XXX get value from somewhere else
-		fprintf(stderr, "Channel %s value %s cannot be converted to double.", channel.name, outValue[k]);
-		return -1;
-	}
+	//create a local copy of condition string for parsing
+	char *conditionStr = callocMustSucceed(strlen(argumentConditionStr), sizeof(char), "cawaitParseCondition\n");
 
-	//create a local copy of condition string without spaces, and replace '...' with ':', which is easier to parse
-	char *conditionStr;
-	conditionStr = calloc(strlen(channel.conditionStr) ,sizeof(char));
-	if (!conditionStr) fprintf(stderr, "Memory allocation error.\n");
-	for (i=0, j=0; i<strlen(channel.conditionStr); ++i){
-		if (channel.conditionStr[i] != ' '){
-			if (channel.conditionStr[i] == '.' && channel.conditionStr[i+1] == '.' && channel.conditionStr[i+2] == '.'){
+	//strip spaces, and replace '...' with ':'
+	for (i=0, j=0; i<strlen(argumentConditionStr); ++i){
+		if (argumentConditionStr[i] != ' '){
+			if (argumentConditionStr[i] == '.' && argumentConditionStr[i+1] == '.' && argumentConditionStr[i+2] == '.'){
 				conditionStr[j++] = ':';
 				i += 2;
 				interval=true;
 				continue;
 			}
-			conditionStr[j++] = channel.conditionStr[i];
+			conditionStr[j++] = argumentConditionStr[i];
 		}
 	}
+	if (conditionStr[0] == '\0'){
+		fprintf(stderr,"Empty condition string.\n");
+		return EXIT_FAILURE;
+	}
 
-	//string to hold parsing format
+	//Parse the processed conditions string. The first character is always an operator. The
+	//second character is part of operator if it is not numerical. The operator is followed by
+	//a double operand. Optionally, this is followed by ':' and another double operand.
 	char *format;
-	format = calloc(2*strlen(channel.conditionStr) ,sizeof(char));
-	if (!format) fprintf(stderr, "Memory allocation error.\n");
-
-	//string to hold operator
-	char operator[3] = {0,0,0};
-
-
-	//Parse the conditions string. The first character is always an operator.
-	//The second character is operator if it is not numerical. The operator is followed by
-	//a double. Optionally, this is followed by ':' and another double.
 	if (conditionStr[1]>='0' && conditionStr[1]<='9'){
-		strcpy(format, "%c%lf:%lf");
+		format = "%c%lf:%lf";
 	}
 	else{
-		strcpy(format, "%2c%lf:%lf");
+		format = "%2c%lf:%lf";
 	}
 
+	char operator[3] = {0,0,0};
 	double operand1, operand2;
 	int nParsed;
 	nParsed = sscanf(conditionStr, format, operator, &operand1, &operand2);
 
+	//finally save the extracted operator and operands into the channel struct.
 	if (nParsed == 2 && interval == false){
 
-		if (strcmp(operator, ">")==0){
-			output = channelValue > operand1 ? 1 : 0;
-		}
-		else if (strcmp(operator, "<")==0){
-			output = channelValue < operand1 ? 1 : 0;
-		}
-		else if (strcmp(operator, ">=")==0){
-			output = channelValue >= operand1 ? 1 : 0;
-		}
-		else if (strcmp(operator, "<=")==0){
-			output = channelValue <= operand1 ? 1 : 0;
-		}
-		else if (strcmp(operator, "==")==0){
-			output = channelValue == operand1 ? 1 : 0;
-		}
-		else if (strcmp(operator, "!=")==0){
-			output = channelValue != operand1 ? 1 : 0;
-		}
+		channel->conditionOperands[0] = operand1;
+
+		if (strcmp(operator, ">")==0)       channel->conditionOperator = gt;
+		else if (strcmp(operator, "<")==0)  channel->conditionOperator = lt;
+		else if (strcmp(operator, ">=")==0) channel->conditionOperator = gte;
+		else if (strcmp(operator, "<=")==0) channel->conditionOperator = lte;
+		else if (strcmp(operator, "==")==0)	channel->conditionOperator = eq;
+		else if (strcmp(operator, "!=")==0) channel->conditionOperator = neq;
 		else{
 			fprintf(stderr, "Problem interpreting condition string: %s. Unknown operator %s.", conditionStr, operator);
-			output = -1;
+			return EXIT_FAILURE;
 		}
-
 	}
-	else if (nParsed == 3 && interval == interval){
-		if (strcmp(operator, "==")==0){
-			output = (channelValue >= operand1) && (channelValue <= operand2) ? 1 : 0;
-		}
-		else if (strcmp(operator, "!=")==0){
-			output = (channelValue <= operand1) || (channelValue >= operand2) ? 1 : 0;
-		}
+	else if (nParsed == 3 && interval == true){
+
+		channel->conditionOperands[0] = operand1;
+		channel->conditionOperands[1] = operand2;
+
+		if (strcmp(operator, "==")==0) 		channel->conditionOperator = in;
+		else if (strcmp(operator, "!=")==0) channel->conditionOperator = out;
 		else{
 			fprintf(stderr, "Problem interpreting condition string: %s. Only operators == and != are supported if the"\
 					"value is to be compared to an interval.",conditionStr);
-			output = -1;
+			return EXIT_FAILURE;
 		}
 	}
 	else{
 		fprintf(stderr, "Problem interpreting condition string: %s. Wrong number of operands.", conditionStr);
-		output = -1;
+		return EXIT_FAILURE;
 	}
-
-
-
-	free(conditionStr);
-	free(format);
-
-	return output;
+	return EXIT_SUCCESS;
 }
 
+
+int cawaitEvaluateCondition(struct channel channel, evargs args){
+//evaluates output of channel i against the corresponding condition.
+//returns 1 if matching, 0 otherwise, and -1 if error.
+//Before evaluation, channel output is converted to double. If this is
+//not successful, the function returns -1. If the channel in question
+//is an array, the condition is evaluated against the first element.
+
+	//get value
+	void *nativeValue = dbr_value_ptr(args.dbr, args.type);
+
+	//convert the value to double
+	double dblValue;
+	unsigned int baseType = args.type % (LAST_TYPE+1);
+	switch (baseType){
+	case DBR_DOUBLE:
+		dblValue = (double) *(double*)nativeValue;
+		break;
+	case DBR_FLOAT:
+		dblValue = (double) *(float*)nativeValue;
+		break;
+	case DBR_INT:
+		dblValue = (double) *(int*)nativeValue;
+		break;
+	case DBR_LONG:
+		dblValue = (double) *(long*)nativeValue;
+		break;
+	case DBR_CHAR:
+	case DBR_STRING:
+	case DBR_ENUM:
+		if (sscanf(nativeValue, "%lf", &dblValue) <= 0){
+			fprintf(stderr, "Channel %s value %s cannot be converted to double.", channel.name, (char*)nativeValue);
+			return -1;
+		}
+		break;
+	default:
+		fprintf(stderr, "Unrecognized DBR type.\n");
+		return -1;
+		break;
+	}
+
+	//evaluate and exit
+	switch (channel.conditionOperator){
+	case gt:
+		return dblValue > channel.conditionOperands[0];
+	case gte:
+		return dblValue >= channel.conditionOperands[0];
+	case lt:
+		return dblValue < channel.conditionOperands[0];
+	case lte:
+		return dblValue >= channel.conditionOperands[0];
+	case eq:
+		return dblValue == channel.conditionOperands[0];
+	case neq:
+		return dblValue == channel.conditionOperands[0];
+	case in:
+		return (dblValue >= channel.conditionOperands[0]) && (dblValue <= channel.conditionOperands[1]);
+	case out:
+		return !((dblValue >= channel.conditionOperands[0]) && (dblValue <= channel.conditionOperands[1]));
+	}
+
+	return -1;
+}
 
 
 
@@ -475,7 +515,6 @@ int printValue(evargs args, int precision){
 //Parses the data fetched by ca_get callback according to the data type and formatting arguments.
 //The result is printed to stdout.
 
-    dbr_enum_t v;
     unsigned int baseType;
     void *value;
 
@@ -495,8 +534,8 @@ int printValue(evargs args, int precision){
     	case DBR_STRING:
     		printf("%.*s", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);
     		break;
-    	case DBR_INT:
-    		; int16_t valueInt16 = ((dbr_int_t*)value)[j];
+    	case DBR_INT:{
+    		int16_t valueInt16 = ((dbr_int_t*)value)[j];
     		//display dec, hex, bin, oct if desired
     		if (arguments.hex){
     			printf("%" PRIx16, (uint16_t)valueInt16);
@@ -511,10 +550,11 @@ int printValue(evargs args, int precision){
     			printf("%" PRId16, valueInt16);
     		}
     		break;
+    	}
 		//case DBR_SHORT: equals DBR_INT
     	case DBR_FLOAT:
-    	case DBR_DOUBLE:
-    		; double valueDbl;
+    	case DBR_DOUBLE:{
+    		double valueDbl;
     		if (baseType == DBR_FLOAT) valueDbl = ((dbr_float_t*)value)[j];
     		else valueDbl = ((dbr_double_t*)value)[j];
 
@@ -536,9 +576,9 @@ int printValue(evargs args, int precision){
 // he said that options have been previously set up in the code in order to ensure compatibility with previous tools, so
 // I left this alone.
     		break;
-
-    	case DBR_ENUM:
-    		v = ((dbr_enum_t *)value)[j];
+    	}
+    	case DBR_ENUM: {
+    	    dbr_enum_t v = ((dbr_enum_t *)value)[j];
     		if (v >= MAX_ENUM_STATES){
     			fprintf(stderr, "Illegal enum index '%d'.\n", v);
     			break;
@@ -578,9 +618,9 @@ int printValue(evargs args, int precision){
     			printf("%" PRId16, v);
     		}
     		break;
-
-    	case DBR_CHAR:
-    		; char valueChr = ((dbr_char_t*) value)[j];
+    	}
+    	case DBR_CHAR:{
+    		char valueChr = ((dbr_char_t*) value)[j];
     		if (!arguments.num) {	//check if requested as a a number
     			printf("%c", valueChr);
     		}
@@ -588,9 +628,9 @@ int printValue(evargs args, int precision){
     			printf("%d", valueChr);
     		}
     		break;
-
-    	case DBR_LONG:
-    		; int32_t valueInt32 = ((dbr_long_t*)value)[j];
+    	}
+    	case DBR_LONG:{
+    		int32_t valueInt32 = ((dbr_long_t*)value)[j];
     		//display dec, hex, bin, oct if desired
     		if (arguments.hex){
     			printf("%" PRIx32, (uint32_t)valueInt32);
@@ -605,7 +645,7 @@ int printValue(evargs args, int precision){
     			printf("%" PRId32, valueInt32);
     		}
     		break;
-
+    	}
     	default:
     		fprintf(stderr, "Unrecognized DBR type.\n");
     		break;
@@ -624,23 +664,24 @@ int printOutput(int i, evargs args, int precision){
 // prints global output strings corresponding to i-th channel.
 
 	//if both local and server times are requested, clarify which is which
-	if ((arguments.localdate || arguments.localtime) && (arguments.date || arguments.time)){
-		printf("server time: ");
+	bool doubleTime = (arguments.localdate || arguments.localtime) && (arguments.date || arguments.time);
+	if (doubleTime){
+		fputs("server time: ",stdout);
 	}
 
     //server date
-	if (strcmp(outDate[i],"") != 0)	printf("%s ",outDate[i]);
+	if (outDate[i][0] != '\0')	printf("%s ",outDate[i]);
 	//server time
-	if (strcmp(outTime[i],"") != 0)	printf("%s ",outTime[i]);
+	if (outTime[i][0] != '\0')	printf("%s ",outTime[i]);
 
-	if ((arguments.localdate || arguments.localtime) && (arguments.date || arguments.time)){
-		printf("local time: ");
+	if (doubleTime){
+		fputs("local time: ",stdout);
 	}
 
 	//local date
-	if (strcmp(outLocalDate[i],"") != 0)	printf("%s ",outLocalDate[i]);
+	if (outLocalDate[i][0] != '\0')	printf("%s ",outLocalDate[i]);
 	//local time
-	if (strcmp(outLocalTime[i],"") != 0)	printf("%s ",outLocalTime[i]);
+	if (outLocalDate[i][0] != '\0')	printf("%s ",outLocalTime[i]);
 
 
     //timestamp if monitor and if requested
@@ -650,34 +691,33 @@ int printOutput(int i, evargs args, int precision){
     if (!arguments.noname)	printf("%s ",((struct channel *)args.usr)->name);
 
     //value(s)
-  //  printf("%s ", outValue[i]);
     printValue(args, precision);
 
-    printf(" ");
+	fputc(' ',stdout);
 
     //egu
-    if (strcmp(outUnits[i],"") != 0)printf("%s ",outUnits[i]);
+    if (outUnits[i][0] != '\0') printf("%s ",outUnits[i]);
 
     //severity
-    if (strcmp(outSev[i],"") != 0) printf("%s ",outSev[i]);
+    if (outSev[i][0] != '\0') printf("%s ",outSev[i]);
 
     //status
-	if (strcmp(outStat[i],"") != 0) printf("%s ",outStat[i]);
+	if (outStat[i][0] != '\0') printf("%s ",outStat[i]);
 
-	printf("\n");
+	fputc('\n',stdout);
     return 0;
 }
 
 
 
-static void enumToString (evargs args){
+static void enumToString (evargs args){ //XXX will have to go?
 //caget callback function which receives read enum data and tries to interpret it
 //as a string, which is then written to memory pointed at by args.usr. If the data
 //can't be read as a string (i.e. dbr type is not ctrl or gr), number is written.
 //The result is written to the global value output string, and the printing
 //function is called.
 
-	//check if data was returned
+/*	//check if data was returned
 	if (args.status != ECA_NORMAL){
 		fprintf(stderr, "CA error %s occurred while trying "
 		                "to start channel access.\n", ca_message(args.status));
@@ -737,12 +777,72 @@ static void enumToString (evargs args){
 
 	//finish
 	ch->done = true;
-	printOutput(ch->i, args, NULL);
+	printOutput(ch->i, args, 0);*/
+}
+
+
+void epicsTimeAddFull(epicsTimeStamp *ts, double addend){
+//adds a double to epicsTimeStamp. If double is negative, subtraction is performed.
+//The result should never be zero; in case the provided double is this far in the
+//negative the result is set to zero.
+
+	int seconds = (int)addend;
+	int nanoseconds = ((int)(addend*1000000000ul) % 1000000000ul);
+
+	if (addend >=0) {//addition
+		ts->secPastEpoch += seconds;
+		ts->nsec += nanoseconds;
+
+		if (ts->nsec >= 1000000000ul){//overflow
+			ts->secPastEpoch += 1;
+			ts->nsec %= 1000000000ul;
+		}
+	}
+	else{//subtraction
+		//first check if we want to subtract too much
+		if (ts->secPastEpoch < seconds \
+				|| (ts->secPastEpoch <= seconds+1 && ts->nsec < nanoseconds)){
+			ts->secPastEpoch = 0;
+			ts->nsec += 0;
+		}
+		else{
+			if (ts->nsec >= nanoseconds){
+				ts->secPastEpoch += seconds;
+				ts->nsec += nanoseconds;
+			}
+			else{//overflow
+				ts->secPastEpoch += seconds - 1;
+				ts->nsec += nanoseconds + 1000000000ul;
+			}
+		}
+	}
+
 }
 
 
 
-int epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp * pLeft, const epicsTimeStamp * pRight ){
+bool epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp *pLeft, const epicsTimeStamp *pRight){
+// Calculates difference between two epicsTimeStamps: like epicsTimeDiffInSeconds but also taking nanoseconds
+//into account. The absolute value of the difference pLeft - pRight is saved to the timestamp diff, and the
+//returned value indicates if the said difference is negative.
+	bool negative = epicsTimeLessThan(pLeft, pRight);
+	if (negative) { //switch left and right
+		const epicsTimeStamp *temp = pLeft;
+		pLeft = pRight;
+		pRight = temp;
+	}
+
+	if (pLeft->nsec >= pRight->nsec) {
+		diff->secPastEpoch = pLeft->secPastEpoch - pRight->secPastEpoch;
+		diff->nsec = pLeft->nsec - pRight->nsec;
+	} else {
+		diff->secPastEpoch = pLeft->secPastEpoch - pRight->secPastEpoch - 1;
+		diff->nsec = pLeft->nsec + 1000000000ul - pRight->nsec;
+	}
+	return negative;
+}
+
+/*int epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp * pLeft, const epicsTimeStamp * pRight ){
 // Calculates difference between two epicsTimeStampst: like epicsTimeDiffInSeconds but also taking nanoseconds
 //into account. The absolute value of the difference pLeft - pRight is saved to the timestamp diff, and the sign
 //of the said difference is returned.
@@ -763,71 +863,73 @@ int epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp * pLeft, const 
 	else{
 		return 0;//equal
 	}
+}*/
 
+void validateTimestamp(epicsTimeStamp timestamp, char* name){
+//checks a timestamp for illegal values.
+	if (timestamp.nsec >= 1000000000ul){
+		fprintf(stderr,"Warning: invalid number of nanoseconds in timestamp: %s - assuming 0.\n",name);
+		timestamp.nsec=0;
+	}
 }
 
 int getTimeStamp(int i){
 //calculates timestamp for monitor tool, formats it and saves it into the global string.
 
+	epicsTimeStamp elapsed;
+	bool negative=false;
+	int commonI = (arguments.timestamp == 'c') ? i : 0;
+	bool showEmpty = false;
+
 	if (arguments.timestamp == 'r') {
 		//calculate elapsed time since startTime
-		epicsTimeStamp elapsed;
-		int iSign;
-		iSign = epicsTimeDiffFull(&elapsed, &timestampRead[i], &programStartTime);
-
-		//convert to h,m,s,ns
-		struct tm tm;
-		unsigned long nsec;
-		epicsTimeToGMTM(&tm, &nsec, &elapsed);
-
-		//save to outTs string
-		char cSign = ' ';
-		if (iSign<0) cSign='-';
-		sprintf(outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
+		negative = epicsTimeDiffFull(&elapsed, &timestampRead[i], &programStartTime);
 	}
 	else if(arguments.timestamp == 'c' || arguments.timestamp == 'u'){
 		//calculate elapsed time since last update; if using 'c' keep
 		//timestamps separate for each channel, otherwise use lastUpdate[0]
-		//for all channels.
-		int ii=0;
-		if (arguments.timestamp == 'c') ii = i;
-		else if (arguments.timestamp == 'u') ii = 0;
+		//for all channels (commonI).
 
-		if (lastUpdate[ii].secPastEpoch != 0){
+		negative = epicsTimeDiffFull(&elapsed, &timestampRead[i], &lastUpdate[commonI]);
 
-			epicsTimeStamp elapsed;
-			int iSign;
-			iSign = epicsTimeDiffFull(&elapsed, &timestampRead[i], &lastUpdate[ii]);
+		lastUpdate[commonI] = timestampRead[i]; // reset
 
-			//convert to h,m,s,ns
-			struct tm tm;
-			unsigned long nsec;
-			epicsTimeToGMTM(&tm, &nsec, &elapsed);
-
-			//save to outTs string
-			char cSign = ' ';
-			if (iSign<0) cSign='-';
-			sprintf(outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
+		if (!firstUpdate[commonI]){
+			firstUpdate[commonI] = true;
+			showEmpty = true;
 		}
-		else{
-			//this is the first update for this channel
-			sprintf(outTimestamp[i],"%19c",' ');
-		}
-
-		//reset
-		lastUpdate[ii] = timestampRead[i];
 	}
 
+	//convert to h,m,s,ns
+	struct tm tm;
+	unsigned long nsec;
+	int status = epicsTimeToGMTM(&tm, &nsec, &elapsed);
+	assert(status == epicsTimeOK);
 
+	if (arguments.timestamp != 'r' && showEmpty){
+		//this is the first update for this channel
+		sprintf(outTimestamp[i],"%19c",' ');
+	}
+	else{	//save to outTs string
+		char cSign = negative ? '-' : ' ';
+		sprintf(outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
+	}
 
 	return 0;
 }
+
+
+
+
 
 static void caReadCallback (evargs args){
 //reads and parses data fetched by calls. First, the global strings holding the output are cleared. Then, depending
 //on the type of the returned data, the available information is extracted. The extracted info is then saved to the
 //global strings. The actual value of the PV is an exception; its reading, parsing, and storing are performed by
 //calling valueToString or enumToString. Note that the latter is actually a callback function for another get request.
+
+	//if we are in monitor and just waiting for the program to exit, don't proceed.
+	if ((arguments.tool == camon || arguments.tool == cawait) && runMonitor == false) return;
 
 	//check if data was returned
 	if (args.status != ECA_NORMAL){
@@ -836,45 +938,32 @@ static void caReadCallback (evargs args){
 	}
     struct channel *ch = (struct channel *)args.usr;
 
-    // output strings - local copies
-    char locDate[LEN_TIMESTAMP],locTime[LEN_TIMESTAMP], locSev[30], locStat[30], locUnits[20+MAX_UNITS_SIZE];
-    char locLocalDate[LEN_TIMESTAMP],locLocalTime[LEN_TIMESTAMP];
     int precision=-1;
-    int status=0, severity=0;
+    unsigned int status=0, severity=0;
 
-    //initialize local copies of output strings
-    sprintf(locDate,"%s","");
-    sprintf(locTime,"%s","");
-	sprintf(locSev,"%s","");
-	sprintf(locStat,"%s","");
-	sprintf(locUnits,"%s","");
-	sprintf(locLocalDate,"%s","");
-	sprintf(locLocalTime,"%s","");
-	//there is no locValue
 
-	//also clear global output strings; the purpose of this callback is to overwrite them
-	sprintf(outDate[ch->i],"%s","");
-	sprintf(outTime[ch->i],"%s","");
-	sprintf(outSev[ch->i],"%s","");
-	sprintf(outStat[ch->i],"%s","");
-	sprintf(outUnits[ch->i],"%s","");
-	sprintf(outValue[ch->i],"%s","");
-	sprintf(outLocalDate[ch->i],"%s","");
-	sprintf(outLocalTime[ch->i],"%s","");
+	//clear global output strings; the purpose of this callback is to overwrite them
+    outDate[ch->i][0]='\0';
+    outSev[ch->i][0]='\0';
+    outStat[ch->i][0]='\0';
+    outUnits[ch->i][0]='\0';
+    outValue[ch->i][0]='\0';
+    outLocalDate[ch->i][0]='\0';
+    outLocalTime[ch->i][0]='\0';
+
 
     //templates for reading requested data
 #define severity_status_get(T) \
     status = ((struct T *)args.dbr)->status; \
-	severity = ((struct T *)args.dbr)->severity; \
-	sprintf(locSev, "%s", epicsAlarmSeverityStrings[severity]); \
-	sprintf(locStat, "%s", epicsAlarmConditionStrings[status]);
+	severity = ((struct T *)args.dbr)->severity;
 
 #define timestamp_get(T) \
-		epicsTimeToStrftime(locDate, LEN_TIMESTAMP, "%Y-%m-%d", (epicsTimeStamp *)&(((struct T *)args.dbr)->stamp.secPastEpoch));\
-		epicsTimeToStrftime(locTime, LEN_TIMESTAMP, "%H:%M:%S.%06f", (epicsTimeStamp *)&(((struct T *)args.dbr)->stamp.secPastEpoch));\
-		timestampRead[ch->i] = (epicsTimeStamp)((struct T *)args.dbr)->stamp;
+		timestampRead[ch->i] = ((struct T *)args.dbr)->stamp;\
+		validateTimestamp(timestampRead[ch->i], ch->name);
 
-#define units_get(T) sprintf(locUnits, "%s", ((struct T *)args.dbr)->units);
+#define units_get(T) sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
+
+#define precision_get(T) precision = (((struct T *)args.dbr)->precision);
 
     //read requested data
     switch (args.type) {
@@ -911,10 +1000,6 @@ static void caReadCallback (evargs args){
             timestamp_get(dbr_time_string);
             break;
 
-        //case DBR_TIME_INT: not implemented, same as dbr short
-        //    severity_status_get(dbr_time_);
-        //    break;
-
         case DBR_TIME_SHORT:
             severity_status_get(dbr_time_short);
             timestamp_get(dbr_time_short);
@@ -945,10 +1030,6 @@ static void caReadCallback (evargs args){
             timestamp_get(dbr_time_double);
             break;
 
-        //case DBR_GR_STRING:
-        //    not implemented (see db_access.h)
-        //    break;
-
         case DBR_GR_SHORT:    // and DBR_GR_INT
             severity_status_get(dbr_gr_short);
             units_get(dbr_gr_short);
@@ -957,7 +1038,7 @@ static void caReadCallback (evargs args){
         case DBR_GR_FLOAT:
             severity_status_get(dbr_gr_float);
             units_get(dbr_gr_float);
-            precision = (int)(((struct dbr_gr_float *)args.dbr)->precision);
+            precision_get(dbr_gr_float);
             break;
 
         case DBR_GR_ENUM:
@@ -978,12 +1059,8 @@ static void caReadCallback (evargs args){
         case DBR_GR_DOUBLE:
             severity_status_get(dbr_gr_double);
             units_get(dbr_gr_double);
-            precision = (int)(((struct dbr_gr_double *)args.dbr)->precision);
+            precision_get(dbr_gr_double);
             break;
-
-        //case DBR_CTRL_STRING:
-        //    not implemented (see db_access.h)
-        //    break;
 
         case DBR_CTRL_SHORT:  // and DBR_CTRL_INT
             severity_status_get(dbr_ctrl_short);
@@ -1014,9 +1091,8 @@ static void caReadCallback (evargs args){
         case DBR_CTRL_DOUBLE:
             severity_status_get(dbr_ctrl_double);
             units_get(dbr_ctrl_double);
-            precision = (int)(((struct dbr_ctrl_double *)args.dbr)->precision);
+            precision_get(dbr_ctrl_double);
             break;
-
 
         default :
             printf("Can not print %s DBR type. \n", dbr_type_to_text(args.type));
@@ -1024,95 +1100,88 @@ static void caReadCallback (evargs args){
     }
 
 
+    //do formating
 
-    //check formating arguments
+    //check alarm limits
+    if (status <= lastEpicsAlarmCond) sprintf(outStat[ch->i], "%s", epicsAlarmConditionStrings[status]);
+    else sprintf(outStat[ch->i],"UNKNOWN STATUS: %d",status);
 
-    //hide units?
-    if (arguments.nounit){
-    	sprintf(locUnits,"%s","");
-    }
+    if (severity <= lastEpicsAlarmSev) sprintf(outSev[ch->i], "%s", epicsAlarmSeverityStrings[severity]);
+    else sprintf(outSev[ch->i],"UNKNOWN SEVERITY: %d",status);
 
     //hide alarms?
     if (arguments.stat){//always display
     	//do nothing
     }
     if (arguments.nostat){//never display
-    	sprintf(locSev, "%s","");
-    	sprintf(locStat, "%s","");
+    	outSev[ch->i][0] = '\0';
+    	outStat[ch->i][0] = '\0';
     }
     else{//display if alarm
     	if (status == 0 && severity == 0){
-        	sprintf(locSev, "%s","");
-        	sprintf(locStat, "%s","");
+        	outSev[ch->i][0] = '\0';
+        	outStat[ch->i][0] = '\0';
     	}
     }
 
-    //hide date or time?
-    //we assume that manually specifying dbr_time does not imply -time or -date.
-	if (!arguments.date){
-		sprintf(locDate,"%s","");
-	}
-	if (!arguments.time){
-		sprintf(locTime,"%s","");
-	}
+   	//time
+    if (args.type >= DBR_TIME_STRING && args.type <= DBR_TIME_DOUBLE){//otherwise we don't have it
+    	//we don't assume manually specifying dbr_time imply -time or -date.
+    	if (arguments.date) epicsTimeToStrftime(outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &timestampRead[ch->i]);
+    	if (arguments.time) epicsTimeToStrftime(outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &timestampRead[ch->i]);
+    }
+
 
 	//show local date or time?
 	if (arguments.localdate || arguments.localtime){
 		time_t localTime = time(0);
-		if (arguments.localdate){
-			strftime(locLocalDate, LEN_TIMESTAMP, "%Y-%m-%d", localtime(&localTime));
-		}
-		if (arguments.localtime){
-			strftime(locLocalTime, LEN_TIMESTAMP, "%H:%M:%S", localtime(&localTime));
-		}
+		if (arguments.localdate) strftime(outLocalDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", localtime(&localTime));
+		if (arguments.localtime) strftime(outLocalTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S", localtime(&localTime));
 	}
 
-	//sprintf loc -> out
-	sprintf(outDate[ch->i], locDate);
-	sprintf(outTime[ch->i], locTime);
-	sprintf(outUnits[ch->i], locUnits);
-	sprintf(outSev[ch->i], locSev);
-	sprintf(outStat[ch->i], locStat);
+    //hide units?
+    if (arguments.nounit) outUnits[ch->i][0] = '\0';
+
 
 	//if monitor, there is extra stuff to do before printing data out.
 	if (arguments.tool == cawait || arguments.tool == camon){
 		if (arguments.timestamp) getTimeStamp(ch->i);	//calculate relative timestamps
 
+		numMonitorUpdates++;	//increase counter of updates
+
 		//check stop conditions fom -n (camon)
 		if (arguments.tool == camon && arguments.numUpdates != -1 && numMonitorUpdates >= arguments.numUpdates){
 			runMonitor = false;
-			return;
 		}
-		numMonitorUpdates++;	//increase counter of updates
 
 		if (arguments.tool == cawait){
 			//check stop condition
 			if (arguments.timeout!=-1){
-				//calculate time since last update
 				epicsTimeStamp timeoutNow;
-				epicsTimeStamp timeoutElapsed;
 				epicsTimeGetCurrent(&timeoutNow);
-				epicsTimeDiffFull(&timeoutElapsed, &timeoutUpdate, &timeoutNow);
-				if (timeoutElapsed.secPastEpoch + 1e-9*timeoutElapsed.nsec > arguments.timeout){
+				validateTimestamp(timeoutNow, "timeout");
+				if (epicsTimeGreaterThanEqual(&timeoutNow, &timeoutTime)){
 					//we are done waiting
-					//printf("No updates for %f seconds - exiting.\n",arguments.timeout);
+					printf("No updates for %f seconds - exiting.\n",arguments.timeout);
 					runMonitor = false;
 					return;
 				}
 			}
 
 			//check display condition
-			if (cawaitCondition(*ch, ch->i) != 1) { //XXX need value before !!
+			if (cawaitEvaluateCondition(*ch, args) != 1){
 				return;
 			}
-			else if(arguments.timeout!=-1){ // if condition matches, reset timeout and proceed
-				epicsTimeGetCurrent(&timeoutUpdate);
+			else if(arguments.timeout!=-1){ // if condition matches, set new timeout and proceed
+				epicsTimeGetCurrent(&timeoutTime);
+				validateTimestamp(timeoutTime, "timeout time");
+
+				epicsTimeAddFull(&timeoutTime, arguments.timeout);
 			}
 
 		}
 
-		//if the monitor is about to stop and we are just waiting for the program to exit, don't proceed to printing.
-		if (runMonitor == false) return;
+
 	}
 
 
@@ -1141,13 +1210,10 @@ static void caReadCallback (evargs args){
 		if(status != ECA_NORMAL) fprintf (stderr,"Problem flushing channel %s.\n", ch->name);
 		//ch->done and printing is set by enum2string callback.
 	}
-	else{ //get values as usual
-
-		//finish
-
-		ch->done = true;
+	else{ //printf output as usual
 		printOutput(ch->i, args, precision);
-
+		//finish
+		ch->done = true;
 	}
 }
 
@@ -1171,7 +1237,7 @@ void caRequest(struct channel *channels, int nChannels){
 //sends get or put requests for all tools except cainfo. ca_get or ca_put are called multiple times, depending
 //on the tool. The reading and parsing of returned data is performed in callbacks. Once the callbacks finish,
 //the the data is printed. If the tool type is monitor, a loop is entered in which the data is printed repeatedly.
-    int status, i, j;
+    int status=ECA_NORMAL, i, j;
 
     for(i=0; i < nChannels; i++){
         channels[i].count = ca_element_count ( channels[i].id );
@@ -1223,7 +1289,10 @@ void caRequest(struct channel *channels, int nChannels){
 			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create monitor.\n", ca_message(status));
 	    	runMonitor = true;
 	    	if (arguments.tool == cawait && arguments.timeout!=-1){
-	    		epicsTimeGetCurrent(&timeoutUpdate);//start timeout timer
+	    		//set first timeout
+	    		epicsTimeGetCurrent(&timeoutTime);
+	    		validateTimestamp(timeoutTime, "timeout");
+				epicsTimeAddFull(&timeoutTime, arguments.timeout);
 	    	}
         }
         else if (arguments.tool == caput || arguments.tool == caputq){
@@ -1312,7 +1381,14 @@ void caRequest(struct channel *channels, int nChannels){
 
     }
 
-    status = ca_pend_event (arguments.w);
+    float elapsed = 0;
+    while (elapsed <=arguments.w){
+    	status = ca_pend_event (0.1);
+    	elapsed += 0.1;
+    	bool allDone=true;
+    	for (i=0; i<nChannels; ++i) allDone *= channels[i].done;
+    	if (allDone) break;
+    }
     if (status != ECA_TIMEOUT) fprintf (stderr,"Some of the callbacks have not completed.\n");
 
 
@@ -1330,15 +1406,34 @@ void caRequest(struct channel *channels, int nChannels){
     	}
 
     	//wait for read callbacks
-    	status = ca_pend_event(arguments.w);
-    	if (status != ECA_TIMEOUT) fprintf (stderr,"Some of the read callbacks have not completed.\n");
+        while (elapsed <=arguments.w){
+        	status = ca_pend_event (0.1);
+        	elapsed += 0.1;
+        	bool allDone=true;
+        	for (i=0; i<nChannels; ++i) allDone *= channels[i].done;
+        	if (allDone) break;
+        }
+        if (status != ECA_TIMEOUT) fprintf (stderr,"Some of the callbacks have not completed.\n");
 
     }
 
     //enter monitor loop
     if (arguments.tool == camon || arguments.tool == cawait){
+
+        if(arguments.tool == cawait) {for (i=0; i<nChannels;++i) firstUpdate[i]=false;}
+
     	while (runMonitor){
     		ca_pend_event(0.1);
+
+    		if(arguments.tool == cawait && arguments.timeout!=-1){ //check stop condition
+    			epicsTimeStamp timeoutNow;
+    			epicsTimeGetCurrent(&timeoutNow);
+    			validateTimestamp(timeoutNow, "timeout");
+    			if (epicsTimeGreaterThanEqual(&timeoutNow, &timeoutTime)){
+    				if (runMonitor) printf("No updates for %f seconds - exiting.\n",arguments.timeout);
+    				break;
+    			}
+    		}
     	}
     }
 }
@@ -1520,9 +1615,9 @@ void cainfoRequest(struct channel *channels, int nChannels){
 		printf("\n");
 		if (channels[i].type != DBR_CTRL_ENUM){
 			printf("	Warning upper limit: %s, lower limit: %s\n", locStat, locSev);
-			printf("	Alarm upper limit: %s, lower limit: %s\n", locStat, locSev);
-			printf("	Control upper limit: %s, lower limit: %s\n", locStat, locSev);
-			printf("	Display upper limit: %s, lower limit: %s\n", locStat, locSev);
+			printf("	Alarm upper limit: %s, lower limit: %s\n", upperAlarmLimit, lowerAlarmLimit);
+			printf("	Control upper limit: %s, lower limit: %s\n", upperCtrlLimit, lowerCtrlLimit);
+			printf("	Display upper limit: %s, lower limit: %s\n", upperWarningLimit, lowerWarningLimit);
 
 			printf("\n");
 			printf("	HIHI alarm severity: %s\n", hhSevr);
@@ -1576,12 +1671,12 @@ int caInit(struct channel *channels, int nChannels){
 
     for(i=0; i < nChannels; i++){
         status = ca_create_channel(channels[i].name, 0 , 0, CA_PRIORITY, &channels[i].id);
-        if(checkStatus(status) != EXIT_SUCCESS) return EXIT_FAILURE;    // we exit if the channels are not created
+        if(checkStatus(status)) return EXIT_FAILURE;    // we exit if the channels are not created
 
         //if tool = cagets or cado, each channel has a sibling connecting to the proc field
         if (arguments.tool == cagets || arguments.tool == cado){
         	status = ca_create_channel(channels[i].procName, 0 , 0, CA_PRIORITY, &channels[i].procId);
-        	if(checkStatus(status) != EXIT_SUCCESS) return EXIT_FAILURE;
+        	if(checkStatus(status)) return EXIT_FAILURE;
         }
         else if (arguments.tool == cainfo){
         	//if tool = cainfo, each channel has siblings connecting to the desc and *sv fields
@@ -1593,12 +1688,12 @@ int caInit(struct channel *channels, int nChannels){
         	}
 
         	status = ca_create_channel(channels[i].descName, 0 , 0, CA_PRIORITY, &channels[i].descId);
-        	if(checkStatus(status) != EXIT_SUCCESS) return EXIT_FAILURE;
+        	if(checkStatus(status)) return EXIT_FAILURE;
         	status = ca_pend_io ( arguments.w );
         	if(status == ECA_TIMEOUT) printf ("Channel %s is missing DESC field.\n", channels[i].name);
 
         	status = ca_create_channel(channels[i].hhsvName, 0 , 0, CA_PRIORITY, &channels[i].hhsvId);
-        	if(checkStatus(status) != EXIT_SUCCESS) return EXIT_FAILURE;
+        	if(checkStatus(status)) return EXIT_FAILURE;
         	status = ca_pend_io ( arguments.w );
         	if(status == ECA_TIMEOUT) printf ("Channel %s is missing HHSV field.\n", channels[i].name);
 
@@ -1607,14 +1702,13 @@ int caInit(struct channel *channels, int nChannels){
         	status = ca_pend_io ( arguments.w );
         	if(status == ECA_TIMEOUT) printf ("Channel %s is missing HSV field.\n", channels[i].name);
 
-
         	status = ca_create_channel(channels[i].lsvName, 0 , 0, CA_PRIORITY, &channels[i].lsvId);
-        	if(checkStatus(status) != EXIT_SUCCESS) return EXIT_FAILURE;
+        	if(checkStatus(status)) return EXIT_FAILURE;
         	status = ca_pend_io ( arguments.w );
         	if(status == ECA_TIMEOUT) printf ("Channel %s is missing LSV field.\n", channels[i].name);
 
         	status = ca_create_channel(channels[i].llsvName, 0 , 0, CA_PRIORITY, &channels[i].llsvId);
-        	if(checkStatus(status) != EXIT_SUCCESS) return EXIT_FAILURE;
+        	if(checkStatus(status)) return EXIT_FAILURE;
         	status = ca_pend_io ( arguments.w );
         	if(status == ECA_TIMEOUT) printf ("Channel %s is missing LLSV field.\n", channels[i].name);
         }
@@ -1650,6 +1744,16 @@ int main ( int argc, char ** argv )
     struct channel *channels;
 
 
+    //attempt to recognize tool from path/tool by matching ends of argv[0]
+    if (!strcmp(argv[0] + (strlen(argv[0])-strlen("caget")), "caget")) arguments.tool = caget;
+    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("caput")), "caput")) arguments.tool = caput;
+    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("cagets")), "cagets")) arguments.tool = cagets;
+    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("caputq")), "caputq")) arguments.tool = caputq;
+    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("camon")), "camon")) arguments.tool = camon;
+    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("cawait")), "cawait")) arguments.tool = cawait;
+    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("cado")), "cado")) arguments.tool = cado;
+    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("cainfo")), "cainfo")) arguments.tool = cainfo;
+
     static struct option long_options[] = {
         {"num",     	no_argument,        0,  0 },
         {"int",     	no_argument,        0,  0 },    //same as num
@@ -1682,7 +1786,7 @@ int main ( int argc, char ** argv )
         switch (opt) {
         case 'w':
         	if (sscanf(optarg, "%f", &arguments.w) != 1){    // type was not given as float
-        		arguments.w = CA_TIMEOUT;
+        		arguments.w = CA_DEFAULT_TIMEOUT;
         		fprintf(stderr, "Requested timeout invalid - ignored. ('%s -h' for help.)\n", argv[0]);
         	}
             break;
@@ -1940,10 +2044,10 @@ int main ( int argc, char ** argv )
 
         	break;
         case 'h':               //Print usage
-            usage(stdout, argv[0]);
+            usage(stdout, arguments.tool);
             return EXIT_SUCCESS;
         default:
-            usage(stderr, argv[0]);
+            usage(stderr, arguments.tool);
             exit(EXIT_FAILURE);
         }
     }
@@ -1979,7 +2083,6 @@ int main ( int argc, char ** argv )
     }
     if (arguments.digits != -1 && arguments.prec != -1){
     	fprintf(stderr, "Precision specified twice: by -prec as well as argument to -e, -f or -g.\n");
-//		arguments.prec = -1;
 	}
     if (arguments.plain && (arguments.num || arguments.hex ||arguments.bin||arguments.oct || arguments.digits != -1 || arguments.prec != -1 \
     		|| arguments.s || arguments.round != roundType_no_rounding || strcmp(arguments.dblFormatStr,"%g") || arguments.fieldSeparator != ' ' )){
@@ -1990,8 +2093,14 @@ int main ( int argc, char ** argv )
     	strcpy(arguments.dblFormatStr,"%g");
     	arguments.fieldSeparator = ' ' ;
     }
+    if (arguments.tool == tool_unknown){
+    	fprintf(stderr, "Unknown tool. Please specify -tool option with either of the following arguments: caget, "\
+    			"caput, cagets, caputq, cawait, camon, cado, cainfo.\n");
+    	return EXIT_FAILURE;
+    }
 
 	epicsTimeGetCurrent(&programStartTime);
+	validateTimestamp(programStartTime, "Start time");
 
 	//Remaining arg list refers to PVs
 	if (arguments.tool == caget || arguments.tool == camon || arguments.tool == cagets || arguments.tool == cado || arguments.tool == cainfo){
@@ -2100,9 +2209,9 @@ int main ( int argc, char ** argv )
         	}
         }
         else if (arguments.tool == cawait){
-        	channels[i].conditionStr = argv[optind+1]; //next argument is the condition string
+        	//next argument is the condition string
+        	if (cawaitParseCondition(&channels[i], argv[optind+1])) return EXIT_FAILURE;
         	optind++;
-
         }
         else if(arguments.tool == cagets || arguments.tool == cado){
 
@@ -2184,6 +2293,8 @@ int main ( int argc, char ** argv )
 	if (!timestampRead) fprintf(stderr, "Memory allocation error.\n");
 	lastUpdate = malloc(nChannels * sizeof(epicsTimeStamp));
 	if (!lastUpdate) fprintf(stderr, "Memory allocation error.\n");
+	firstUpdate = malloc(nChannels * sizeof(bool));
+	if (!firstUpdate) fprintf(stderr, "Memory allocation error.\n");
 
     if(caInit(channels, nChannels) != EXIT_SUCCESS) return EXIT_FAILURE;
 
@@ -2233,6 +2344,8 @@ int main ( int argc, char ** argv )
     //free monitor's timestamp
     free(timestampRead);
     free(lastUpdate);
+    free(firstUpdate);
+
 
     return EXIT_SUCCESS;
 }
