@@ -166,159 +166,126 @@ epicsTimeStamp timeoutTime;			//when to stop monitoring (-timeout)
 bool runMonitor;					//indicates when to stop monitoring according to -timeout or -n
 unsigned int numMonitorUpdates;		//counts updates needed by -n
 
-void usage(FILE *stream, enum tool programName){//TODO
+void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 
 	//usage:
-/*	if (!strcmp(programName, "caget") || !strcmp(programName, "cagets") || !strcmp(programName, "camon") ){
-		fprintf(stream, "Usage: %s [flags] [channel] [channel] ... [channel]\n", programName);
+	if (tool == caget || tool == cagets || tool == camon || tool == cado ){
+		fprintf(stream, "\nUsage: %s [flags] <channel> [<channel> ...]\n", programName);
 	}
-	else if (!strcmp(programName, "cawait")){
-		fprintf(stream, "Usage: %s [flags] [channel] [condition] [channel] [condition] ... [channel] [condition]\n", programName);
+	else if (tool == cawait){
+		fprintf(stream, "\nUsage: %s [flags] <channel> <condition> [<channel> <condition> ...]\n", programName);
 	}
-	else if (!strcmp(programName, "caput") || !strcmp(programName, "caputq") ){
-		fprintf(stream, "Usage: %s [flags] [channel] [value] [channel] [value] ... [channel] [value]\n", programName);
+	else if (tool == caput || tool == caputq  ){
+		fprintf(stream, "\nUsage: %s [flags] <channel> <value> [<channel> <value> ...]\n", programName);
 	}
-	else if (!strcmp(programName, "cainfo") ){
-		fprintf(stream, "Usage: %s [channel] [channel] ... [channel]\n", programName);
+	else if (tool == cainfo  ){
+		fprintf(stream, "\nUsage: %s <channel> [<channel> ...]\n", programName);
 	}
-	else { //program name not recognized, display help based on argument to -tool
-		if (arguments.tool == caget){
-			fprintf(stream, "Program name %s not recognized. Try -tool option with any of the following arguments: caget, caput, cagets, "\
-					"caputq, cado, camon, cawait, cainfo.\n", programName);
-			fprintf(stream, "Displaying help for caget.\n");
-			usage(stream, "caget");
-			return;
-		}
-		else if (arguments.tool == cagets){
-			usage(stream, "cagets");
-			return;
-		}
-		else if (arguments.tool == caput){
-			usage(stream, "caput");
-			return;
-		}
-		else if (arguments.tool == caputq){
-			usage(stream, "caputq");
-			return;
-		}
-		else if (arguments.tool == cado){
-			usage(stream, "cado");
-			return;
-		}
-		else if (arguments.tool == camon){
-			usage(stream, "camon");
-			return;
-		}
-		else if (arguments.tool == cawait){
-			usage(stream, "cawait");
-			return;
-		}
-		else if (arguments.tool == cainfo){
-			usage(stream, "cawait");
-			return;
-		}
+	else { //tool unknown
+		fprintf(stream, "\nUnknown tool. Try %s -tool with any of the following arguments: caget, caput, cagets, "\
+				"caputq, cado, camon, cawait, cainfo.\n", programName);
 		return;
 	}
 
 	//descriptions
-	fprintf(stream, "\n\n");
+	fputs("\n",stream);
 
-	if (!strcmp(programName, "caget") ){
-		fprintf(stream, "Reads values from channel(s).\n");
+	if (tool == caget ){
+		fputs("Reads values from channel(s).\n", stream);
 	}
-	if (!strcmp(programName, "cagets") ){
-		fprintf(stream, "First writes 1 to PROC fields of the provided channels. Then reads the values.\n");
+	if (tool == cagets){
+		fputs("First writes 1 to PROC fields of the provided channels. Then reads the values.\n", stream);
 	}
-	if (!strcmp(programName, "caput") ){
-		fprintf(stream, "Writes value(s) to channels(s). Then reads the updated values and displays them.\n");
-		fprintf(stream, "Arrays can be handled either by specifying number of elements as an argument to -inNelm option"\
+	if (tool == caput ){
+		fputs("Writes value(s) to channels(s). Then reads the updated values and displays them.\n", stream);
+		fputs("Arrays can be handled either by specifying number of elements as an argument to -inNelm option"\
 				" or grouping the elements to write in a string following pv name. E.g. the following two commands produce the same"\
-				" result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n");
-		fprintf(stream, "caput -inNelm 3 pvA 1 2 3 pvB 4 5 6 \ncaput pvA '1 2 3' pvB '4 5 6'\n");
-		fprintf(stream, "The following tries to write '1 2 3', 'pvB' and '4 5 6' into pvA record:\n");
-		fprintf(stream, "caput -inNelm 3 pvA '1 2 3' pvB '4 5 6'\n");
+				" result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
+		fputs("caput -inNelm 3 pvA 1 2 3 pvB 4 5 6 \ncaput pvA '1 2 3' pvB '4 5 6'\n", stream);
+		fputs("The following tries to write '1 2 3', 'pvB' and '4 5 6' into pvA record:\n", stream);
+		fputs("caput -inNelm 3 pvA '1 2 3' pvB '4 5 6'\n", stream);
 	}
-	if (!strcmp(programName, "caputq") ){
-		fprintf(stream, "Writes value(s) to channels(s), then exits. Does not have any output (except if an error occurs).\n");
-		fprintf(stream, "Arrays can be handled either by specifying number of elements as an argument to -inNelm option"\
+	if (tool == caputq ){
+		fputs("Writes value(s) to channels(s), then exits. Does not have any output (except if an error occurs).\n", stream);
+		fputs("Arrays can be handled either by specifying number of elements as an argument to -inNelm option"\
 				" or grouping the elements to write in a string following pv name. E.g. the following two commands produce the same"\
-				" result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n");
-		fprintf(stream, "caputq -inNelm 3 pvA 1 2 3 pvB 4 5 6 \ncaputq pvA '1 2 3' pvB '4 5 6'\n");
-		fprintf(stream, "The following tries to write '1 2 3', 'pvB' and '4 5 6' into pvA record:\n");
-		fprintf(stream, "caputq -inNelm 3 pvA '1 2 3' pvB '4 5 6'\n");
+				" result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
+		fputs("caputq -inNelm 3 pvA 1 2 3 pvB 4 5 6 \ncaputq pvA '1 2 3' pvB '4 5 6'\n", stream);
+		fputs("The following tries to write '1 2 3', 'pvB' and '4 5 6' into pvA record:\n", stream);
+		fputs("caputq -inNelm 3 pvA '1 2 3' pvB '4 5 6'\n", stream);
 	}
-	if (!strcmp(programName, "cado") ){
-		fprintf(stream, "First writes 1 to PROC fields of the provided channels, then exits. Does not have any output (except if an error occurs).\n");
+	if (tool == cado ){
+		fputs("First writes 1 to PROC fields of the provided channels, then exits. Does not have any output (except if an error occurs).\n", stream);
 	}
-	if (!strcmp(programName, "camon") ){
-		fprintf(stream, "Monitors the provided channels.\n");
+	if (tool == camon ){
+		fputs("Monitors the provided channels.\n", stream);
 	}
-	if (!strcmp(programName, "cawait") ){
-		fprintf(stream, "Monitors the channels, but only displays values when they match the provided conditions. The conditions are specified as a"\
-				" string containing the operator together with the values.\n");
-		fprintf(stream, "The following operators are supported:  >,<,<=,>=,==,!=, ==A...B(in interval), !=A...B(out of interval). For example, "\
-				"cawait pv '==1...5' ignores all pv values except those inside the interval [1,5].\n");
+	if (tool == cawait){
+		fputs("Monitors the channels, but only displays values when they match the provided conditions. The conditions are specified as a"\
+				" string containing the operator together with the values.\n", stream);
+		fputs("The following operators are supported:  >,<,<=,>=,==,!=, ==A...B(in interval), !=A...B(out of interval). For example, "\
+				"cawait pv '==1...5' ignores all pv values except those inside the interval [1,5].\n", stream);
 	}
-	if (!strcmp(programName, "cainfo") ){
-		fprintf(stream, "Displays detailed information about the provided channels.\n");
+	if (tool == cainfo  ){
+		fputs("Displays detailed information about the provided channels.\n", stream);
 		return; //does not have any flags
 	}
 
 
 	//flags
-	fprintf(stream, "\n\n");
-	fprintf(stream, "Accepted flags:\n");
+	fputs("\n\n", stream);
+	fputs("Accepted flags:\n", stream);
 
 	//common for all tools (except cainfo)
-	fprintf(stream, "-d	<type>	    type of DBR request to use for communicating with the server\n");
-	fprintf(stream, "-w <number>    timeout for CA calls\n");
+	fputs("-d <type>             type of DBR request to use for communicating with the server\n", stream);
+	fputs("-w <number>           timeout for CA calls\n", stream);
 
 	//flags associated with reading
-	if (!strcmp(programName, "caget") || !strcmp(programName, "cagets") || !strcmp(programName, "camon") \
-			|| !strcmp(programName, "cawait") ||  !strcmp(programName, "caput") ){
-		fprintf(stream, "-num 							display enum/char values as numbers\n");
-		fprintf(stream, "-int 							same as -num\n");
-		fprintf(stream, "-round <type>          		rounding of floating point values. Arguments: ceil, floor, default.\n");
-		fprintf(stream, "-prec <number>          		precision for displaying floating point values. Default is equal to PREC field of the record.\n");
-		fprintf(stream, "-hex           	display integer values in hexadecimal format\n");
-		fprintf(stream, "-oct           	display integer values in octal format\n");
-		fprintf(stream, "-plain           	ignore formatting switches\n");
-		fprintf(stream, "-stat           	always display alarm status and severity\n");
-		fprintf(stream, "-nostat           	never display alarm status and severity\n");
-		fprintf(stream, "-noname           	hide record name\n");
-		fprintf(stream, "-date           	display server date\n");
-		fprintf(stream, "-localdate         display client date\n");
-		fprintf(stream, "-time           	display server time\n\n");
-		fprintf(stream, "-localtime         display client time\n");
-		fprintf(stream, "-outNelm  <number>       	number of array elements to read\n");
-		fprintf(stream, "-outFs <number>        	field separator for displaying array elements\n");
-		fprintf(stream, "-nord         		display number of array elements before their values\n");
-		fprintf(stream, "-w <number>        timeout for CA calls\n");
-		fprintf(stream, "-d			        same as -date\n");													//XXX XXX
-		fprintf(stream, "-e <number>		format doubles using scientific notation with precition <number>. Overrides -prec option.\n");
-		fprintf(stream, "-f <number>		format doubles using floating point with precition <number>. Overrides -prec option.\n");
-		fprintf(stream, "-g <number>		format doubles using shortest representation with precition <number>. Overrides -prec option.\n");
-		fprintf(stream, "-s				    interpret values as strings\n");
-		fprintf(stream, "-t			        same as -time\n");
+	if (tool == caget || tool == cagets || tool == camon \
+			|| tool == cawait ||  tool == caput ){
+		fputs("-num                  display enum/char values as numbers\n", stream);
+		fputs("-int                  same as -num\n", stream);
+		fputs("-round <type>         rounding of floating point values. Arguments: ceil, floor, default.\n", stream);
+		fputs("-prec <number>        precision for displaying floating point values. Default is equal to PREC field of the record.\n", stream);
+		fputs("-hex                  display integer values in hexadecimal format\n", stream);
+		fputs("-oct                  display integer values in octal format\n", stream);
+		fputs("-plain                ignore formatting switches\n", stream);
+		fputs("-stat                 always display alarm status and severity\n", stream);
+		fputs("-nostat               never display alarm status and severity\n", stream);
+		fputs("-noname               hide record name\n", stream);
+		fputs("-date                 display server date\n", stream);
+		fputs("-localdate            display client date\n", stream);
+		fputs("-time                 display server time\n", stream);
+		fputs("-localtime            display client time\n", stream);
+		fputs("-outNelm  <number>    number of array elements to read\n", stream);
+		fputs("-outFs <number>       field separator for displaying array elements\n", stream);
+		fputs("-nord                 display number of array elements before their values\n", stream);
+		fputs("-w <number>           timeout for CA calls\n", stream);
+		fputs("-d                    same as -date\n", stream);													//XXX XXX
+		fputs("-e <number>           format doubles using scientific notation with precition <number>. Overrides -prec option.\n", stream);
+		fputs("-f <number>           format doubles using floating point with precition <number>. Overrides -prec option.\n", stream);
+		fputs("-g <number>           format doubles using shortest representation with precition <number>. Overrides -prec option.\n", stream);
+		fputs("-s                    interpret values as strings\n", stream);
+		fputs("-t                    same as -time\n", stream);
 
-		if (!strcmp(programName, "camon")){
-			fprintf(stream, "-timestamp <char>  	display relative timestamps. <char> = r displays time elapsed since start " \
+		if (tool == camon){
+			fputs("-timestamp <char>     display relative timestamps. <char> = r displays time elapsed since start " \
 					"of the program. <char> = u displays time elapsed since last update of any channel.  <char> = c displays "\
-					"time elapsed since last update separately for each channel");
-			fprintf(stream, "-n <number>        	exit the program after <number> updates\n");
+					"time elapsed since last update separately for each channel\n", stream);
+			fputs("-n <number>           exit the program after <number> updates\n", stream);
 		}
-		if (!strcmp(programName, "cawait")){
-			fprintf(stream, "-timeout <number>        	exit the program after <number> seconds without an update\n");
+		if (tool == cawait){
+			fputs("-timeout <number>     exit the program after <number> seconds without an update\n", stream);
 		}
 
 	}
 
 	//flags associated with writing
-	if (!strcmp(programName, "caput") || !strcmp(programName, "caputq") ){
-		fprintf(stream, "-inNelm		number of array elements to write. Needs to match the number of provided values.\n");
-		fprintf(stream, "-inFs			field separator used in the string containing array elements to write\n");
+	if (tool == caput || tool == caputq ){
+		fputs("-inNelm               number of array elements to write. Needs to match the number of provided values.\n", stream);
+		fputs("-inFs                 field separator used in the string containing array elements to write\n", stream);
 
-	}*/
+	}
 }
 
 void dumpArguments(struct arguments *args){
@@ -1237,7 +1204,7 @@ void caRequest(struct channel *channels, int nChannels){
 //sends get or put requests for all tools except cainfo. ca_get or ca_put are called multiple times, depending
 //on the tool. The reading and parsing of returned data is performed in callbacks. Once the callbacks finish,
 //the the data is printed. If the tool type is monitor, a loop is entered in which the data is printed repeatedly.
-    int status=ECA_NORMAL, i, j;
+    int status=-1, i, j;
 
     for(i=0; i < nChannels; i++){
         channels[i].count = ca_element_count ( channels[i].id );
@@ -2005,17 +1972,9 @@ int main ( int argc, char ** argv )
             			arguments.tool = cawait;
             		} else if(!strcmp("cainfo", optarg)){
             			arguments.tool = cainfo;
-            		} else {
-            			arguments.tool = caget;
-            			fprintf(stderr,	"Invalid tool call '%s' "
-            					"for option '-%c' - caget assumed.\n", optarg, opt);
             		}
             	} else{ // type was given as a number
-            		if(tool < caget|| tool > cainfo){   // out of range check
-            			arguments.tool = caget;
-            			fprintf(stderr,	"Invalid tool call '%s' "
-            					"for option '-%c' - caget assumed.\n", optarg, opt);
-            		} else{
+            		if(tool >= caget|| tool <= cainfo){   //unknown tool case handled down below
             			arguments.round = tool;
             		}
             	}
@@ -2044,10 +2003,10 @@ int main ( int argc, char ** argv )
 
         	break;
         case 'h':               //Print usage
-            usage(stdout, arguments.tool);
+            usage(stdout, arguments.tool, argv[0]);
             return EXIT_SUCCESS;
         default:
-            usage(stderr, arguments.tool);
+            usage(stderr, arguments.tool, argv[0]);
             exit(EXIT_FAILURE);
         }
     }
@@ -2094,8 +2053,7 @@ int main ( int argc, char ** argv )
     	arguments.fieldSeparator = ' ' ;
     }
     if (arguments.tool == tool_unknown){
-    	fprintf(stderr, "Unknown tool. Please specify -tool option with either of the following arguments: caget, "\
-    			"caput, cagets, caputq, cawait, camon, cado, cainfo.\n");
+    	usage(stderr, arguments.tool,argv[0]);
     	return EXIT_FAILURE;
     }
 
