@@ -16,7 +16,7 @@
 #include "alarmString.h"
 #include "alarm.h"
 
-
+//TODO malloc must succeed
 
 
 
@@ -155,6 +155,8 @@ static int const LEN_SEVSTAT = 30;
 static int const LEN_UNITS = 20+MAX_UNITS_SIZE;
 char **outDate,**outTime, **outSev, **outStat, **outUnits, **outValue, **outLocalDate, **outLocalTime;
 char **outTimestamp; //relative timestamps for camon
+char ***outEnumStrs;  //for camon intitialization
+unsigned int *numEnumStrs;
 
 //timestamps needed by -timestamp
 epicsTimeStamp *timestampRead;		//timestamps of received data (per channel)
@@ -165,6 +167,18 @@ epicsTimeStamp timeoutTime;			//when to stop monitoring (-timeout)
 
 bool runMonitor;					//indicates when to stop monitoring according to -timeout or -n
 unsigned int numMonitorUpdates;		//counts updates needed by -n
+
+
+//templates for reading requested data
+#define severity_status_get(T) \
+status = ((struct T *)args.dbr)->status; \
+severity = ((struct T *)args.dbr)->severity;
+#define timestamp_get(T) \
+	timestampRead[ch->i] = ((struct T *)args.dbr)->stamp;\
+	validateTimestamp(timestampRead[ch->i], ch->name);
+#define units_get_cb(T) sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
+#define units_get_mon(T) sprintf(outUnits[channel.i], "%s", ((struct T *)data)->units);
+#define precision_get(T) precision = (((struct T *)args.dbr)->precision);
 
 void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 
@@ -478,7 +492,7 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
 		printf("%c", '0' + ((x >> i) & 1) ); \
 	}
 
-int printValue(evargs args, int precision){
+int printValue(int i, evargs args, int precision){
 //Parses the data fetched by ca_get callback according to the data type and formatting arguments.
 //The result is printed to stdout.
 
@@ -551,13 +565,26 @@ int printValue(evargs args, int precision){
     			break;
     		}
 
+
     		if (!arguments.num && !arguments.bin && !arguments.hex && !arguments.oct) { // if not requested as a number check if we can get string
-    			if (dbr_type_is_GR(args.type)) {
+
+        		//if monitor we reuse strings from before
+        		bool monitor = (arguments.tool == camon || arguments.tool == cawait);
+        		if (monitor){
+    				if (v >= numEnumStrs[i]) {
+    					fprintf(stderr, "Enum index value '%d' greater than the number of strings.\n", v);
+    				}
+    				else{
+    					printf("%*s", MAX_ENUM_STRING_SIZE, outEnumStrs[i][v]);
+    				}
+    				break;
+        		}
+        		else if (dbr_type_is_GR(args.type)) {
     				if (v >= ((struct dbr_gr_enum *)args.dbr)->no_str) {
     					fprintf(stderr, "Enum index value '%d' greater than the number of strings.\n", v);
     				}
     				else{
-    					printf("%*s", MAX_STRING_SIZE, ((struct dbr_gr_enum *)args.dbr)->strs[v]);
+    					printf("%*s", MAX_ENUM_STRING_SIZE, ((struct dbr_gr_enum *)args.dbr)->strs[v]);
     				}
     				break;
     			}
@@ -566,7 +593,7 @@ int printValue(evargs args, int precision){
     					fprintf(stderr, "Enum index value '%d' greater than the number of strings.\n", v);
     				}
     				else{
-    					printf("%*s", MAX_STRING_SIZE, ((struct dbr_ctrl_enum *)args.dbr)->strs[v]);
+    					printf("%*s", MAX_ENUM_STRING_SIZE, ((struct dbr_ctrl_enum *)args.dbr)->strs[v]);
     				}
     				break;
     			}
@@ -658,7 +685,7 @@ int printOutput(int i, evargs args, int precision){
     if (!arguments.noname)	printf("%s ",((struct channel *)args.usr)->name);
 
     //value(s)
-    printValue(args, precision);
+    printValue(i, args, precision);
 
 	fputc(' ',stdout);
 
@@ -693,28 +720,26 @@ static void caReadCallback2 (evargs args){
     //if we got here, we probably don't have units, so we need to extract them now.
     //precision needs to be extracted again because it is not global.
     int precision=-1;
-#define units_get(T) sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
-#define precision_get(T) precision = (((struct T *)args.dbr)->precision);
     switch (args.type) {
     case DBR_GR_SHORT:    // and DBR_GR_INT
-    	units_get(dbr_gr_short);
+    	units_get_cb(dbr_gr_short);
     	break;
 
     case DBR_GR_FLOAT:
-    	units_get(dbr_gr_float);
+    	units_get_cb(dbr_gr_float);
     	precision_get(dbr_gr_float);
     	break;
 
     case DBR_GR_CHAR:
-    	units_get(dbr_gr_char);
+    	units_get_cb(dbr_gr_char);
     	break;
 
     case DBR_GR_LONG:
-    	units_get(dbr_gr_long);
+    	units_get_cb(dbr_gr_long);
     	break;
 
     case DBR_GR_DOUBLE:
-    	units_get(dbr_gr_double);
+    	units_get_cb(dbr_gr_double);
     	precision_get(dbr_gr_double);
     	break;
 
@@ -788,28 +813,7 @@ bool epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp *pLeft, const 
 	return negative;
 }
 
-/*int epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp * pLeft, const epicsTimeStamp * pRight ){
-// Calculates difference between two epicsTimeStampst: like epicsTimeDiffInSeconds but also taking nanoseconds
-//into account. The absolute value of the difference pLeft - pRight is saved to the timestamp diff, and the sign
-//of the said difference is returned.
 
-	double timeLeft = pLeft->secPastEpoch + 1e-9 * pLeft->nsec;
-	double timeRight = pRight->secPastEpoch + 1e-9 * pRight->nsec;
-
-	double difference = (timeLeft - timeRight);
-
-	diff->secPastEpoch = fabs(trunc(difference));	//number of seconds is the integer part.
-	diff->nsec = 1e9 * (fabs(difference) - fabs(trunc(difference)));	//number of nanoseconds is the decimal part.
-	if (difference > 0){
-		return 1;//positive
-	}
-	else if(difference < 0){
-		return -1;//negative
-	}
-	else{
-		return 0;//equal
-	}
-}*/
 
 void validateTimestamp(epicsTimeStamp timestamp, char* name){
 //checks a timestamp for illegal values.
@@ -875,7 +879,8 @@ static void caReadCallback (evargs args){
 //calling valueToString or enumToString. Note that the latter is actually a callback function for another get request.
 
 	//if we are in monitor and just waiting for the program to exit, don't proceed.
-	if ((arguments.tool == camon || arguments.tool == cawait) && runMonitor == false) return;
+	bool monitor = (arguments.tool == camon || arguments.tool == cawait);
+	if (monitor && runMonitor == false) return;
 
 	//check if data was returned
 	if (args.status != ECA_NORMAL){
@@ -892,24 +897,12 @@ static void caReadCallback (evargs args){
     outDate[ch->i][0]='\0';
     outSev[ch->i][0]='\0';
     outStat[ch->i][0]='\0';
-    outUnits[ch->i][0]='\0';
     outValue[ch->i][0]='\0';
     outLocalDate[ch->i][0]='\0';
     outLocalTime[ch->i][0]='\0';
+    if(!monitor) outUnits[ch->i][0]='\0';
 
 
-    //templates for reading requested data
-#define severity_status_get(T) \
-    status = ((struct T *)args.dbr)->status; \
-	severity = ((struct T *)args.dbr)->severity;
-
-#define timestamp_get(T) \
-		timestampRead[ch->i] = ((struct T *)args.dbr)->stamp;\
-		validateTimestamp(timestampRead[ch->i], ch->name);
-
-#define units_get(T) sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
-
-#define precision_get(T) precision = (((struct T *)args.dbr)->precision);
 
     //read requested data
     switch (args.type) {
@@ -978,12 +971,12 @@ static void caReadCallback (evargs args){
 
         case DBR_GR_SHORT:    // and DBR_GR_INT
             severity_status_get(dbr_gr_short);
-            units_get(dbr_gr_short);
+            units_get_cb(dbr_gr_short);
             break;
 
         case DBR_GR_FLOAT:
             severity_status_get(dbr_gr_float);
-            units_get(dbr_gr_float);
+            units_get_cb(dbr_gr_float);
             precision_get(dbr_gr_float);
             break;
 
@@ -994,28 +987,28 @@ static void caReadCallback (evargs args){
 
         case DBR_GR_CHAR:
             severity_status_get(dbr_gr_char);
-            units_get(dbr_gr_char);
+            units_get_cb(dbr_gr_char);
             break;
 
         case DBR_GR_LONG:
             severity_status_get(dbr_gr_long);
-            units_get(dbr_gr_long);
+            units_get_cb(dbr_gr_long);
             break;
 
         case DBR_GR_DOUBLE:
             severity_status_get(dbr_gr_double);
-            units_get(dbr_gr_double);
+            units_get_cb(dbr_gr_double);
             precision_get(dbr_gr_double);
             break;
 
         case DBR_CTRL_SHORT:  // and DBR_CTRL_INT
             severity_status_get(dbr_ctrl_short);
-            units_get(dbr_ctrl_short);
+            units_get_cb(dbr_ctrl_short);
             break;
 
         case DBR_CTRL_FLOAT:
             severity_status_get(dbr_ctrl_float);
-            units_get(dbr_ctrl_float);
+            units_get_cb(dbr_ctrl_float);
             precision = (int)(((struct dbr_ctrl_float *)args.dbr)->precision);
             break;
 
@@ -1026,17 +1019,17 @@ static void caReadCallback (evargs args){
 
         case DBR_CTRL_CHAR:
             severity_status_get(dbr_ctrl_char);
-            units_get(dbr_ctrl_char);
+            units_get_cb(dbr_ctrl_char);
             break;
 
         case DBR_CTRL_LONG:
             severity_status_get(dbr_ctrl_long);
-            units_get(dbr_ctrl_long);
+            units_get_cb(dbr_ctrl_long);
             break;
 
         case DBR_CTRL_DOUBLE:
             severity_status_get(dbr_ctrl_double);
-            units_get(dbr_ctrl_double);
+            units_get_cb(dbr_ctrl_double);
             precision_get(dbr_ctrl_double);
             break;
 
@@ -1131,10 +1124,10 @@ static void caReadCallback (evargs args){
 	}
 
 
-    //construct values string and write to global string directly
+    //print output, make another ca request if not all info is available
 	//special case: enum
 	if ((args.type == DBR_STS_STRING || args.type == DBR_TIME_STRING) && (arguments.num || arguments.bin || arguments.hex || arguments.oct) \
-			&& ca_field_type(ch->id) == DBF_ENUM){
+			&& ca_field_type(ch->id) == DBF_ENUM && !monitor){
 		//special case 1: field type is enum, dbr type is string, and number is requested.
 		//to obtain value number, another request is needed.
 		status = ca_array_get_callback(DBR_TIME_ENUM, ch->outNelm, ch->id, caReadCallback2, ch);
@@ -1145,7 +1138,7 @@ static void caReadCallback (evargs args){
 		//ch->done is set by enum2string callback.
 	}
 	else if (args.type >= DBR_STS_SHORT && args.type <= DBR_TIME_DOUBLE \
-			&& arguments.s && ca_field_type(ch->id) == DBF_ENUM){
+			&& arguments.s && ca_field_type(ch->id) == DBF_ENUM && !monitor){
 		//special case 2: field type is enum, dbr type is time or sts but not string, and string is requested.
 		//we already have time, but to obtain value in the form of string, another request is needed.
 
@@ -1154,17 +1147,17 @@ static void caReadCallback (evargs args){
 
 		status = ca_flush_io();
 		if(status != ECA_NORMAL) fprintf (stderr,"Problem flushing channel %s.\n", ch->name);
-		//ch->done and printing is set by enum2string callback.
+		//ch->done and printing is set by callback2.
 	}
-	else if (args.type >= DBR_STS_SHORT && args.type <= DBR_TIME_DOUBLE && !arguments.nounit){
-		//special case 3: time was requested which does not have units info. Another request is needed to get it. XXX skip if monitor?
+	else if (args.type >= DBR_STS_SHORT && args.type <= DBR_TIME_DOUBLE && !arguments.nounit && !monitor){
+		//special case 3: time was requested which does not have units info. Another request is needed to get it.
 		unsigned int baseType = args.type % (LAST_TYPE+1);
 		status = ca_array_get_callback(dbf_type_to_DBR_GR(baseType), ch->outNelm, ch->id, caReadCallback2, ch);
 		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
 
 		status = ca_flush_io();
 		if(status != ECA_NORMAL) fprintf (stderr,"Problem flushing channel %s.\n", ch->name);
-		//ch->done and printing is set by enum2string callback.
+		//ch->done and printing is set by callback2.
 	}
 	else{ //printf output as usual
 		printOutput(ch->i, args, precision);
@@ -1186,6 +1179,64 @@ static void caWriteCallback (evargs args){
 
     ch->done = true;
 }
+
+int getStaticMonitorData(struct channel channel){
+//gets units and enum strings for channel i. Saves them to global strings for later reuse.
+
+	unsigned int baseType = channel.type % (LAST_TYPE+1);
+
+	//first check if this call is needed at all
+	if (baseType == DBF_ENUM || (!arguments.nounit && (arguments.time || arguments.date || arguments.timestamp))) {
+		// do nothing but proceed if this is enum, or if units are needed along with any of the time info.
+	}
+	else return 0;
+
+
+	int reqType = dbf_type_to_DBR_GR(baseType);
+
+	void *data;
+	data = mallocMustSucceed(dbr_size_n(reqType, channel.count), "getStaticMonitorData");
+
+	int status = ca_array_get(reqType, channel.count, channel.id, data);
+	if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get "\
+			"request for record %s.\n", ca_message(status), channel.name);
+
+	status = ca_pend_io ( arguments.w );
+	if(status == ECA_TIMEOUT) printf ("Cannot obtain units or enum strings of channel %s.\n", channel.name);
+
+
+	if (baseType == DBF_ENUM){
+		//get enum strings
+		int j;
+		for (j=0; j<MAX_ENUM_STATES; ++j){
+			strcpy(outEnumStrs[channel.i][j], ((struct dbr_gr_enum *)data)->strs[j]);
+		}
+		numEnumStrs[channel.i] = ((struct dbr_gr_enum *)data)->no_str;
+	}
+	else{//get units
+		switch(reqType){
+		case DBR_GR_SHORT:
+			units_get_mon(dbr_gr_short);
+			break;
+		case DBR_GR_CHAR:
+			units_get_mon(dbr_gr_float);
+			break;
+		case DBR_GR_LONG:
+			units_get_mon(dbr_gr_long);
+			break;
+		case DBR_GR_DOUBLE:
+			units_get_mon(dbr_gr_double);
+			break;
+		default:
+			fprintf(stderr, "Units for channel %s cannot be displayed.\n", channel.name);
+			break;
+		}
+	}
+
+	free(data);
+	return 0;
+}
+
 
 
 
@@ -1240,6 +1291,9 @@ void caRequest(struct channel *channels, int nChannels){
 			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
 		}
         else if (arguments.tool == camon || arguments.tool == cawait){
+        	//get presumably static data first
+        	getStaticMonitorData(channels[i]);
+
 			status = ca_create_subscription(channels[i].type, channels[i].outNelm, channels[i].id, DBE_VALUE | DBE_ALARM | DBE_LOG,\
 					caReadCallback, &channels[i], NULL);
 			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create monitor.\n", ca_message(status));
@@ -2217,7 +2271,9 @@ int main ( int argc, char ** argv )
 	outTimestamp = malloc(nChannels * sizeof(char *));
 	outLocalDate = malloc(nChannels * sizeof(char *));
 	outLocalTime = malloc(nChannels * sizeof(char *));
-	if (!outValue || !outDate || !outTime || !outSev || !outStat || !outUnits || !outTimestamp){
+	outEnumStrs = malloc(nChannels * sizeof(char **));
+	numEnumStrs = malloc(nChannels * sizeof(unsigned int));
+	if (!outValue || !outDate || !outTime || !outSev || !outStat || !outUnits || !outTimestamp || !outEnumStrs || !numEnumStrs){
 		fprintf(stderr, "Memory allocation error.\n");
 	}
 	for(i = 0; i < nChannels; i++){
@@ -2230,9 +2286,13 @@ int main ( int argc, char ** argv )
 		outTimestamp[i] = malloc(LEN_TIMESTAMP * sizeof(char));
 		outLocalDate[i] = malloc(LEN_TIMESTAMP * sizeof(char));
 		outLocalTime[i] = malloc(LEN_TIMESTAMP * sizeof(char));
+		outEnumStrs[i] = malloc(MAX_ENUM_STATES * sizeof(char *));
 		if (!outValue[i] || !outDate[i] || !outTime[i] || !outSev[i] || !outStat[i] ||\
 				!outUnits[i] || !outTimestamp[i] || !outDate[i] || !outTime[i]){
 			fprintf(stderr, "Memory allocation error.\n");
+		}
+		for (j=0; j < MAX_ENUM_STATES; ++j){
+			outEnumStrs[i][j] = malloc(MAX_ENUM_STRING_SIZE * sizeof(char));
 		}
 	}
 	//memory for timestamp
@@ -2277,6 +2337,8 @@ int main ( int argc, char ** argv )
     	free(outTimestamp[i]);
     	free(outLocalDate[i]);
     	free(outLocalTime[i]);
+    	for (j=0 ; j< MAX_ENUM_STATES; ++j)	free(outEnumStrs[i][j]);
+    	free(outEnumStrs[i]);
     }
     free(outValue);
     free(outDate);
@@ -2287,6 +2349,7 @@ int main ( int argc, char ** argv )
     free(outTimestamp);
     free(outLocalDate);
     free(outLocalTime);
+	free(outEnumStrs);
 
     //free monitor's timestamp
     free(timestampRead);
