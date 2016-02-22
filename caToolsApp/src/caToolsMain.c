@@ -677,74 +677,53 @@ int printOutput(int i, evargs args, int precision){
 
 
 
-static void enumToString (evargs args){ //XXX will have to go?
-//caget callback function which receives read enum data and tries to interpret it
-//as a string, which is then written to memory pointed at by args.usr. If the data
-//can't be read as a string (i.e. dbr type is not ctrl or gr), number is written.
-//The result is written to the global value output string, and the printing
-//function is called.
+static void caReadCallback2 (evargs args){
+//callback function which serves to provide additional data in cases where two ca_get requests are
+//needed in order to obtain all necessary information. This function is called executed if either units
+//are missing from the first callback, or enum value received is of wrong type (string/number).
 
-/*	//check if data was returned
+
+	//check if data was returned
 	if (args.status != ECA_NORMAL){
-		fprintf(stderr, "CA error %s occurred while trying "
-		                "to start channel access.\n", ca_message(args.status));
+		fprintf(stderr, "CA error %s occurred while trying to start channel access.\n", ca_message(args.status));
 		return;
 	}
-
     struct channel *ch = (struct channel *)args.usr; 	//the channel to which this callback belongs
 
-	char *outString = outValue[ch->i];	//string to which the output is written = global string of values
-	void *value = dbr_value_ptr(args.dbr, args.type); //pointer to value part of the returned structure
-	dbr_enum_t v; //temporary value holder
+    //if we got here, we probably don't have units, so we need to extract them now.
+    //precision needs to be extracted again because it is not global.
+    int precision=-1;
+#define units_get(T) sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
+#define precision_get(T) precision = (((struct T *)args.dbr)->precision);
+    switch (args.type) {
+    case DBR_GR_SHORT:    // and DBR_GR_INT
+    	units_get(dbr_gr_short);
+    	break;
 
-	//loop over the whole array
-	int i; //element counter
-	char *stringCursor = outString; //pointer to start of the string
-	for (i=0; i<args.count; ++i){
-		stringCursor = outString + strlen(outString); //move along the string for each element
+    case DBR_GR_FLOAT:
+    	units_get(dbr_gr_float);
+    	precision_get(dbr_gr_float);
+    	break;
 
-		if (i){
-			sprintf (stringCursor, "%c", arguments.fieldSeparator); //insert element separator
-			stringCursor = outString + strlen(outString); //move
-		}
+    case DBR_GR_CHAR:
+    	units_get(dbr_gr_char);
+    	break;
 
-		v = ((dbr_enum_t *)value)[i];
-		if (v > ((struct dbr_gr_enum *)args.dbr)->no_str) fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
-		if (!arguments.num && !arguments.bin && !arguments.hex && !arguments.oct) { // if not requested as a number check if we can get string
-			if (dbr_type_is_GR(args.type)) {
-				if (v > ((struct dbr_gr_enum *)args.dbr)->no_str) {
-					fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
-				}
-				sprintf(outString, "%s", ((struct dbr_gr_enum *)args.dbr)->strs[v]);
-				continue;
-			}
-			else if (dbr_type_is_CTRL(args.type)) {
-				if (v > ((struct dbr_ctrl_enum *)args.dbr)->no_str) {
-					fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", v);
-				}
-				sprintf(outString, "%s", ((struct dbr_ctrl_enum *)args.dbr)->strs[v]);
-				continue;
-			}
-		}
+    case DBR_GR_LONG:
+    	units_get(dbr_gr_long);
+    	break;
 
-		// if this fails return string value as number.
-		if (arguments.bin){
-			//sprintBits(outString, sizeof(v), &v);//XXX
-		}
-		else if (arguments.oct){
-			sprintf(outString, "%o", v);
-		}
-		else if (arguments.hex){
-			sprintf(outString, "%x", v);
-		}
-		else{
-			sprintf(outString, "%d", v);
-		}
-	}
+    case DBR_GR_DOUBLE:
+    	units_get(dbr_gr_double);
+    	precision_get(dbr_gr_double);
+    	break;
+
+    }
+
 
 	//finish
 	ch->done = true;
-	printOutput(ch->i, args, 0);*/
+	printOutput(ch->i, args, precision);
 }
 
 
@@ -1093,7 +1072,7 @@ static void caReadCallback (evargs args){
 
    	//time
     if (args.type >= DBR_TIME_STRING && args.type <= DBR_TIME_DOUBLE){//otherwise we don't have it
-    	//we don't assume manually specifying dbr_time imply -time or -date.
+    	//we don't assume manually specifying dbr_time implies -time or -date.
     	if (arguments.date) epicsTimeToStrftime(outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &timestampRead[ch->i]);
     	if (arguments.time) epicsTimeToStrftime(outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &timestampRead[ch->i]);
     }
@@ -1158,7 +1137,7 @@ static void caReadCallback (evargs args){
 			&& ca_field_type(ch->id) == DBF_ENUM){
 		//special case 1: field type is enum, dbr type is string, and number is requested.
 		//to obtain value number, another request is needed.
-		status = ca_array_get_callback(DBR_TIME_ENUM, ch->outNelm, ch->id, enumToString, ch);
+		status = ca_array_get_callback(DBR_TIME_ENUM, ch->outNelm, ch->id, caReadCallback2, ch);
 		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
 
 		status = ca_flush_io();
@@ -1170,7 +1149,17 @@ static void caReadCallback (evargs args){
 		//special case 2: field type is enum, dbr type is time or sts but not string, and string is requested.
 		//we already have time, but to obtain value in the form of string, another request is needed.
 
-		status = ca_array_get_callback(DBR_GR_ENUM, ch->outNelm, ch->id, enumToString, ch);
+		status = ca_array_get_callback(DBR_GR_ENUM, ch->outNelm, ch->id, caReadCallback2, ch);
+		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
+
+		status = ca_flush_io();
+		if(status != ECA_NORMAL) fprintf (stderr,"Problem flushing channel %s.\n", ch->name);
+		//ch->done and printing is set by enum2string callback.
+	}
+	else if (args.type >= DBR_STS_SHORT && args.type <= DBR_TIME_DOUBLE && !arguments.nounit){
+		//special case 3: time was requested which does not have units info. Another request is needed to get it. XXX skip if monitor?
+		unsigned int baseType = args.type % (LAST_TYPE+1);
+		status = ca_array_get_callback(dbf_type_to_DBR_GR(baseType), ch->outNelm, ch->id, caReadCallback2, ch);
 		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
 
 		status = ca_flush_io();
