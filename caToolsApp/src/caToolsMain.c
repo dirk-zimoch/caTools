@@ -16,8 +16,6 @@
 #include "alarmString.h"
 #include "alarm.h"
 
-//TODO malloc must succeed
-
 
 
 #define CA_PRIORITY CA_PRIORITY_MIN
@@ -1392,15 +1390,7 @@ void cainfoRequest(struct channel *channels, int nChannels){
 //this function does all the work for caInfo tool. Reads channel data using ca_get and then prints.
 	int i,j, status;
 
-	char locSev[30]="", locStat[30]="", locUnits[20+MAX_UNITS_SIZE]="";
-	char locRISC[30]="";
-	char precision[30]="", upperAlarmLimit[45]="", lowerAlarmLimit[45]="", upperWarningLimit[45]="", lowerWarningLimit[45]="";
-	char upperCtrlLimit[45]="", lowerCtrlLimit[45]="";
-	char upperDispLimit[45]="", lowerDispLimit[45]="";
-	char enumStrs[MAX_ENUM_STATES][MAX_ENUM_STRING_SIZE], enumNoStr[30]="";
-	char value[LEN_VALUE]; value[0]='\0'; //XXX string size / direct printing
 	bool readAccess, writeAccess;
-	char description[MAX_STRING_SIZE]="", hhSevr[30]="", hSevr[30]="", lSevr[30]="", llSevr[30]="";
 
 
 	for(i=0; i < nChannels; i++){
@@ -1409,15 +1399,13 @@ void cainfoRequest(struct channel *channels, int nChannels){
 		channels[i].type = dbf_type_to_DBR_CTRL(ca_field_type(channels[i].id));
 
 		void *data, *dataDesc, *dataHhsv, *dataHsv, *dataLsv, *dataLlsv;
-		data = malloc(dbr_size_n(channels[i].type, channels[i].count));
-		dataDesc = malloc(dbr_size_n(channels[i].type, 1));
-		dataHhsv = malloc(dbr_size_n(channels[i].type, 1));
-		dataHsv = malloc(dbr_size_n(channels[i].type, 1));
-		dataLsv = malloc(dbr_size_n(channels[i].type, 1));
-		dataLlsv = malloc(dbr_size_n(channels[i].type, 1));
-		if (!data || !dataDesc || !dataHhsv || !dataHsv || !dataLsv || !dataLlsv){
-			fprintf(stderr, "Memory allocation error.");
-		}
+		data = mallocMustSucceed(dbr_size_n(channels[i].type, channels[i].count), "caInfoRequest");
+		dataDesc = mallocMustSucceed(dbr_size_n(channels[i].type, 1), "caInfoRequest");
+		dataHhsv = mallocMustSucceed(dbr_size_n(channels[i].type, 1), "caInfoRequest");
+		dataHsv = mallocMustSucceed(dbr_size_n(channels[i].type, 1), "caInfoRequest");
+		dataLsv = mallocMustSucceed(dbr_size_n(channels[i].type, 1), "caInfoRequest");
+		dataLlsv = mallocMustSucceed(dbr_size_n(channels[i].type, 1), "caInfoRequest");
+
 
 
 		//general ctrl data
@@ -1452,147 +1440,134 @@ void cainfoRequest(struct channel *channels, int nChannels){
 
 		ca_pend_io(arguments.w);
 
+
+		fputc('\n',stdout);
+		fputc('\n',stdout);
+		printf("%s\n", channels[i].name);														//name
+		printf("%s\n", ((struct dbr_sts_string *)dataDesc)->value);								//description
+		printf("\n");
+		printf("    Native DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].id)));	//field type
+		printf("    Number of elements: %ld\n", channels[i].count);								//number of elements
+
+
 		switch (channels[i].type){
 		case DBR_CTRL_INT://and short
-			sprintf(locStat, "%s", epicsAlarmConditionStrings[((struct dbr_ctrl_int *)data)->status]);
-			sprintf(locSev, "%s",epicsAlarmSeverityStrings[((struct dbr_ctrl_int *)data)->severity]);
-			sprintf(locUnits, "%s", ((struct dbr_ctrl_int *)data)->units);
-			sprintf(upperDispLimit, "%d", ((struct dbr_ctrl_int *)data)->upper_disp_limit);
-			sprintf(lowerDispLimit, "%d", ((struct dbr_ctrl_int *)data)->lower_disp_limit);
-			sprintf(upperAlarmLimit, "%d", ((struct dbr_ctrl_int *)data)->upper_alarm_limit);
-			sprintf(lowerAlarmLimit, "%d", ((struct dbr_ctrl_int *)data)->lower_alarm_limit);
-			sprintf(upperWarningLimit, "%d", ((struct dbr_ctrl_int *)data)->upper_warning_limit);
-			sprintf(lowerWarningLimit, "%d", ((struct dbr_ctrl_int *)data)->lower_warning_limit);
-			sprintf(upperCtrlLimit, "%d", ((struct dbr_ctrl_int *)data)->upper_ctrl_limit);
-			sprintf(lowerCtrlLimit, "%d", ((struct dbr_ctrl_int *)data)->lower_ctrl_limit);
-			sprintf(value, "%d", ((struct dbr_ctrl_int *)data)->value);
+			printf("    Value: %" PRId16"\n", ((struct dbr_ctrl_int *)data)->value);					//value
+			printf("    Units: %s\n", ((struct dbr_ctrl_int *)data)->units);					//units
+			fputc('\n',stdout);
+			printf("    Alarm status: %s, severity: %s\n", \
+					epicsAlarmConditionStrings[((struct dbr_ctrl_int *)data)->status], \
+					epicsAlarmSeverityStrings[((struct dbr_ctrl_int *)data)->severity]);		//status and severity
+			fputc('\n',stdout);
+			printf("	Warning upper limit: %" PRId16", lower limit: %"PRId16"\n", \
+					((struct dbr_ctrl_int *)data)->upper_warning_limit, ((struct dbr_ctrl_int *)data)->lower_warning_limit); //warning limits
+			printf("	Alarm upper limit: %" PRId16", lower limit: %" PRId16"\n", \
+					((struct dbr_ctrl_int *)data)->upper_alarm_limit, ((struct dbr_ctrl_int *)data)->lower_alarm_limit); //alarm limits
+			printf("	Control upper limit: %"PRId16", lower limit: %"PRId16"\n", ((struct dbr_ctrl_int *)data)->upper_ctrl_limit,\
+					((struct dbr_ctrl_int *)data)->lower_ctrl_limit);							//control limits
+			printf("	Display upper limit: %"PRId16", lower limit: %"PRId16"\n", ((struct dbr_ctrl_int *)data)->upper_disp_limit,\
+					((struct dbr_ctrl_int *)data)->lower_disp_limit);							//display limits
 			break;
 		case DBR_CTRL_FLOAT:
-			sprintf(locStat, "%s", epicsAlarmConditionStrings[((struct dbr_ctrl_float *)data)->status]);
-			sprintf(locSev, "%s", epicsAlarmSeverityStrings[((struct dbr_ctrl_float *)data)->severity]);
-			sprintf(locUnits, "%s", ((struct dbr_ctrl_float *)data)->units);
-			sprintf(upperDispLimit, "%f", ((struct dbr_ctrl_float *)data)->upper_disp_limit);
-			sprintf(lowerDispLimit, "%f", ((struct dbr_ctrl_float *)data)->lower_disp_limit);
-			sprintf(upperAlarmLimit, "%f", ((struct dbr_ctrl_float *)data)->upper_alarm_limit);
-			sprintf(lowerAlarmLimit, "%f", ((struct dbr_ctrl_float *)data)->lower_alarm_limit);
-			sprintf(upperWarningLimit, "%f", ((struct dbr_ctrl_float *)data)->upper_warning_limit);
-			sprintf(lowerWarningLimit, "%f", ((struct dbr_ctrl_float *)data)->lower_warning_limit);
-			sprintf(upperCtrlLimit, "%f", ((struct dbr_ctrl_float *)data)->upper_ctrl_limit);
-			sprintf(lowerCtrlLimit, "%f", ((struct dbr_ctrl_float *)data)->lower_ctrl_limit);
-			sprintf(precision, "%d", ((struct dbr_ctrl_float *)data)->precision);
-			sprintf(locRISC, "%d", ((struct dbr_ctrl_float *)data)->RISC_pad);
-			sprintf(value, "%f", ((struct dbr_ctrl_float *)data)->value);
+			printf("    Value: %f\n", ((struct dbr_ctrl_float *)data)->value);
+			printf("    Units: %s\n", ((struct dbr_ctrl_float *)data)->units);
+			fputc('\n',stdout);
+			printf("    Alarm status: %s, severity: %s\n", \
+					epicsAlarmConditionStrings[((struct dbr_ctrl_float *)data)->status], \
+					epicsAlarmSeverityStrings[((struct dbr_ctrl_float *)data)->severity]);
+			printf("\n");
+			printf("	Warning upper limit: %f, lower limit: %f\n", \
+					((struct dbr_ctrl_float *)data)->upper_warning_limit, ((struct dbr_ctrl_float *)data)->lower_warning_limit);
+			printf("	Alarm upper limit: %f, lower limit: %f\n", \
+					((struct dbr_ctrl_float *)data)->upper_alarm_limit, ((struct dbr_ctrl_float *)data)->lower_alarm_limit);
+			printf("	Control upper limit: %f, lower limit: %f\n", ((struct dbr_ctrl_float *)data)->upper_ctrl_limit,\
+					((struct dbr_ctrl_float *)data)->lower_ctrl_limit);
+			printf("	Display upper limit: %f, lower limit: %f\n", ((struct dbr_ctrl_float *)data)->upper_disp_limit,\
+					((struct dbr_ctrl_float *)data)->lower_disp_limit);
+			fputc('\n',stdout);
+			printf("	Precision: %"PRId16"\n",((struct dbr_ctrl_float *)data)->precision);
+			printf("	RISC alignment: %"PRId16"\n",((struct dbr_ctrl_float *)data)->RISC_pad);
 			break;
 		case DBR_CTRL_ENUM:
-			sprintf(locStat, "%s", epicsAlarmConditionStrings[((struct dbr_ctrl_enum *)data)->status]);
-			sprintf(locSev, "%s", epicsAlarmSeverityStrings[((struct dbr_ctrl_enum *)data)->severity]);
-			sprintf(enumNoStr, "%d", ((struct dbr_ctrl_enum *)data)->no_str);
+			printf("    Value: %"PRId16"\n", ((struct dbr_ctrl_enum *)data)->value);
+			fputc('\n',stdout);
+			printf("    Alarm status: %s, severity: %s\n", \
+					epicsAlarmConditionStrings[((struct dbr_ctrl_enum *)data)->status], \
+					epicsAlarmSeverityStrings[((struct dbr_ctrl_enum *)data)->severity]);
+
+			printf("	Number of enum strings: %"PRId16"\n", ((struct dbr_ctrl_enum *)data)->no_str);
 			for (j=0; j<((struct dbr_ctrl_enum *)data)->no_str; ++j){
-				sprintf(enumStrs[j], "%s", ((struct dbr_ctrl_enum *)data)->strs[j]);
+				printf("	string %d: %s\n", j, ((struct dbr_ctrl_enum *)data)->strs[j]);
 			}
-			sprintf(value, "%d", ((struct dbr_ctrl_enum *)data)->value);
 			break;
 		case DBR_CTRL_CHAR:
-			sprintf(locStat, "%s", epicsAlarmConditionStrings[((struct dbr_ctrl_char *)data)->status]);
-			sprintf(locSev, "%s", epicsAlarmSeverityStrings[((struct dbr_ctrl_char *)data)->severity]);
-			sprintf(locUnits, "%s", ((struct dbr_ctrl_char *)data)->units);
-			sprintf(upperDispLimit, "%c", ((struct dbr_ctrl_char *)data)->upper_disp_limit);
-			sprintf(lowerDispLimit, "%c", ((struct dbr_ctrl_char *)data)->lower_disp_limit);
-			sprintf(upperAlarmLimit, "%c", ((struct dbr_ctrl_char *)data)->upper_alarm_limit);
-			sprintf(lowerAlarmLimit, "%c", ((struct dbr_ctrl_char *)data)->lower_alarm_limit);
-			sprintf(upperWarningLimit, "%c", ((struct dbr_ctrl_char *)data)->upper_warning_limit);
-			sprintf(lowerWarningLimit, "%c", ((struct dbr_ctrl_char *)data)->lower_warning_limit);
-			sprintf(upperCtrlLimit, "%c", ((struct dbr_ctrl_char *)data)->upper_ctrl_limit);
-			sprintf(lowerCtrlLimit, "%c", ((struct dbr_ctrl_char *)data)->lower_ctrl_limit);
-			sprintf(locRISC, "%c", ((struct dbr_ctrl_char *)data)->RISC_pad);
-			sprintf(value, "%c", ((struct dbr_ctrl_char *)data)->value);
+			printf("    Value: %c\n", ((struct dbr_ctrl_char *)data)->value);
+			printf("    Units: %s\n", ((struct dbr_ctrl_char *)data)->units);
+			fputc('\n',stdout);
+			printf("    Alarm status: %s, severity: %s\n", \
+					epicsAlarmConditionStrings[((struct dbr_ctrl_char *)data)->status], \
+					epicsAlarmSeverityStrings[((struct dbr_ctrl_char *)data)->severity]);
+			printf("\n");
+			printf("	Warning upper limit: %c, lower limit: %c\n", \
+					((struct dbr_ctrl_char *)data)->upper_warning_limit, ((struct dbr_ctrl_char *)data)->lower_warning_limit);
+			printf("	Alarm upper limit: %c, lower limit: %c\n", \
+					((struct dbr_ctrl_char *)data)->upper_alarm_limit, ((struct dbr_ctrl_char *)data)->lower_alarm_limit);
+			printf("	Control upper limit: %c, lower limit: %c\n", ((struct dbr_ctrl_char *)data)->upper_ctrl_limit,\
+					((struct dbr_ctrl_char *)data)->lower_ctrl_limit);
+			printf("	Display upper limit: %c, lower limit: %c\n", ((struct dbr_ctrl_char *)data)->upper_disp_limit,\
+					((struct dbr_ctrl_char *)data)->lower_disp_limit);
 			break;
 		case DBR_CTRL_LONG:
-			sprintf(locStat, "%s", epicsAlarmConditionStrings[((struct dbr_ctrl_long *)data)->status]);
-			sprintf(locSev, "%s", epicsAlarmSeverityStrings[((struct dbr_ctrl_long *)data)->severity]);
-			sprintf(locUnits, "%s", ((struct dbr_ctrl_long *)data)->units);
-			sprintf(upperDispLimit, "%d", ((struct dbr_ctrl_long *)data)->upper_disp_limit);
-			sprintf(lowerDispLimit, "%d", ((struct dbr_ctrl_long *)data)->lower_disp_limit);
-			sprintf(upperAlarmLimit, "%d", ((struct dbr_ctrl_long *)data)->upper_alarm_limit);
-			sprintf(lowerAlarmLimit, "%d", ((struct dbr_ctrl_long *)data)->lower_alarm_limit);
-			sprintf(upperWarningLimit, "%d", ((struct dbr_ctrl_long *)data)->upper_warning_limit);
-			sprintf(lowerWarningLimit, "%d", ((struct dbr_ctrl_long *)data)->lower_warning_limit);
-			sprintf(upperCtrlLimit, "%d", ((struct dbr_ctrl_long *)data)->upper_ctrl_limit);
-			sprintf(lowerCtrlLimit, "%d", ((struct dbr_ctrl_long *)data)->lower_ctrl_limit);
-			sprintf(value, "%d", ((struct dbr_ctrl_long *)data)->value);
+			printf("    Value: %"PRId32"\n", ((struct dbr_ctrl_long *)data)->value);
+			printf("    Units: %s\n", ((struct dbr_ctrl_long *)data)->units);
+			fputc('\n',stdout);
+			printf("    Alarm status: %s, severity: %s\n", \
+					epicsAlarmConditionStrings[((struct dbr_ctrl_long *)data)->status], \
+					epicsAlarmSeverityStrings[((struct dbr_ctrl_long *)data)->severity]);
+			fputc('\n',stdout);
+			printf("	Warning upper limit: %"PRId32", lower limit: %"PRId32"\n", \
+					((struct dbr_ctrl_long *)data)->upper_warning_limit, ((struct dbr_ctrl_long *)data)->lower_warning_limit);
+			printf("	Alarm upper limit: %"PRId32", lower limit: %"PRId32"\n", \
+					((struct dbr_ctrl_long *)data)->upper_alarm_limit, ((struct dbr_ctrl_long *)data)->lower_alarm_limit);
+			printf("	Control upper limit: %"PRId32", lower limit: %"PRId32"\n", ((struct dbr_ctrl_long *)data)->upper_ctrl_limit,\
+					((struct dbr_ctrl_long *)data)->lower_ctrl_limit);
+			printf("	Display upper limit: %"PRId32", lower limit: %"PRId32"\n", ((struct dbr_ctrl_long *)data)->upper_disp_limit,\
+					((struct dbr_ctrl_long *)data)->lower_disp_limit);
 			break;
 		case DBR_CTRL_DOUBLE:
-			sprintf(locStat, "%s", epicsAlarmConditionStrings[((struct dbr_ctrl_double *)data)->status]);
-			sprintf(locSev, "%s", epicsAlarmSeverityStrings[((struct dbr_ctrl_double *)data)->severity]);
-			sprintf(locUnits, "%s", ((struct dbr_ctrl_double *)data)->units);
-			sprintf(upperDispLimit, "%lf", ((struct dbr_ctrl_double *)data)->upper_disp_limit);
-			sprintf(lowerDispLimit, "%lf", ((struct dbr_ctrl_double *)data)->lower_disp_limit);
-			sprintf(upperAlarmLimit, "%lf", ((struct dbr_ctrl_double *)data)->upper_alarm_limit);
-			sprintf(lowerAlarmLimit, "%lf", ((struct dbr_ctrl_double *)data)->lower_alarm_limit);
-			sprintf(upperWarningLimit, "%lf", ((struct dbr_ctrl_double *)data)->upper_warning_limit);
-			sprintf(lowerWarningLimit, "%lf", ((struct dbr_ctrl_double *)data)->lower_warning_limit);
-			sprintf(upperCtrlLimit, "%lf", ((struct dbr_ctrl_double *)data)->upper_ctrl_limit);
-			sprintf(lowerCtrlLimit, "%lf", ((struct dbr_ctrl_double *)data)->lower_ctrl_limit);
-			sprintf(precision, "%d", ((struct dbr_ctrl_double *)data)->precision);
-			sprintf(locRISC, "%d", ((struct dbr_ctrl_double *)data)->RISC_pad0);
-			sprintf(value, "%lf", ((struct dbr_ctrl_double *)data)->value);
+			printf("    Value: %f\n", ((struct dbr_ctrl_double *)data)->value);
+			printf("    Units: %s\n", ((struct dbr_ctrl_double *)data)->units);
+			fputc('\n',stdout);
+			printf("    Alarm status: %s, severity: %s\n", \
+					epicsAlarmConditionStrings[((struct dbr_ctrl_double *)data)->status], \
+					epicsAlarmSeverityStrings[((struct dbr_ctrl_double *)data)->severity]);
+			fputc('\n',stdout);
+			printf("	Warning upper limit: %f, lower limit: %f\n", \
+					((struct dbr_ctrl_double *)data)->upper_warning_limit, ((struct dbr_ctrl_double *)data)->lower_warning_limit);
+			printf("	Alarm upper limit: %f, lower limit: %f\n", \
+					((struct dbr_ctrl_double *)data)->upper_alarm_limit, ((struct dbr_ctrl_double *)data)->lower_alarm_limit);
+			printf("	Control upper limit: %f, lower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_ctrl_limit,\
+					((struct dbr_ctrl_double *)data)->lower_ctrl_limit);
+			printf("	Display upper limit: %f, lower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_disp_limit,\
+					((struct dbr_ctrl_double *)data)->lower_disp_limit);
+			fputc('\n',stdout);
+			printf("	Precision: %"PRId16"\n",((struct dbr_ctrl_double *)data)->precision);
+			printf("	RISC alignment: %"PRId16"\n",((struct dbr_ctrl_double *)data)->RISC_pad0);
 			break;
 		}
+
+		fputc('\n',stdout);
+		printf("	HIHI alarm severity: %s\n", ((struct dbr_sts_string *)dataHhsv)->value);		//severities
+		printf("	HIGH alarm severity: %s\n", ((struct dbr_sts_string *)dataHsv)->value);
+		printf("	LOW alarm severity: %s\n", ((struct dbr_sts_string *)dataLsv)->value);
+		printf("	LOLO alarm severity: %s\n", ((struct dbr_sts_string *)dataLlsv)->value);
+		fputc('\n',stdout);
 
 		readAccess = ca_read_access(channels[i].id);
 		writeAccess = ca_write_access(channels[i].id);
 
-		sprintf(description, "%s", ((struct dbr_sts_string *)dataDesc)->value);
-		sprintf(hhSevr, "%s", ((struct dbr_sts_string *)dataHhsv)->value);
-		sprintf(hSevr, "%s", ((struct dbr_sts_string *)dataHsv)->value);
-		sprintf(lSevr, "%s", ((struct dbr_sts_string *)dataLsv)->value);
-		sprintf(llSevr, "%s", ((struct dbr_sts_string *)dataLlsv)->value);
-
-
-		//print everything
-		printf("\n");
-		printf("\n");
-		printf("%s\n", channels[i].name);
-		printf("%s\n\n", description);
-		printf("	Number of elements: %ld\n", channels[i].count);
-		printf("	Value: %s\n", value);
-		if (channels[i].type != DBR_CTRL_ENUM) {
-			printf("	Units: %s\n", locUnits);
-		}
-		printf("	Alarm status: %s, severity: %s\n", locStat, locSev);
-		printf("\n");
-		printf("	Native DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].id)));
-		printf("\n");
-		if (channels[i].type != DBR_CTRL_ENUM){
-			printf("	Warning upper limit: %s, lower limit: %s\n", locStat, locSev);
-			printf("	Alarm upper limit: %s, lower limit: %s\n", upperAlarmLimit, lowerAlarmLimit);
-			printf("	Control upper limit: %s, lower limit: %s\n", upperCtrlLimit, lowerCtrlLimit);
-			printf("	Display upper limit: %s, lower limit: %s\n", upperWarningLimit, lowerWarningLimit);
-
-			printf("\n");
-			printf("	HIHI alarm severity: %s\n", hhSevr);
-			printf("	HIGH alarm severity: %s\n", hSevr);
-			printf("	LOW alarm severity: %s\n", lSevr);
-			printf("	LOLO alarm severity: %s\n", llSevr);
-			printf("\n");
-
-			if (channels[i].type == DBR_CTRL_FLOAT || DBR_CTRL_DOUBLE){
-				printf("	Precision: %s\n",precision);
-			}
-
-			if (channels[i].type == DBR_CTRL_FLOAT || channels[i].type == DBR_CTRL_DOUBLE || channels[i].type == DBR_CTRL_CHAR){
-				printf("	RISC alignment: %s\n",locRISC);
-			}
-		}
-		else if (channels[i].type == DBR_CTRL_ENUM){
-			printf("	Number of enum strings: %s\n",enumNoStr);
-			for (j=0; j<((struct dbr_ctrl_enum *)data)->no_str; ++j){
-				printf("	string %d: %s\n", j, enumStrs[j]);
-			}
-		}
-		printf("\n");
-		printf("	IOC name: %s\n", ca_host_name(channels[i].id));
-		printf("	Read access: "); if(readAccess) printf("yes\n"); else printf("no\n");
+		printf("	IOC name: %s\n", ca_host_name(channels[i].id));									//host name
+		printf("	Read access: "); if(readAccess) printf("yes\n"); else printf("no\n");			//read and write access
 		printf("	Write access: "); if(writeAccess) printf("yes\n"); else printf("no\n");
 
 
@@ -2071,24 +2046,19 @@ int main ( int argc, char ** argv )
     }
 
     //allocate memory for channel structures
-    channels = (struct channel *) calloc (nChannels, sizeof(struct channel));
+    channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "main");
     if (!channels) {
     	fprintf(stderr, "Memory allocation for channel structures failed.\n");
     	return EXIT_FAILURE;
     }
     for (i=0;i<nChannels;++i){
-    	channels[i].procName = calloc (LEN_RECORD_NAME, sizeof(char));
-    	channels[i].descName = calloc (LEN_RECORD_NAME, sizeof(char));
-    	channels[i].hhsvName = calloc (LEN_RECORD_NAME, sizeof(char));
-    	channels[i].hsvName = calloc (LEN_RECORD_NAME, sizeof(char));
-    	channels[i].lsvName = calloc (LEN_RECORD_NAME, sizeof(char));
-    	channels[i].llsvName = calloc (LEN_RECORD_NAME, sizeof(char));
+    	channels[i].procName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");//5 spaces for .(field name)
+    	channels[i].descName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].hhsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].hsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].lsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
         //name and condition strings dont have to be allocated because they merely point somewhere else
-    	if (!channels[i].procName || !channels[i].descName || !channels[i].hhsvName || \
-    			!channels[i].hsvName || !channels[i].lsvName || !channels[i].llsvName ) {
-    		fprintf(stderr, "Memory allocation for channel structures failed.\n");
-    		return EXIT_FAILURE;
-    	}
     }
 
 
@@ -2101,11 +2071,7 @@ int main ( int argc, char ** argv )
 
         if (arguments.tool == caput || arguments.tool == caputq){
         	if (arguments.inNelm > 1){ //treat next nelm arguments as values
-        		channels[i].writeStr = calloc (arguments.inNelm*MAX_STRING_SIZE, sizeof(char));
-        		if (!channels[i].writeStr ) {
-        			fprintf(stderr, "Memory allocation for channel structures failed.\n");
-        			return EXIT_FAILURE;
-        		}
+        		channels[i].writeStr = callocMustSucceed (arguments.inNelm*MAX_STRING_SIZE, sizeof(char), "main");
 
 				for (j=0; j<arguments.inNelm; ++j){
 					int charsToWrite = snprintf(&channels[i].writeStr[j*MAX_STRING_SIZE], MAX_STRING_SIZE, "%s", argv[optind+1]);
@@ -2122,7 +2088,7 @@ int main ( int argc, char ** argv )
         		}
         		count+=1;
         		//and use it to allocate the string
-        		channels[i].writeStr = calloc (count *MAX_STRING_SIZE, sizeof(char));
+        		channels[i].writeStr = callocMustSucceed (count *MAX_STRING_SIZE, sizeof(char), "main");
         		if (!channels[i].writeStr ) {
         			fprintf(stderr, "Memory allocation for channel structures failed.\n");
         			return EXIT_FAILURE;
@@ -2156,19 +2122,25 @@ int main ( int argc, char ** argv )
         }
         else if(arguments.tool == cagets || arguments.tool == cado){
 
+        	size_t lenName = strlen(channels[i].name);
+        	assert (lenName < LEN_RECORD_NAME );
+
         	strcpy(channels[i].procName, channels[i].name);
 
         	//append .PROC
-        	if (strcmp(&channels[i].procName[strlen(channels[i].procName) - 4], ".VAL") == 0){
+        	if (lenName > 4 && strcmp(&channels[i].procName[lenName - 4], ".VAL") == 0){
         		//if last 4 elements equal .VAL, replace them
-        		strcpy(&channels[i].procName[strlen(channels[i].procName) - 4],".PROC");
+        		strcpy(&channels[i].procName[lenName - 4],".PROC");
         	}
         	else{
         		//otherwise simply append
-        		strcat(&channels[i].procName[strlen(channels[i].procName)],".PROC");
+        		strcat(&channels[i].procName[lenName],".PROC");
         	}
         }
         else if(arguments.tool == cainfo){
+        	size_t lenName = strlen(channels[i].name);
+        	assert (lenName < LEN_RECORD_NAME );
+
         	strcpy(channels[i].descName, channels[i].name);
         	strcpy(channels[i].hhsvName, channels[i].name);
         	strcpy(channels[i].hsvName, channels[i].name);
@@ -2176,13 +2148,13 @@ int main ( int argc, char ** argv )
         	strcpy(channels[i].llsvName, channels[i].name);
 
         	//append .DESC, .HHSV, .HSV, .LSV, .LLSV
-        	if (strcmp(&channels[i].name[strlen(channels[i].name) - 4], ".VAL") == 0){
+        	if (lenName > 4 && strcmp(&channels[i].name[lenName- 4], ".VAL") == 0){
         		//if last 4 elements equal .VAL, replace them
-        		strcpy(&channels[i].descName[strlen(channels[i].descName) - 4],".DESC");
-        		strcpy(&channels[i].hhsvName[strlen(channels[i].hhsvName) - 4],".HHSV");
-        		strcpy(&channels[i].hsvName[strlen(channels[i].hsvName) - 4],".HSV");
-        		strcpy(&channels[i].lsvName[strlen(channels[i].lsvName) - 4],".LSV");
-        		strcpy(&channels[i].llsvName[strlen(channels[i].llsvName) - 4],".LLSV");
+        		strcpy(&channels[i].descName[lenName - 4],".DESC");
+        		strcpy(&channels[i].hhsvName[lenName - 4],".HHSV");
+        		strcpy(&channels[i].hsvName[lenName - 4],".HSV");
+        		strcpy(&channels[i].lsvName[lenName - 4],".LSV");
+        		strcpy(&channels[i].llsvName[lenName - 4],".LLSV");
         	}
         	else{
         		//otherwise simply append
@@ -2202,46 +2174,36 @@ int main ( int argc, char ** argv )
 
 
     //allocate memory for output strings
-	outValue = malloc(nChannels * sizeof(char *));
-	outDate = malloc(nChannels * sizeof(char *));
-	outTime = malloc(nChannels * sizeof(char *));
-	outSev = malloc(nChannels * sizeof(char *));
-	outStat = malloc(nChannels * sizeof(char *));
-	outUnits = malloc(nChannels * sizeof(char *));
-	outTimestamp = malloc(nChannels * sizeof(char *));
-	outLocalDate = malloc(nChannels * sizeof(char *));
-	outLocalTime = malloc(nChannels * sizeof(char *));
-	outEnumStrs = malloc(nChannels * sizeof(char **));
-	numEnumStrs = malloc(nChannels * sizeof(unsigned int));
-	if (!outValue || !outDate || !outTime || !outSev || !outStat || !outUnits || !outTimestamp || !outEnumStrs || !numEnumStrs){
-		fprintf(stderr, "Memory allocation error.\n");
-	}
+	outValue = mallocMustSucceed(nChannels * sizeof(char *),"main");
+	outDate = mallocMustSucceed(nChannels * sizeof(char *),"main");
+	outTime = mallocMustSucceed(nChannels * sizeof(char *),"main");
+	outSev = mallocMustSucceed(nChannels * sizeof(char *),"main");
+	outStat = mallocMustSucceed(nChannels * sizeof(char *),"main");
+	outUnits = mallocMustSucceed(nChannels * sizeof(char *),"main");
+	outTimestamp = mallocMustSucceed(nChannels * sizeof(char *),"main");
+	outLocalDate = mallocMustSucceed(nChannels * sizeof(char *),"main");
+	outLocalTime = mallocMustSucceed(nChannels * sizeof(char *),"main");
+	outEnumStrs = mallocMustSucceed(nChannels * sizeof(char **),"main");
+	numEnumStrs = mallocMustSucceed(nChannels * sizeof(unsigned int),"main");
 	for(i = 0; i < nChannels; i++){
-		outValue[i] = malloc(LEN_VALUE * sizeof(char));
-		outDate[i] = malloc(LEN_TIMESTAMP * sizeof(char));
-		outTime[i] = malloc(LEN_TIMESTAMP * sizeof(char));
-		outSev[i] = malloc(LEN_SEVSTAT * sizeof(char));
-		outStat[i] = malloc(LEN_SEVSTAT * sizeof(char));
-		outUnits[i] = malloc(LEN_UNITS * sizeof(char));
-		outTimestamp[i] = malloc(LEN_TIMESTAMP * sizeof(char));
-		outLocalDate[i] = malloc(LEN_TIMESTAMP * sizeof(char));
-		outLocalTime[i] = malloc(LEN_TIMESTAMP * sizeof(char));
-		outEnumStrs[i] = malloc(MAX_ENUM_STATES * sizeof(char *));
-		if (!outValue[i] || !outDate[i] || !outTime[i] || !outSev[i] || !outStat[i] ||\
-				!outUnits[i] || !outTimestamp[i] || !outDate[i] || !outTime[i]){
-			fprintf(stderr, "Memory allocation error.\n");
-		}
+		outValue[i] = mallocMustSucceed(LEN_VALUE * sizeof(char),"main");
+		outDate[i] = mallocMustSucceed(LEN_TIMESTAMP * sizeof(char),"main");
+		outTime[i] = mallocMustSucceed(LEN_TIMESTAMP * sizeof(char),"main");
+		outSev[i] = mallocMustSucceed(LEN_SEVSTAT * sizeof(char),"main");
+		outStat[i] = mallocMustSucceed(LEN_SEVSTAT * sizeof(char),"main");
+		outUnits[i] = mallocMustSucceed(LEN_UNITS * sizeof(char),"main");
+		outTimestamp[i] = mallocMustSucceed(LEN_TIMESTAMP * sizeof(char),"main");
+		outLocalDate[i] = mallocMustSucceed(LEN_TIMESTAMP * sizeof(char),"main");
+		outLocalTime[i] = mallocMustSucceed(LEN_TIMESTAMP * sizeof(char),"main");
+		outEnumStrs[i] = mallocMustSucceed(MAX_ENUM_STATES * sizeof(char *),"main");
 		for (j=0; j < MAX_ENUM_STATES; ++j){
-			outEnumStrs[i][j] = malloc(MAX_ENUM_STRING_SIZE * sizeof(char));
+			outEnumStrs[i][j] = mallocMustSucceed(MAX_ENUM_STRING_SIZE * sizeof(char),"main");
 		}
 	}
 	//memory for timestamp
-	timestampRead = malloc(nChannels * sizeof(epicsTimeStamp));
-	if (!timestampRead) fprintf(stderr, "Memory allocation error.\n");
-	lastUpdate = malloc(nChannels * sizeof(epicsTimeStamp));
-	if (!lastUpdate) fprintf(stderr, "Memory allocation error.\n");
-	firstUpdate = malloc(nChannels * sizeof(bool));
-	if (!firstUpdate) fprintf(stderr, "Memory allocation error.\n");
+	timestampRead = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
+	lastUpdate = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
+	firstUpdate = mallocMustSucceed(nChannels * sizeof(bool),"main");
 
     if(caInit(channels, nChannels) != EXIT_SUCCESS) return EXIT_FAILURE;
 
