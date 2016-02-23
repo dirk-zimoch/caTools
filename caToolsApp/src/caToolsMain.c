@@ -440,10 +440,10 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
 		dblValue = (double) *(float*)nativeValue;
 		break;
 	case DBR_INT:
-		dblValue = (double) *(int*)nativeValue;
+		dblValue = (double) *(int16_t*)nativeValue;
 		break;
 	case DBR_LONG:
-		dblValue = (double) *(long*)nativeValue;
+		dblValue = (double) *(int32_t*)nativeValue;
 		break;
 	case DBR_CHAR:
 	case DBR_STRING:
@@ -468,11 +468,11 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
 	case lt:
 		return dblValue < channel.conditionOperands[0];
 	case lte:
-		return dblValue >= channel.conditionOperands[0];
+		return dblValue <= channel.conditionOperands[0];
 	case eq:
 		return dblValue == channel.conditionOperands[0];
 	case neq:
-		return dblValue == channel.conditionOperands[0];
+		return dblValue != channel.conditionOperands[0];
 	case in:
 		return (dblValue >= channel.conditionOperands[0]) && (dblValue <= channel.conditionOperands[1]);
 	case out:
@@ -752,49 +752,10 @@ static void caReadCallback2 (evargs args){
 }
 
 
-void epicsTimeAddFull(epicsTimeStamp *ts, double addend){
-//adds a double to epicsTimeStamp. If double is negative, subtraction is performed.
-//The result should never be zero; in case the provided double is this far in the
-//negative the result is set to zero.
-
-	int seconds = (int)addend;
-	int nanoseconds = ((int)(addend*1000000000ul) % 1000000000ul);
-
-	if (addend >=0) {//addition
-		ts->secPastEpoch += seconds;
-		ts->nsec += nanoseconds;
-
-		if (ts->nsec >= 1000000000ul){//overflow
-			ts->secPastEpoch += 1;
-			ts->nsec %= 1000000000ul;
-		}
-	}
-	else{//subtraction
-		//first check if we want to subtract too much
-		if (ts->secPastEpoch < seconds \
-				|| (ts->secPastEpoch <= seconds+1 && ts->nsec < nanoseconds)){
-			ts->secPastEpoch = 0;
-			ts->nsec += 0;
-		}
-		else{
-			if (ts->nsec >= nanoseconds){
-				ts->secPastEpoch += seconds;
-				ts->nsec += nanoseconds;
-			}
-			else{//overflow
-				ts->secPastEpoch += seconds - 1;
-				ts->nsec += nanoseconds + 1000000000ul;
-			}
-		}
-	}
-
-}
-
-
 
 bool epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp *pLeft, const epicsTimeStamp *pRight){
-// Calculates difference between two epicsTimeStamps: like epicsTimeDiffInSeconds but also taking nanoseconds
-//into account. The absolute value of the difference pLeft - pRight is saved to the timestamp diff, and the
+// Calculates difference between two epicsTimeStamps: like epicsTimeDiffInSeconds but returning the answer
+//in form of a timestamp. The absolute value of the difference pLeft - pRight is saved to the timestamp diff, and the
 //returned value indicates if the said difference is negative.
 	bool negative = epicsTimeLessThan(pLeft, pRight);
 	if (negative) { //switch left and right
@@ -1088,7 +1049,7 @@ static void caReadCallback (evargs args){
 
 		numMonitorUpdates++;	//increase counter of updates
 
-		//check stop conditions fom -n (camon)
+		//check stop conditions for -n (camon)
 		if (arguments.tool == camon && arguments.numUpdates != -1 && numMonitorUpdates >= arguments.numUpdates){
 			runMonitor = false;
 		}
@@ -1115,7 +1076,7 @@ static void caReadCallback (evargs args){
 				epicsTimeGetCurrent(&timeoutTime);
 				validateTimestamp(timeoutTime, "timeout time");
 
-				epicsTimeAddFull(&timeoutTime, arguments.timeout);
+				epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
 			}
 
 		}
@@ -1124,32 +1085,8 @@ static void caReadCallback (evargs args){
 	}
 
 
-    //print output, make another ca request if not all info is available
-	//special case: enum
-	if ((args.type == DBR_STS_STRING || args.type == DBR_TIME_STRING) && (arguments.num || arguments.bin || arguments.hex || arguments.oct) \
-			&& ca_field_type(ch->id) == DBF_ENUM && !monitor){
-		//special case 1: field type is enum, dbr type is string, and number is requested.
-		//to obtain value number, another request is needed.
-		status = ca_array_get_callback(DBR_TIME_ENUM, ch->outNelm, ch->id, caReadCallback2, ch);
-		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
-
-		status = ca_flush_io();
-		if(status != ECA_NORMAL) fprintf (stderr,"Problem flushing channel %s.\n", ch->name);
-		//ch->done is set by enum2string callback.
-	}
-	else if (args.type >= DBR_STS_SHORT && args.type <= DBR_TIME_DOUBLE \
-			&& arguments.s && ca_field_type(ch->id) == DBF_ENUM && !monitor){
-		//special case 2: field type is enum, dbr type is time or sts but not string, and string is requested.
-		//we already have time, but to obtain value in the form of string, another request is needed.
-
-		status = ca_array_get_callback(DBR_GR_ENUM, ch->outNelm, ch->id, caReadCallback2, ch);
-		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
-
-		status = ca_flush_io();
-		if(status != ECA_NORMAL) fprintf (stderr,"Problem flushing channel %s.\n", ch->name);
-		//ch->done and printing is set by callback2.
-	}
-	else if (args.type >= DBR_STS_SHORT && args.type <= DBR_TIME_DOUBLE && !arguments.nounit && !monitor){
+    //print output, make another ca request if not all info is available (except if DBR type was requested by the user)
+	if (args.type <= DBR_TIME_DOUBLE && !arguments.nounit && !monitor && arguments.d == -1){
 		//special case 3: time was requested which does not have units info. Another request is needed to get it.
 		unsigned int baseType = args.type % (LAST_TYPE+1);
 		status = ca_array_get_callback(dbf_type_to_DBR_GR(baseType), ch->outNelm, ch->id, caReadCallback2, ch);
@@ -1272,6 +1209,9 @@ void caRequest(struct channel *channels, int nChannels){
         if (arguments.d == -1){   //if DBR type not specified, use native and decide based on desired level of detail.
 
         	if (arguments.time || arguments.date || arguments.timestamp){
+        		if (arguments.s && ca_field_type(channels[i].id) == DBF_ENUM){
+        			channels[i].type = DBR_TIME_STRING;
+        		}
             	channels[i].type = dbf_type_to_DBR_TIME(ca_field_type(channels[i].id));
         	}
         	else{	//default: GR
@@ -1302,7 +1242,7 @@ void caRequest(struct channel *channels, int nChannels){
 	    		//set first timeout
 	    		epicsTimeGetCurrent(&timeoutTime);
 	    		validateTimestamp(timeoutTime, "timeout");
-				epicsTimeAddFull(&timeoutTime, arguments.timeout);
+				epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
 	    	}
         }
         else if (arguments.tool == caput || arguments.tool == caputq){
