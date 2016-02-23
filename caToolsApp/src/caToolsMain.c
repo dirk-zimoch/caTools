@@ -991,7 +991,13 @@ static void caReadCallback (evargs args){
             units_get_cb(dbr_ctrl_double);
             precision_get(dbr_ctrl_double);
             break;
-
+        case DBR_STRING://dont print the warning if any of these
+        case DBR_SHORT:
+        case DBR_FLOAT:
+        case DBR_ENUM:
+        case DBR_CHAR:
+        case DBR_LONG:
+        case DBR_DOUBLE: break;
         default :
             printf("Can not print %s DBR type. \n", dbr_type_to_text(args.type));
             break;
@@ -1726,9 +1732,7 @@ int main ( int argc, char ** argv )
         			dbr_text_to_type(str, arguments.d);
         		}
         	}
-        	if (arguments.d < DBR_STRING    || arguments.d > DBR_CLASS_NAME
-        			|| arguments.d == DBR_PUT_ACKT || arguments.d == DBR_PUT_ACKS)
-        	{
+        	if (arguments.d < DBR_STRING    || arguments.d > DBR_CTRL_DOUBLE){
         		fprintf(stderr, "Requested dbr type out of range "
         				"or invalid - ignored. ('%s -h' for help.)\n", argv[0]);
         		arguments.d = -1;
@@ -2123,7 +2127,7 @@ int main ( int argc, char ** argv )
         else if(arguments.tool == cagets || arguments.tool == cado){
 
         	size_t lenName = strlen(channels[i].name);
-        	assert (lenName < LEN_RECORD_NAME );
+        	assert (lenName < LEN_RECORD_NAME + 4); //worst case scenario: longest name + .VAL
 
         	strcpy(channels[i].procName, channels[i].name);
 
@@ -2139,7 +2143,7 @@ int main ( int argc, char ** argv )
         }
         else if(arguments.tool == cainfo){
         	size_t lenName = strlen(channels[i].name);
-        	assert (lenName < LEN_RECORD_NAME );
+        	assert (lenName < LEN_RECORD_NAME + 4);//worst case scenario: longest name + .VAL
 
         	strcpy(channels[i].descName, channels[i].name);
         	strcpy(channels[i].hhsvName, channels[i].name);
