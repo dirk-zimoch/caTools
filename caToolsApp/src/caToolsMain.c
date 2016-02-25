@@ -177,6 +177,12 @@ severity = ((struct T *)args.dbr)->severity;
 #define units_get_cb(T) sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
 #define units_get_mon(T) sprintf(outUnits[channel.i], "%s", ((struct T *)data)->units);
 #define precision_get(T) precision = (((struct T *)args.dbr)->precision);
+#define enum_strs_get_cb(T) {\
+	int j;\
+	for (j=0; j<MAX_ENUM_STATES; ++j){\
+		strcpy(outEnumStrs[ch->i][j], ((struct T *)args.dbr)->strs[j]);\
+	}\
+	numEnumStrs[ch->i] = ((struct T *)args.dbr)->no_str; }
 
 void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 
@@ -566,9 +572,9 @@ int printValue(int i, evargs args, int precision){
 
     		if (!arguments.num && !arguments.bin && !arguments.hex && !arguments.oct) { // if not requested as a number check if we can get string
 
-        		//if monitor we reuse strings from before
+        		//if monitor or time with .s we reuse strings from before
         		bool monitor = (arguments.tool == camon || arguments.tool == cawait);
-        		if (monitor){
+        		if (monitor || (dbr_type_is_TIME(args.type) && arguments.s)){
     				if (v >= numEnumStrs[i]) {
     					fprintf(stderr, "Enum index value '%d' greater than the number of strings.\n", v);
     				}
@@ -702,55 +708,6 @@ int printOutput(int i, evargs args, int precision){
 
 
 
-static void caReadCallback2 (evargs args){
-//callback function which serves to provide additional data in cases where two ca_get requests are
-//needed in order to obtain all necessary information. This function is called executed if either units
-//are missing from the first callback, or enum value received is of wrong type (string/number).
-
-
-	//check if data was returned
-	if (args.status != ECA_NORMAL){
-		fprintf(stderr, "CA error %s occurred while trying to start channel access.\n", ca_message(args.status));
-		return;
-	}
-    struct channel *ch = (struct channel *)args.usr; 	//the channel to which this callback belongs
-
-    //if we got here, we probably don't have units, so we need to extract them now.
-    //precision needs to be extracted again because it is not global.
-    int precision=-1;
-    switch (args.type) {
-    case DBR_GR_SHORT:    // and DBR_GR_INT
-    	units_get_cb(dbr_gr_short);
-    	break;
-
-    case DBR_GR_FLOAT:
-    	units_get_cb(dbr_gr_float);
-    	precision_get(dbr_gr_float);
-    	break;
-
-    case DBR_GR_CHAR:
-    	units_get_cb(dbr_gr_char);
-    	break;
-
-    case DBR_GR_LONG:
-    	units_get_cb(dbr_gr_long);
-    	break;
-
-    case DBR_GR_DOUBLE:
-    	units_get_cb(dbr_gr_double);
-    	precision_get(dbr_gr_double);
-    	break;
-
-    }
-
-
-	//finish
-	ch->done = true;
-	printOutput(ch->i, args, precision);
-}
-
-
-
 bool epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp *pLeft, const epicsTimeStamp *pRight){
 // Calculates difference between two epicsTimeStamps: like epicsTimeDiffInSeconds but returning the answer
 //in form of a timestamp. The absolute value of the difference pLeft - pRight is saved to the timestamp diff, and the
@@ -851,16 +808,18 @@ static void caReadCallback (evargs args){
     int precision=-1;
     unsigned int status=0, severity=0;
 
-
-	//clear global output strings; the purpose of this callback is to overwrite them
-    outDate[ch->i][0]='\0';
-    outSev[ch->i][0]='\0';
-    outStat[ch->i][0]='\0';
-    outValue[ch->i][0]='\0';
-    outLocalDate[ch->i][0]='\0';
-    outLocalTime[ch->i][0]='\0';
-    if(!monitor) outUnits[ch->i][0]='\0';
-
+	//clear global output strings if monitor; the purpose of this callback is to overwrite them
+    //if !monitor, they should not be cleared; on the first pass they are already empty because
+    //of calloc, on the potential second pass we want to keep them.
+    if (monitor){
+    	outDate[ch->i][0]='\0';
+    	outSev[ch->i][0]='\0';
+    	outStat[ch->i][0]='\0';
+    	outValue[ch->i][0]='\0';
+    	outLocalDate[ch->i][0]='\0';
+    	outLocalTime[ch->i][0]='\0';
+    	outUnits[ch->i][0]='\0';
+    }
 
     //read requested data
     switch (args.type) {
@@ -1086,24 +1045,27 @@ static void caReadCallback (evargs args){
 
 		}
 
-
 	}
 
 
     //print output, make another ca request if not all info is available (except if DBR type was requested by the user)
-	if (args.type <= DBR_TIME_DOUBLE && !arguments.nounit && !monitor && arguments.d == -1){
-		//special case 3: time was requested which does not have units info. Another request is needed to get it.
+	if (args.type > DBR_TIME_DOUBLE && (arguments.time || arguments.date) && !monitor && arguments.d == -1){
+		//time was requested, but this call doesn't provide it. This means we just got metadata, another request is needed to get time&value.
+		//special case: if type=enum and string was requested, we also need to remember strs, because time struct does not contain them.
+		if (arguments.s){
+			if (args.type == DBR_GR_ENUM) { enum_strs_get_cb(dbr_gr_enum); }
+			else if (args.type == DBR_CTRL_ENUM) { enum_strs_get_cb(dbr_ctrl_enum); }
+		}
+
 		unsigned int baseType = args.type % (LAST_TYPE+1);
-		status = ca_array_get_callback(dbf_type_to_DBR_GR(baseType), ch->outNelm, ch->id, caReadCallback2, ch);
+		status = ca_array_get_callback(dbf_type_to_DBR_TIME(baseType), ch->outNelm, ch->id, caReadCallback, ch);
 		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
 
 		status = ca_flush_io();
 		if(status != ECA_NORMAL) fprintf (stderr,"Problem flushing channel %s.\n", ch->name);
-		//ch->done and printing is set by callback2.
 	}
-	else{ //printf output as usual
+	else{ //finish
 		printOutput(ch->i, args, precision);
-		//finish
 		ch->done = true;
 	}
 }
@@ -1211,17 +1173,9 @@ void caRequest(struct channel *channels, int nChannels){
 
         channels[i].done = false;
 
-        if (arguments.d == -1){   //if DBR type not specified, use native and decide based on desired level of detail.
-
-        	if (arguments.time || arguments.date || arguments.timestamp){
-        		if (arguments.s && ca_field_type(channels[i].id) == DBF_ENUM){
-        			channels[i].type = DBR_TIME_STRING;
-        		}
-            	channels[i].type = dbf_type_to_DBR_TIME(ca_field_type(channels[i].id));
-        	}
-        	else{	//default: GR
-        		channels[i].type = dbf_type_to_DBR_GR(ca_field_type(channels[i].id));
-        	}
+        if (arguments.d == -1){   //if DBR type not specified use GR+native.
+        	channels[i].type = dbf_type_to_DBR_GR(ca_field_type(channels[i].id));
+        	//if there is now enough data available with GR, callback may issue another request.
         }
         else{
         	channels[i].type = arguments.d;
@@ -2182,32 +2136,31 @@ int main ( int argc, char ** argv )
 
     //dumpArguments(&arguments);
 
-
     //allocate memory for output strings
-	outValue = mallocMustSucceed(nChannels * sizeof(char *),"main");
-	outDate = mallocMustSucceed(nChannels * sizeof(char *),"main");
-	outTime = mallocMustSucceed(nChannels * sizeof(char *),"main");
-	outSev = mallocMustSucceed(nChannels * sizeof(char *),"main");
-	outStat = mallocMustSucceed(nChannels * sizeof(char *),"main");
-	outUnits = mallocMustSucceed(nChannels * sizeof(char *),"main");
-	outTimestamp = mallocMustSucceed(nChannels * sizeof(char *),"main");
-	outLocalDate = mallocMustSucceed(nChannels * sizeof(char *),"main");
-	outLocalTime = mallocMustSucceed(nChannels * sizeof(char *),"main");
-	outEnumStrs = mallocMustSucceed(nChannels * sizeof(char **),"main");
-	numEnumStrs = mallocMustSucceed(nChannels * sizeof(unsigned int),"main");
+	outValue = callocMustSucceed(nChannels, sizeof(char *),"main");
+	outDate = callocMustSucceed(nChannels, sizeof(char *),"main");
+	outTime = callocMustSucceed(nChannels, sizeof(char *),"main");
+	outSev = callocMustSucceed(nChannels, sizeof(char *),"main");
+	outStat = callocMustSucceed(nChannels, sizeof(char *),"main");
+	outUnits = callocMustSucceed(nChannels, sizeof(char *),"main");
+	outTimestamp = callocMustSucceed(nChannels, sizeof(char *),"main");
+	outLocalDate = callocMustSucceed(nChannels, sizeof(char *),"main");
+	outLocalTime = callocMustSucceed(nChannels, sizeof(char *),"main");
+	outEnumStrs = callocMustSucceed(nChannels, sizeof(char **),"main");
+	numEnumStrs = callocMustSucceed(nChannels, sizeof(unsigned int),"main");
 	for(i = 0; i < nChannels; i++){
-		outValue[i] = mallocMustSucceed(LEN_VALUE * sizeof(char),"main");
-		outDate[i] = mallocMustSucceed(LEN_TIMESTAMP * sizeof(char),"main");
-		outTime[i] = mallocMustSucceed(LEN_TIMESTAMP * sizeof(char),"main");
-		outSev[i] = mallocMustSucceed(LEN_SEVSTAT * sizeof(char),"main");
-		outStat[i] = mallocMustSucceed(LEN_SEVSTAT * sizeof(char),"main");
-		outUnits[i] = mallocMustSucceed(LEN_UNITS * sizeof(char),"main");
-		outTimestamp[i] = mallocMustSucceed(LEN_TIMESTAMP * sizeof(char),"main");
-		outLocalDate[i] = mallocMustSucceed(LEN_TIMESTAMP * sizeof(char),"main");
-		outLocalTime[i] = mallocMustSucceed(LEN_TIMESTAMP * sizeof(char),"main");
-		outEnumStrs[i] = mallocMustSucceed(MAX_ENUM_STATES * sizeof(char *),"main");
+		outValue[i] = callocMustSucceed(LEN_VALUE, sizeof(char),"main");
+		outDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
+		outTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
+		outSev[i] = callocMustSucceed(LEN_SEVSTAT, sizeof(char),"main");
+		outStat[i] = callocMustSucceed(LEN_SEVSTAT, sizeof(char),"main");
+		outUnits[i] = callocMustSucceed(LEN_UNITS, sizeof(char),"main");
+		outTimestamp[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
+		outLocalDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
+		outLocalTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
+		outEnumStrs[i] = callocMustSucceed(MAX_ENUM_STATES, sizeof(char *),"main");
 		for (j=0; j < MAX_ENUM_STATES; ++j){
-			outEnumStrs[i][j] = mallocMustSucceed(MAX_ENUM_STRING_SIZE * sizeof(char),"main");
+			outEnumStrs[i][j] = callocMustSucceed(MAX_ENUM_STRING_SIZE, sizeof(char),"main");
 		}
 	}
 	//memory for timestamp
