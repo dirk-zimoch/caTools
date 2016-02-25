@@ -862,9 +862,10 @@ static void caReadCallback (evargs args){
     if(!monitor) outUnits[ch->i][0]='\0';
 
 
-
     //read requested data
     switch (args.type) {
+    	case DBR_GR_STRING:
+    	case DBR_CTRL_STRING:
         case DBR_STS_STRING:
             severity_status_get(dbr_sts_string);
             break;
@@ -1220,10 +1221,6 @@ void caRequest(struct channel *channels, int nChannels){
         	}
         	else{	//default: GR
         		channels[i].type = dbf_type_to_DBR_GR(ca_field_type(channels[i].id));
-        		//since there is no gr_string, use sts_string instead
-        		if (channels[i].type == DBR_GR_STRING){
-        			channels[i].type = DBR_STS_STRING;
-        		}
         	}
         }
         else{
@@ -1665,6 +1662,15 @@ int caDisconnect(struct channel * channels, int nChannels){
 }
 
 
+bool endsWith(char * src, char * match){
+//checks whether end of src matches the string match.
+	if (strlen(src)>=strlen(match)){
+		return !strcmp(src + (strlen(src)-strlen(match)), match) ;
+	}
+	else return false;
+}
+
+
 int main ( int argc, char ** argv )
 {//main function: reads arguments, allocates memory, calls ca* functions, frees memory and exits.
 
@@ -1675,15 +1681,15 @@ int main ( int argc, char ** argv )
     struct channel *channels;
 
 
-    //attempt to recognize tool from path/tool by matching ends of argv[0]
-    if (!strcmp(argv[0] + (strlen(argv[0])-strlen("caget")), "caget")) arguments.tool = caget;
-    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("caput")), "caput")) arguments.tool = caput;
-    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("cagets")), "cagets")) arguments.tool = cagets;
-    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("caputq")), "caputq")) arguments.tool = caputq;
-    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("camon")), "camon")) arguments.tool = camon;
-    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("cawait")), "cawait")) arguments.tool = cawait;
-    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("cado")), "cado")) arguments.tool = cado;
-    else if (!strcmp(argv[0] + (strlen(argv[0])-strlen("cainfo")), "cainfo")) arguments.tool = cainfo;
+    if (endsWith(argv[0],"caget")) arguments.tool = caget;
+    if (endsWith(argv[0],"caput")) arguments.tool = caput;
+    if (endsWith(argv[0],"cagets")) arguments.tool = cagets;
+    if (endsWith(argv[0],"caputq")) arguments.tool = caputq;
+    if (endsWith(argv[0],"camon")) arguments.tool = camon;
+    if (endsWith(argv[0],"cawait")) arguments.tool = cawait;
+    if (endsWith(argv[0],"cado")) arguments.tool = cado;
+    if (endsWith(argv[0],"cainfo")) arguments.tool = cainfo;
+
 
     static struct option long_options[] = {
         {"num",     	no_argument,        0,  0 },
