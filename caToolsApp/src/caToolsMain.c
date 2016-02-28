@@ -133,10 +133,47 @@ struct channel{
     chid			lsvId;		// sibling channel for reading lsv field
     char			*llsvName;	// sibling channel for reading llsv field
     chid			llsvId;		// sibling channel for reading llsv field
+    char 			*unsvName;  // sibling channel for reading unsv field
+    chid 			unsvId; 	// sibling channel for reading unsv field
+    char 			*cosvName;  // ..
+    chid 			cosvId;		// ..
+    char 			*zrsvName;	// ..
+    chid 			zrsvId;		// ..
+    char 			*onsvName;	// ..
+    chid 			onsvId;		// ..
+    char 			*twsvName;	// ..
+    chid 			twsvId;		// ..
+    char 			*thsvName;	// ..
+    chid 			thsvId;		// ..
+    char 			*frsvName;	// ..
+    chid 			frsvId;		// ..
+    char 			*fvsvName;	// ..
+    chid 			fvsvId;		// ..
+    char 			*sxsvName;	// ..
+    chid 			sxsvId;		// ..
+    char 			*svsvName;	// ..
+    chid 			svsvId;		// ..
+    char 			*eisvName;	// ..
+    chid 			eisvId;		// ..
+    char 			*nisvName;	// ..
+    chid 			nisvId;		// ..
+    char 			*tesvName;	// ..
+    chid 			tesvId;		// ..
+    char 			*elsvName;	// ..
+    chid 			elsvId;		// ..
+    char 			*tvsvName;	// ..
+    chid 			tvsvId;		// ..
+    char 			*ttsvName;	// ..
+    chid 			ttsvId;		// ..
+    char 			*ftsvName;	// ..
+    chid 			ftsvId;		// ..
+    char 			*ffsvName;	// ..
+    chid 			ffsvId;		// ..
     long            type;   	// dbr type
     long            count;  	// element count
     long            inNelm;  	// requested number of elements for writing
     long            outNelm;  	// requested number of elements for reading
+    bool			firstConnection; // indicates if channel has connected at least once
     bool            done;   	// indicates if callback has finished processing this channel
     int 			i;			// process value id
     char			*writeStr;	// value(s) to be written
@@ -148,13 +185,11 @@ struct channel{
 //output strings
 static int const LEN_TIMESTAMP = 50;
 static int const LEN_RECORD_NAME = 61;
-static int const LEN_VALUE = 100;
 static int const LEN_SEVSTAT = 30;
 static int const LEN_UNITS = 20+MAX_UNITS_SIZE;
-char **outDate,**outTime, **outSev, **outStat, **outUnits, **outValue, **outLocalDate, **outLocalTime;
+char **outDate,**outTime, **outSev, **outStat, **outUnits, **outLocalDate, **outLocalTime;
 char **outTimestamp; //relative timestamps for camon
-char ***outEnumStrs;  //for camon intitialization
-unsigned int *numEnumStrs;
+
 
 //timestamps needed by -timestamp
 epicsTimeStamp *timestampRead;		//timestamps of received data (per channel)
@@ -175,14 +210,8 @@ severity = ((struct T *)args.dbr)->severity;
 	timestampRead[ch->i] = ((struct T *)args.dbr)->stamp;\
 	validateTimestamp(timestampRead[ch->i], ch->name);
 #define units_get_cb(T) sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
-#define units_get_mon(T) sprintf(outUnits[channel.i], "%s", ((struct T *)data)->units);
 #define precision_get(T) precision = (((struct T *)args.dbr)->precision);
-#define enum_strs_get_cb(T) {\
-	int j;\
-	for (j=0; j<MAX_ENUM_STATES; ++j){\
-		strcpy(outEnumStrs[ch->i][j], ((struct T *)args.dbr)->strs[j]);\
-	}\
-	numEnumStrs[ch->i] = ((struct T *)args.dbr)->no_str; }
+
 
 void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 
@@ -246,7 +275,8 @@ void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 	}
 	if (tool == cainfo  ){
 		fputs("Displays detailed information about the provided channels.\n", stream);
-		return; //does not have any flags
+		fputs("-w <number>           timeout for CA calls\n", stream);
+		return; //does not have any other flags
 	}
 
 
@@ -254,7 +284,7 @@ void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 	fputs("\n\n", stream);
 	fputs("Accepted flags:\n", stream);
 
-	//common for all tools (except cainfo)
+	//common for all tools
 	fputs("-d <type>             type of DBR request to use for communicating with the server\n", stream);
 	fputs("-w <number>           timeout for CA calls\n", stream);
 
@@ -279,7 +309,6 @@ void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 		fputs("-outFs <number>       field separator for displaying array elements\n", stream);
 		fputs("-nord                 display number of array elements before their values\n", stream);
 		fputs("-w <number>           timeout for CA calls\n", stream);
-		fputs("-d                    same as -date\n", stream);													//XXX XXX
 		fputs("-e <number>           format doubles using scientific notation with precition <number>. Overrides -prec option.\n", stream);
 		fputs("-f <number>           format doubles using floating point with precition <number>. Overrides -prec option.\n", stream);
 		fputs("-g <number>           format doubles using shortest representation with precition <number>. Overrides -prec option.\n", stream);
@@ -306,40 +335,18 @@ void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 	}
 }
 
-void dumpArguments(struct arguments *args){
-    printf("\n"
-           "CA timeout:\tw = %f\n"
-           "Requested DBR type:\td = %d\n"
-           "Try to interpret values as numbers:\tnum = %d\n"
-           "Round number to int:\tround = %d\n"
-           "Precision:\tprec = %d\n"
-           "Digits:\tdigit = %d\n"
-           "Number as hex:\thex = %d\n"
-           "Number as binary:\tbin = %d\n"
-           "Number as octal:\toct = %d\n"
-           "Ignore formatting switches on read:\tplain = %d\n"
-           "Try to interpret values as strings:\ts = %d\n"
-           "Double formatting:\ts = %s\n"
-           "Status and severity:\ts = %d\n"
-           "Display channel name:\ts = %d\n"
-           "Display units:\ts = %d\n"
-           "\n",
-           args->w, args->d, args->num, (int)args->round, args->prec, args->digits,
-           args->hex, args->bin, args->oct, args->plain, args->s, args->dblFormatStr,
-           args->stat, args->noname, args->nounit);
+
+static inline void strClear(char *str){
+//clears input string str
+	str[0] = '\0';
 }
 
 
-
-bool checkStatus(int status){
-    if (status != ECA_NORMAL){
-        fprintf(stderr, "CA error %s occurred while trying "
-                "to start channel access.\n", ca_message(status));
-        SEVCHK(status, "CA error");
-        return EXIT_FAILURE;
-    }
-    return EXIT_SUCCESS;
+static bool strEmpty(char *str){
+//returns true is the input string is empty
+	return str[0] == '\0';
 }
+
 
 
 bool cawaitParseCondition(struct channel *channel, char *argumentConditionStr){
@@ -556,36 +563,20 @@ int printValue(int i, evargs args, int precision){
 				//use precision and format as specified by -efg or -prec arguments
 				printf(arguments.dblFormatStr, valueDbl);
 			}
-//XXX g is hardcoded because of the way options have been set up. -e -f and -g require an argument specifying precision,
-// therefore it is not possible to specify an arbitrary format combined with precision from the record. I asked Tom and
-// he said that options have been previously set up in the code in order to ensure compatibility with previous tools, so
-// I left this alone.
     		break;
     	}
     	case DBR_ENUM: {
     	    dbr_enum_t v = ((dbr_enum_t *)value)[j];
     		if (v >= MAX_ENUM_STATES){
-    			fprintf(stderr, "Illegal enum index '%d'.\n", v);
+    			printf("Illegal enum index: %d", v);
     			break;
     		}
 
-
     		if (!arguments.num && !arguments.bin && !arguments.hex && !arguments.oct) { // if not requested as a number check if we can get string
 
-        		//if monitor or time with .s we reuse strings from before
-        		bool monitor = (arguments.tool == camon || arguments.tool == cawait);
-        		if (monitor || (dbr_type_is_TIME(args.type) && arguments.s)){
-    				if (v >= numEnumStrs[i]) {
-    					fprintf(stderr, "Enum index value '%d' greater than the number of strings.\n", v);
-    				}
-    				else{
-    					printf("%*s", MAX_ENUM_STRING_SIZE, outEnumStrs[i][v]);
-    				}
-    				break;
-        		}
-        		else if (dbr_type_is_GR(args.type)) {
+    			if (dbr_type_is_GR(args.type)) {
     				if (v >= ((struct dbr_gr_enum *)args.dbr)->no_str) {
-    					fprintf(stderr, "Enum index value '%d' greater than the number of strings.\n", v);
+    					printf("Enum index value %d greater than the number of strings", v);
     				}
     				else{
     					printf("%*s", MAX_ENUM_STRING_SIZE, ((struct dbr_gr_enum *)args.dbr)->strs[v]);
@@ -594,7 +585,7 @@ int printValue(int i, evargs args, int precision){
     			}
     			else if (dbr_type_is_CTRL(args.type)) {
     				if (v >= ((struct dbr_ctrl_enum *)args.dbr)->no_str) {
-    					fprintf(stderr, "Enum index value '%d' greater than the number of strings.\n", v);
+    					printf("Enum index value %d greater than the number of strings", v);
     				}
     				else{
     					printf("%*s", MAX_ENUM_STRING_SIZE, ((struct dbr_ctrl_enum *)args.dbr)->strs[v]);
@@ -602,7 +593,7 @@ int printValue(int i, evargs args, int precision){
     				break;
     			}
     		}
-    		// else return string value as number.
+    		// else write value as number.
     		if (arguments.hex){
     			printf("%" PRIx16, v);
     		}
@@ -619,11 +610,11 @@ int printValue(int i, evargs args, int precision){
     	}
     	case DBR_CHAR:{
     		char valueChr = ((dbr_char_t*) value)[j];
-    		if (!arguments.num) {	//check if requested as a a number
-    			printf("%c", valueChr);
+    		if (arguments.num) {	//check if requested as a a number
+    			printf("%" PRId8, valueChr);
     		}
     		else{
-    			printf("%d", valueChr);
+    			printf("%c", valueChr);
     		}
     		break;
     	}
@@ -656,8 +647,6 @@ int printValue(int i, evargs args, int precision){
 
 
 
-
-
 int printOutput(int i, evargs args, int precision){
 // prints global output strings corresponding to i-th channel.
 
@@ -668,18 +657,18 @@ int printOutput(int i, evargs args, int precision){
 	}
 
     //server date
-	if (outDate[i][0] != '\0')	printf("%s ",outDate[i]);
+	if (!strEmpty(outDate[i]))	printf("%s ",outDate[i]);
 	//server time
-	if (outTime[i][0] != '\0')	printf("%s ",outTime[i]);
+	if (!strEmpty(outTime[i]))	printf("%s ",outTime[i]);
 
 	if (doubleTime){
 		fputs("local time: ",stdout);
 	}
 
 	//local date
-	if (outLocalDate[i][0] != '\0')	printf("%s ",outLocalDate[i]);
+	if (!strEmpty(outLocalDate[i]))	printf("%s ",outLocalDate[i]);
 	//local time
-	if (outLocalDate[i][0] != '\0')	printf("%s ",outLocalTime[i]);
+	if (!strEmpty(outLocalTime[i]))	printf("%s ",outLocalTime[i]);
 
 
     //timestamp if monitor and if requested
@@ -694,13 +683,13 @@ int printOutput(int i, evargs args, int precision){
 	fputc(' ',stdout);
 
     //egu
-    if (outUnits[i][0] != '\0') printf("%s ",outUnits[i]);
+    if (!strEmpty(outUnits[i])) printf("%s ",outUnits[i]);
 
     //severity
-    if (outSev[i][0] != '\0') printf("%s ",outSev[i]);
+    if (!strEmpty(outSev[i])) printf("%s ",outSev[i]);
 
     //status
-	if (outStat[i][0] != '\0') printf("%s ",outStat[i]);
+	if (!strEmpty(outStat[i])) printf("%s ",outStat[i]);
 
 	fputc('\n',stdout);
     return 0;
@@ -786,13 +775,10 @@ int getTimeStamp(int i){
 
 
 
-
-
 static void caReadCallback (evargs args){
 //reads and parses data fetched by calls. First, the global strings holding the output are cleared. Then, depending
 //on the type of the returned data, the available information is extracted. The extracted info is then saved to the
-//global strings. The actual value of the PV is an exception; its reading, parsing, and storing are performed by
-//calling valueToString or enumToString. Note that the latter is actually a callback function for another get request.
+//global strings and printed.
 
 	//if we are in monitor and just waiting for the program to exit, don't proceed.
 	bool monitor = (arguments.tool == camon || arguments.tool == cawait);
@@ -808,17 +794,15 @@ static void caReadCallback (evargs args){
     int precision=-1;
     unsigned int status=0, severity=0;
 
-	//clear global output strings if monitor; the purpose of this callback is to overwrite them
-    //if !monitor, they should not be cleared; on the first pass they are already empty because
-    //of calloc, on the potential second pass we want to keep them.
-    if (monitor){
-    	outDate[ch->i][0]='\0';
-    	outSev[ch->i][0]='\0';
-    	outStat[ch->i][0]='\0';
-    	outValue[ch->i][0]='\0';
-    	outLocalDate[ch->i][0]='\0';
-    	outLocalTime[ch->i][0]='\0';
-    	outUnits[ch->i][0]='\0';
+	//clear global output strings; the purpose of this callback is to overwrite them
+    //the exception are units, which we may be getting from elsewhere; we only clear them if we can write them
+    strClear(outDate[ch->i]);
+    strClear(outSev[ch->i]);
+    strClear(outStat[ch->i]);
+    strClear(outLocalDate[ch->i]);
+    strClear(outLocalTime[ch->i]);
+    if (args.type >= DBR_GR_STRING){
+    	strClear(outUnits[ch->i]);
     }
 
     //read requested data
@@ -978,19 +962,19 @@ static void caReadCallback (evargs args){
     	//do nothing
     }
     if (arguments.nostat){//never display
-    	outSev[ch->i][0] = '\0';
-    	outStat[ch->i][0] = '\0';
+    	strClear(outSev[ch->i]);
+    	strClear(outStat[ch->i]);
     }
     else{//display if alarm
     	if (status == 0 && severity == 0){
-        	outSev[ch->i][0] = '\0';
-        	outStat[ch->i][0] = '\0';
+        	strClear(outSev[ch->i]);
+        	strClear(outStat[ch->i]);
     	}
     }
 
    	//time
     if (args.type >= DBR_TIME_STRING && args.type <= DBR_TIME_DOUBLE){//otherwise we don't have it
-    	//we don't assume manually specifying dbr_time implies -time or -date.
+    	//we don't assume that manually specifying dbr_time implies -time or -date.
     	if (arguments.date) epicsTimeToStrftime(outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &timestampRead[ch->i]);
     	if (arguments.time) epicsTimeToStrftime(outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &timestampRead[ch->i]);
     }
@@ -1004,7 +988,7 @@ static void caReadCallback (evargs args){
 	}
 
     //hide units?
-    if (arguments.nounit) outUnits[ch->i][0] = '\0';
+    if (arguments.nounit) strClear(outUnits[ch->i]);
 
 
 	//if monitor, there is extra stuff to do before printing data out.
@@ -1048,26 +1032,10 @@ static void caReadCallback (evargs args){
 	}
 
 
-    //print output, make another ca request if not all info is available (except if DBR type was requested by the user)
-	if (args.type > DBR_TIME_DOUBLE && (arguments.time || arguments.date) && !monitor && arguments.d == -1){
-		//time was requested, but this call doesn't provide it. This means we just got metadata, another request is needed to get time&value.
-		//special case: if type=enum and string was requested, we also need to remember strs, because time struct does not contain them.
-		if (arguments.s){
-			if (args.type == DBR_GR_ENUM) { enum_strs_get_cb(dbr_gr_enum); }
-			else if (args.type == DBR_CTRL_ENUM) { enum_strs_get_cb(dbr_ctrl_enum); }
-		}
+	//finish
+	printOutput(ch->i, args, precision);
+	ch->done = true;
 
-		unsigned int baseType = args.type % (LAST_TYPE+1);
-		status = ca_array_get_callback(dbf_type_to_DBR_TIME(baseType), ch->outNelm, ch->id, caReadCallback, ch);
-		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
-
-		status = ca_flush_io();
-		if(status != ECA_NORMAL) fprintf (stderr,"Problem flushing channel %s.\n", ch->name);
-	}
-	else{ //finish
-		printOutput(ch->i, args, precision);
-		ch->done = true;
-	}
 }
 
 static void caWriteCallback (evargs args){
@@ -1084,132 +1052,84 @@ static void caWriteCallback (evargs args){
     ch->done = true;
 }
 
-int getStaticMonitorData(struct channel channel){
-//gets units and enum strings for channel i. Saves them to global strings for later reuse.
+static void getStaticUnitsCallback (evargs args){
+//reads channel units and saves them to global strings. Is called every time a channel
+//connects (if needed).
 
-	unsigned int baseType = channel.type % (LAST_TYPE+1);
-
-	//first check if this call is needed at all
-	if (baseType == DBF_ENUM || (!arguments.nounit && (arguments.time || arguments.date || arguments.timestamp))) {
-		// do nothing but proceed if this is enum, or if units are needed along with any of the time info.
+	//check if data was returned
+	if (args.status != ECA_NORMAL){
+		fprintf(stderr, "Error in initial read callback. %s.\n", ca_message(args.status));
+		return;
 	}
-	else return 0;
+    struct channel *ch = (struct channel *)args.usr;
 
+    //get units
+    switch(args.type){
+    case DBR_GR_SHORT:
+    	units_get_cb(dbr_gr_short);
+    	break;
+    case DBR_GR_CHAR:
+    	units_get_cb(dbr_gr_float);
+    	break;
+    case DBR_GR_LONG:
+    	units_get_cb(dbr_gr_long);
+    	break;
+    case DBR_GR_DOUBLE:
+    	units_get_cb(dbr_gr_double);
+    	break;
+    default:
+    	fprintf(stderr, "Units for channel %s cannot be displayed.\n", ch->name);
+    	break;
+    }
 
-	int reqType = dbf_type_to_DBR_GR(baseType);
+}
 
-	void *data;
-	data = mallocMustSucceed(dbr_size_n(reqType, channel.count), "getStaticMonitorData");
+void monitorLoop (struct channel *channels, int nChannels){
+//runs monitor loop. Stops after -n updates (camon) or after -timeout
+//is exceeded (cawait).
 
-	int status = ca_array_get(reqType, channel.count, channel.id, data);
-	if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get "\
-			"request for record %s.\n", ca_message(status), channel.name);
+	int i;
 
-	status = ca_pend_io ( arguments.w );
-	if(status == ECA_TIMEOUT) printf ("Cannot obtain units or enum strings of channel %s.\n", channel.name);
+	if(arguments.tool == cawait) {
+		//initialization for timestamps
+		for (i=0; i<nChannels;++i) firstUpdate[i]=false;
+	}
 
+	while (runMonitor){
+		ca_pend_event(0.1);
 
-	if (baseType == DBF_ENUM){
-		//get enum strings
-		int j;
-		for (j=0; j<MAX_ENUM_STATES; ++j){
-			strcpy(outEnumStrs[channel.i][j], ((struct dbr_gr_enum *)data)->strs[j]);
+		if(arguments.tool == cawait && arguments.timeout!=-1){ //check stop condition
+			epicsTimeStamp timeoutNow;
+			epicsTimeGetCurrent(&timeoutNow);
+			validateTimestamp(timeoutNow, "timeout");
+			if (epicsTimeGreaterThanEqual(&timeoutNow, &timeoutTime)){
+				if (runMonitor) printf("No updates for %f seconds - exiting.\n",arguments.timeout);
+				break;
+			}
 		}
-		numEnumStrs[channel.i] = ((struct dbr_gr_enum *)data)->no_str;
 	}
-	else{//get units
-		switch(reqType){
-		case DBR_GR_SHORT:
-			units_get_mon(dbr_gr_short);
-			break;
-		case DBR_GR_CHAR:
-			units_get_mon(dbr_gr_float);
-			break;
-		case DBR_GR_LONG:
-			units_get_mon(dbr_gr_long);
-			break;
-		case DBR_GR_DOUBLE:
-			units_get_mon(dbr_gr_double);
-			break;
-		default:
-			fprintf(stderr, "Units for channel %s cannot be displayed.\n", channel.name);
-			break;
-		}
-	}
-
-	free(data);
-	return 0;
 }
 
 
-
-
 void caRequest(struct channel *channels, int nChannels){
-//sends get or put requests for all tools except cainfo. ca_get or ca_put are called multiple times, depending
-//on the tool. The reading and parsing of returned data is performed in callbacks. Once the callbacks finish,
-//the the data is printed. If the tool type is monitor, a loop is entered in which the data is printed repeatedly.
+//sends get or put requests. ca_get or ca_put are called multiple times, depending on the tool. The reading,
+//parsing and printing of returned data is performed in callbacks.
     int status=-1, i, j;
 
+
     for(i=0; i < nChannels; i++){
-        channels[i].count = ca_element_count ( channels[i].id );
 
-        if (arguments.nord){
-        	printf("# of elements in %s: %lu\n", channels[i].name, channels[i].count);
-        }
+    	if (!channels[i].firstConnection) {//skip disconnected channels
+    		channels[i].done = true;
+    		continue;
+    	}
 
-        //how many array elements to request
-        if (arguments.outNelm == -1){
-        	channels[i].outNelm = channels[i].count;
-        }
-        else if(arguments.outNelm > 0 && arguments.outNelm < channels[i].count){
-        	channels[i].outNelm = arguments.outNelm;
-        }
-        else{
-        	channels[i].outNelm = channels[i].count;
-        	fprintf(stderr, "Invalid number %d of requested elements to read.", arguments.outNelm);
-        }
-
-
-
-        channels[i].done = false;
-
-        if (arguments.d == -1){   //if DBR type not specified use GR+native.
-        	channels[i].type = dbf_type_to_DBR_GR(ca_field_type(channels[i].id));
-        	//if there is now enough data available with GR, callback may issue another request.
-        }
-        else{
-        	channels[i].type = arguments.d;
-        }
-
-        if (arguments.tool == caget){
+    	if (arguments.tool == caget){
 			status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].id, caReadCallback, &channels[i]);
-			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem creating get request for channel %s: %s.\n", channels[i].name,ca_message(status));
 		}
-        else if (arguments.tool == camon || arguments.tool == cawait){
-        	//get presumably static data first
-        	getStaticMonitorData(channels[i]);
-
-			status = ca_create_subscription(channels[i].type, channels[i].outNelm, channels[i].id, DBE_VALUE | DBE_ALARM | DBE_LOG,\
-					caReadCallback, &channels[i], NULL);
-			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create monitor.\n", ca_message(status));
-	    	runMonitor = true;
-	    	if (arguments.tool == cawait && arguments.timeout!=-1){
-	    		//set first timeout
-	    		epicsTimeGetCurrent(&timeoutTime);
-	    		validateTimestamp(timeoutTime, "timeout");
-				epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
-	    	}
-        }
         else if (arguments.tool == caput || arguments.tool == caputq){
             long nakedType = channels[i].type % (LAST_TYPE+1);   // use naked dbr_xx type for put
-
-            //input will be one of these
-        	int inputI[channels[i].inNelm];
-        	float inputF[channels[i].inNelm];
-        	char inputC[channels[i].inNelm];
-        	long inputL[channels[i].inNelm];
-        	double inputD[channels[i].inNelm];
-
 
             //convert input string to the nakedType
         	status = ECA_BADTYPE;
@@ -1217,30 +1137,36 @@ void caRequest(struct channel *channels, int nChannels){
             case DBR_STRING:
     			status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, channels[i].writeStr, caWriteCallback, &channels[i]);
     			break;
-            case DBR_INT://and short
+            case DBR_INT:{//and short
+            	int inputI[channels[i].inNelm];
             	for (j=0;j<channels[i].inNelm; ++j){
 					if (sscanf(&channels[i].writeStr[j*MAX_STRING_SIZE],"%d",&inputI[j]) <= 0) {
 						fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
 					}
             	}
             	status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputI, caWriteCallback, &channels[i]);
-            	break;
-            case DBR_FLOAT:
+				}
+				break;
+            case DBR_FLOAT:{
+            	float inputF[channels[i].inNelm];
             	for (j=0;j<channels[i].inNelm; ++j){
             		if (sscanf(&channels[i].writeStr[j*MAX_STRING_SIZE],"%f",&inputF[j]) <= 0) {
             			fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
             		}
             	}
             	status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputF, caWriteCallback, &channels[i]);
-            	break;
-            case DBR_ENUM:
+				}
+				break;
+            case DBR_ENUM:{
 				//check if put data is provided as a number
+            	int inputI[channels[i].inNelm];
 				if (sscanf(&channels[i].writeStr[0],"%d",&inputI[0])){
-					for (j=1;j<channels[i].inNelm; ++j){
+					for (j=0;j<channels[i].inNelm; ++j){
 						if (sscanf(&channels[i].writeStr[j*MAX_STRING_SIZE],"%d",&inputI[j]) <= 0){
 							fprintf(stderr, "String '%s' cannot be converted to enum index.\n", &channels[i].writeStr[j*MAX_STRING_SIZE]);
+							break;
 						}
-            			if (inputI[j]>15) fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", inputI[j]);
+            			if (inputI[j]>=MAX_ENUM_STATES) fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", inputI[j]);
             		}
 	            	status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputI, caWriteCallback, &channels[i]);
             	}
@@ -1248,62 +1174,70 @@ void caRequest(struct channel *channels, int nChannels){
             		//send as a string
             		status = ca_array_put_callback(DBR_STRING, channels[i].inNelm, channels[i].id, channels[i].writeStr, caWriteCallback, &channels[i]);
             	}
-            	break;
-            case DBR_CHAR:
+				}
+				break;
+            case DBR_CHAR:{
+            	char inputC[channels[i].inNelm];
             	for (j=0;j<channels[i].inNelm; ++j){
             		if (sscanf(&channels[i].writeStr[j],"%c",&inputC[j]) <= 0) {
             			fprintf(stderr, "Impossible to convert input %s to format %s\n",channels[i].writeStr, dbr_type_to_text(nakedType));
             		}
             	}
             	status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputC, caWriteCallback, &channels[i]);
-            	break;
-            case DBR_LONG:
+				}
+				break;
+            case DBR_LONG:{
+            	long inputL[channels[i].inNelm];
             	for (j=0;j<channels[i].inNelm; ++j){
             		if (sscanf(&channels[i].writeStr[j*MAX_STRING_SIZE],"%li",&inputL[j]) <= 0) {
             			fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
             		}
             	}
             	status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputL, caWriteCallback, &channels[i]);
-            	break;
-            case DBR_DOUBLE:
+				}
+				break;
+            case DBR_DOUBLE:{
+            	double inputD[channels[i].inNelm];
             	for (j=0;j<channels[i].inNelm; ++j){
             		if (sscanf(&channels[i].writeStr[j*MAX_STRING_SIZE],"%lf",&inputD[j]) <= 0) {
             			fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
             		}
             	}
             	status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputD, caWriteCallback, &channels[i]);
-            	break;
+				}
+				break;
             }
-			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create a put request.\n", ca_message(status));
-
-
         }
         else if(arguments.tool == cagets || arguments.tool == cado){
-
         	int inputI=1;
         	status = ca_array_put_callback(DBF_CHAR, 1, channels[i].procId, &inputI, caWriteCallback, &channels[i]);
         }
-
+		if (status != ECA_NORMAL) fprintf(stderr, "Problem creating put request for channel %s: %s.\n", channels[i].name,ca_message(status));
     }
 
+    // wait for callbacks
     float elapsed = 0;
     while (elapsed <=arguments.w){
     	status = ca_pend_event (0.1);
     	elapsed += 0.1;
     	bool allDone=true;
-    	for (i=0; i<nChannels; ++i) allDone *= channels[i].done;
+    	for (i=0; i<nChannels; ++i) allDone *= (channels[i].done || !channels[i].firstConnection);
     	if (allDone) break;
     }
     if (status != ECA_TIMEOUT) fprintf (stderr,"Some of the callbacks have not completed.\n");
 
 
-    //if caput or cagets, wait for put callback and issue a new read request.
+    //if caput or cagets issue a new read request.
     if (arguments.tool == caput || arguments.tool == cagets){
 
     	for (i=0; i<nChannels; ++i){
+        	if (!channels[i].firstConnection) {//skip disconnected channels
+        		channels[i].done = true;
+        		continue;
+        	}
     		if (channels[i].done){
     			status = ca_array_get_callback(channels[i].type, channels[i].count, channels[i].id, caReadCallback, &channels[i]);
-    			if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request.\n", ca_message(status));
+    			if (status != ECA_NORMAL) fprintf(stderr, "Problem creating get request for channel %s: %s.\n", channels[i].name,ca_message(status));
     		}
     		else{
     			fprintf(stderr, "Put callback for channel %s did not complete.\n", channels[i].name);
@@ -1315,32 +1249,14 @@ void caRequest(struct channel *channels, int nChannels){
         	status = ca_pend_event (0.1);
         	elapsed += 0.1;
         	bool allDone=true;
-        	for (i=0; i<nChannels; ++i) allDone *= channels[i].done;
+        	for (i=0; i<nChannels; ++i) allDone *= (channels[i].done || !channels[i].firstConnection);
         	if (allDone) break;
         }
-        if (status != ECA_TIMEOUT) fprintf (stderr,"Some of the callbacks have not completed.\n");
+        if (status != ECA_TIMEOUT) fprintf (stderr,"Some of the read callbacks have not completed.\n");
 
     }
 
-    //enter monitor loop
-    if (arguments.tool == camon || arguments.tool == cawait){
 
-        if(arguments.tool == cawait) {for (i=0; i<nChannels;++i) firstUpdate[i]=false;}
-
-    	while (runMonitor){
-    		ca_pend_event(0.1);
-
-    		if(arguments.tool == cawait && arguments.timeout!=-1){ //check stop condition
-    			epicsTimeStamp timeoutNow;
-    			epicsTimeGetCurrent(&timeoutNow);
-    			validateTimestamp(timeoutNow, "timeout");
-    			if (epicsTimeGreaterThanEqual(&timeoutNow, &timeoutTime)){
-    				if (runMonitor) printf("No updates for %f seconds - exiting.\n",arguments.timeout);
-    				break;
-    			}
-    		}
-    	}
-    }
 }
 
 void cainfoRequest(struct channel *channels, int nChannels){
@@ -1349,55 +1265,146 @@ void cainfoRequest(struct channel *channels, int nChannels){
 
 	bool readAccess, writeAccess;
 
-
 	for(i=0; i < nChannels; i++){
+
+		if (!channels[i].firstConnection) continue; //channel doesn't exist
+
 		channels[i].count = ca_element_count ( channels[i].id );
 
 		channels[i].type = dbf_type_to_DBR_CTRL(ca_field_type(channels[i].id));
 
-		void *data, *dataDesc, *dataHhsv, *dataHsv, *dataLsv, *dataLlsv;
-		data = mallocMustSucceed(dbr_size_n(channels[i].type, channels[i].count), "caInfoRequest");
-		dataDesc = mallocMustSucceed(dbr_size_n(channels[i].type, 1), "caInfoRequest");
-		dataHhsv = mallocMustSucceed(dbr_size_n(channels[i].type, 1), "caInfoRequest");
-		dataHsv = mallocMustSucceed(dbr_size_n(channels[i].type, 1), "caInfoRequest");
-		dataLsv = mallocMustSucceed(dbr_size_n(channels[i].type, 1), "caInfoRequest");
-		dataLlsv = mallocMustSucceed(dbr_size_n(channels[i].type, 1), "caInfoRequest");
-
+		//allocate data for all caget returns
+		void *data, *dataDesc, *dataHhsv, *dataHsv, *dataLsv, *dataLlsv, *dataUnsv, *dataCosv, *dataZrsv, *dataOnsv, *dataTwsv, *dataThsv;
+		void *dataFrsv, *dataFvsv, *dataSxsv, *dataSvsv, *dataEisv,*dataNisv, *dataTesv,*dataElsv,*dataTvsv,*dataTtsv,*dataFtsv,*dataFfsv;
+		data = callocMustSucceed(1, dbr_size_n(channels[i].type, channels[i].count), "caInfoRequest");
+		dataDesc = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataHhsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataHsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataLsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataLlsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataUnsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataCosv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataZrsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataOnsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataTwsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataThsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataFrsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataFvsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataSxsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataSvsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataEisv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataNisv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataTesv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataElsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataTvsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataTtsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataFtsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
+		dataFfsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
 
 
 		//general ctrl data
-		status = ca_array_get(channels[i].type, channels[i].count, channels[i].id, data);
+		status = ca_array_get(channels[i].type , channels[i].count, channels[i].id, data);
 		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request for record %s.\n", ca_message(status), channels[i].name);
 
 		//desc
 		status = ca_array_get(DBR_STS_STRING, 1, channels[i].descId, dataDesc);
-		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to read "\
-				"DESC field of record %s.\n", ca_message(status), channels[i].name);
+		if (status != ECA_NORMAL) fprintf(stderr, "Problem reading DESC field of record %s: %s.\n", channels[i].name, ca_message(status));
 
-		//hhsv
-		status = ca_array_get(DBR_STS_STRING, 1, channels[i].hhsvId, dataHhsv);
-		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to read "\
-				"HHSV field of record %s.\n", ca_message(status),channels[i].name);
-
-		//hsv
-		status = ca_array_get(DBR_STS_STRING, 1, channels[i].hsvId, dataHsv);
-		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to read "\
-				"HSV field of record %s.\n", ca_message(status),channels[i].name);
-
-		//lsv
-		status = ca_array_get(DBR_STS_STRING, 1, channels[i].lsvId, dataLsv);
-		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to read "\
-				"LSV field of record %s.\n", ca_message(status),channels[i].name);
-
-		//llsv
-		status = ca_array_get(DBR_STS_STRING, 1, channels[i].llsvId, dataLlsv);
-		if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to read "\
-				"LLSV field of record %s.\n", ca_message(status),channels[i].name);
+		//standard severity fields
+		if (!strEmpty(channels[i].hhsvName) && channels[i].hhsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].hhsvId, dataHhsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].hsvName) && channels[i].hsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].hsvId, dataHsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].lsvName) && channels[i].lsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].lsvId, dataLsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].llsvName) && channels[i].llsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].llsvId, dataLlsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		//multi-bit severity fields
+		if (!strEmpty(channels[i].unsvName) && channels[i].unsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].unsvId, dataUnsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].cosvName) && channels[i].cosvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].cosvId, dataCosv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].zrsvName) && channels[i].zrsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].zrsvId, dataZrsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].onsvName) && channels[i].onsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].onsvId, dataOnsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].twsvName) && channels[i].twsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].twsvId, dataTwsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].thsvName) && channels[i].thsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].thsvId, dataThsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].frsvName) && channels[i].frsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].frsvId, dataFrsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].fvsvName) && channels[i].fvsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].fvsvId, dataFvsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].sxsvName) && channels[i].sxsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].sxsvId, dataSxsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].svsvName) && channels[i].svsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].svsvId, dataSvsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].eisvName) && channels[i].eisvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].eisvId, dataEisv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].nisvName) && channels[i].nisvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].nisvId, dataNisv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].tesvName) && channels[i].tesvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].tesvId, dataTesv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].elsvName) && channels[i].elsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].elsvId, dataElsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].tvsvName) && channels[i].tvsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].tvsvId, dataTvsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].ttsvName) && channels[i].ttsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].ttsvId, dataTtsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].ftsvName) && channels[i].ftsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].ftsvId, dataFtsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
+		if (!strEmpty(channels[i].ffsvName) && channels[i].ffsvId){
+			status = ca_array_get(DBR_STS_STRING, 1, channels[i].ffsvId, dataFfsv);
+			if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+		}
 
 
 		ca_pend_io(arguments.w);
 
-
+		//start printing
 		fputc('\n',stdout);
 		fputc('\n',stdout);
 		printf("%s\n", channels[i].name);														//name
@@ -1408,6 +1415,13 @@ void cainfoRequest(struct channel *channels, int nChannels){
 
 
 		switch (channels[i].type){
+		case DBR_CTRL_STRING:
+			printf("    Value: %s", ((struct dbr_sts_string *)data)->value);					//value
+			fputc('\n',stdout);
+			printf("    Alarm status: %s, severity: %s\n", \
+					epicsAlarmConditionStrings[((struct dbr_sts_string *)data)->status], \
+					epicsAlarmSeverityStrings[((struct dbr_sts_string *)data)->severity]);		//status and severity
+			break;
 		case DBR_CTRL_INT://and short
 			printf("    Value: %" PRId16"\n", ((struct dbr_ctrl_int *)data)->value);					//value
 			printf("    Units: %s\n", ((struct dbr_ctrl_int *)data)->units);					//units
@@ -1514,10 +1528,28 @@ void cainfoRequest(struct channel *channels, int nChannels){
 		}
 
 		fputc('\n',stdout);
-		printf("	HIHI alarm severity: %s\n", ((struct dbr_sts_string *)dataHhsv)->value);		//severities
-		printf("	HIGH alarm severity: %s\n", ((struct dbr_sts_string *)dataHsv)->value);
-		printf("	LOW alarm severity: %s\n", ((struct dbr_sts_string *)dataLsv)->value);
-		printf("	LOLO alarm severity: %s\n", ((struct dbr_sts_string *)dataLlsv)->value);
+		if (!strEmpty(channels[i].hhsvName)) printf("	HIHI alarm severity: %s\n", ((struct dbr_sts_string *)dataHhsv)->value);		//severities
+		if (!strEmpty(channels[i].hsvName)) printf("	HIGH alarm severity: %s\n", ((struct dbr_sts_string *)dataHsv)->value);
+		if (!strEmpty(channels[i].lsvName)) printf("	LOW alarm severity: %s\n", ((struct dbr_sts_string *)dataLsv)->value);
+		if (!strEmpty(channels[i].llsvName)) printf("	LOLO alarm severity: %s\n", ((struct dbr_sts_string *)dataLlsv)->value);
+		if (!strEmpty(channels[i].unsvName)) printf("	UNSV alarm severity: %s\n", ((struct dbr_sts_string *)dataUnsv)->value);
+		if (!strEmpty(channels[i].cosvName)) printf("	COSV alarm severity: %s\n", ((struct dbr_sts_string *)dataCosv)->value);
+		if (!strEmpty(channels[i].zrsvName)) printf("	ZRSV alarm severity: %s\n", ((struct dbr_sts_string *)dataZrsv)->value);
+		if (!strEmpty(channels[i].onsvName)) printf("	ONSV alarm severity: %s\n", ((struct dbr_sts_string *)dataOnsv)->value);
+		if (!strEmpty(channels[i].twsvName)) printf("	TWSV alarm severity: %s\n", ((struct dbr_sts_string *)dataTwsv)->value);
+		if (!strEmpty(channels[i].thsvName)) printf("	THSV alarm severity: %s\n", ((struct dbr_sts_string *)dataThsv)->value);
+		if (!strEmpty(channels[i].frsvName)) printf("	FRSV alarm severity: %s\n", ((struct dbr_sts_string *)dataFrsv)->value);
+		if (!strEmpty(channels[i].fvsvName)) printf("	FVSV alarm severity: %s\n", ((struct dbr_sts_string *)dataFvsv)->value);
+		if (!strEmpty(channels[i].sxsvName)) printf("	SXSV alarm severity: %s\n", ((struct dbr_sts_string *)dataSxsv)->value);
+		if (!strEmpty(channels[i].svsvName)) printf("	SVSV alarm severity: %s\n", ((struct dbr_sts_string *)dataSvsv)->value);
+		if (!strEmpty(channels[i].eisvName)) printf("	EISV alarm severity: %s\n", ((struct dbr_sts_string *)dataEisv)->value);
+		if (!strEmpty(channels[i].nisvName)) printf("	NISV alarm severity: %s\n", ((struct dbr_sts_string *)dataNisv)->value);
+		if (!strEmpty(channels[i].tesvName)) printf("	TESV alarm severity: %s\n", ((struct dbr_sts_string *)dataTesv)->value);
+		if (!strEmpty(channels[i].elsvName)) printf("	ELSV alarm severity: %s\n", ((struct dbr_sts_string *)dataElsv)->value);
+		if (!strEmpty(channels[i].tvsvName)) printf("	TVSV alarm severity: %s\n", ((struct dbr_sts_string *)dataTvsv)->value);
+		if (!strEmpty(channels[i].ttsvName)) printf("	TTSV alarm severity: %s\n", ((struct dbr_sts_string *)dataTtsv)->value);
+		if (!strEmpty(channels[i].ftsvName)) printf("	FTSV alarm severity: %s\n", ((struct dbr_sts_string *)dataFtsv)->value);
+		if (!strEmpty(channels[i].ffsvName)) printf("	FFSV alarm severity: %s\n", ((struct dbr_sts_string *)dataFfsv)->value);
 		fputc('\n',stdout);
 
 		readAccess = ca_read_access(channels[i].id);
@@ -1528,17 +1560,140 @@ void cainfoRequest(struct channel *channels, int nChannels){
 		printf("	Write access: "); if(writeAccess) printf("yes\n"); else printf("no\n");
 
 
-
-
 		free(data);
 		free(dataDesc);
 		free(dataHhsv);
 		free(dataHsv);
 		free(dataLsv);
 		free(dataLlsv);
+		free(dataUnsv);
+		free(dataCosv);
+		free(dataZrsv);
+		free(dataOnsv);
+		free(dataTwsv);
+		free(dataThsv);
+		free(dataFrsv);
+		free(dataFvsv);
+		free(dataSxsv);
+		free(dataSvsv);
+		free(dataEisv);
+		free(dataNisv);
+		free(dataTesv);
+		free(dataElsv);
+		free(dataTvsv);
+		free(dataElsv);
+		free(dataTtsv);
+		free(dataFtsv);
+		free(dataFfsv);
+
 	}
 
+}
 
+void channelStatusCallback(struct connection_handler_args args){
+//callback for ca_create_channel. Is executed whenever a channel connects or
+//disconnects. When the channel connects for the first time, several properties
+//are set, such as number of elements and request types.
+//Upon (every) connection, a separate request to obtain units is issued if
+//needed. On channel disconnect, the data is cleared.
+
+    struct channel *ch = ( struct channel * ) ca_puser ( args.chid );
+
+    int status;
+
+
+    if ( args.op == CA_OP_CONN_UP ) {
+
+    	if (!ch->firstConnection){
+			//determine channel properties
+
+			//how many array elements to request
+			ch->count = ca_element_count ( ch->id );
+			if (arguments.nord)	printf("# of elements in %s: %lu\n", ch->name, ch->count);
+			if (arguments.outNelm == -1) ch->outNelm = ch->count;
+			else if(arguments.outNelm > 0 && arguments.outNelm < ch->count) ch->outNelm = arguments.outNelm;
+			else{
+				ch->outNelm = ch->count;
+				fprintf(stderr, "Invalid number %d of requested elements to read.", arguments.outNelm);
+			}
+
+			//request type
+			if (arguments.d == -1){   //if DBR type not specified, decide based on desired details
+	        	if (arguments.time || arguments.date || arguments.timestamp){
+	        		//time specified, use TIME_
+	        		if (arguments.s && ca_field_type(ch->id) == DBF_ENUM){
+	        			//if enum && s, use time_string
+	        			ch->type = DBR_TIME_STRING;
+	        		}
+	        		else{ //else use time_native
+	        			ch->type = dbf_type_to_DBR_TIME(ca_field_type(ch->id));
+
+	        			//if units, issue get request for metadata. String and enum records don't have units, so skip.
+	        			unsigned int baseType = ca_field_type(ch->id);
+	        			if (!arguments.nounit && baseType != DBF_STRING && baseType != DBF_ENUM){
+	        				int reqType = dbf_type_to_DBR_GR(baseType);
+
+	        				status = ca_array_get_callback(reqType, ch->count, ch->id, getStaticUnitsCallback, ch);
+							if (status != ECA_NORMAL) fprintf(stderr, "Problem creating ca_get request for channel %s: %s\n",ch->name, ca_message(status));
+							status = ca_flush_io();
+							if (status != ECA_NORMAL) fprintf(stderr, "Problem flushing channel %s: %s.\n", ch->name, ca_message(status));
+	        			}
+
+	        		}
+	        	}
+	        	else{// use GR_ by default
+	        		ch->type = dbf_type_to_DBR_GR(ca_field_type(ch->id));
+	        	}
+			}
+			else ch->type = arguments.d;
+
+			if (arguments.tool == camon || arguments.tool == cawait){
+				//create subscription
+				status = ca_create_subscription(ch->type, ch->outNelm, ch->id, DBE_VALUE | DBE_ALARM | DBE_LOG, caReadCallback, ch, NULL);
+				if (status != ECA_NORMAL) fprintf(stderr, "Problem creating subscription for channel %s: %s.\n",ch->name, ca_message(status));
+				if (arguments.tool == cawait && arguments.timeout!=-1){
+					//set first timeout
+					epicsTimeGetCurrent(&timeoutTime);
+					validateTimestamp(timeoutTime, "timeout");
+					epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
+				}
+				runMonitor = true;
+			}
+
+			ch->firstConnection = true;
+    	}
+    	else{//get just metadata if needed
+			if (!arguments.nounit && (arguments.time || arguments.date || arguments.timestamp)){
+				int reqType = dbf_type_to_DBR_GR(ca_field_type(ch->id));
+				status = ca_array_get_callback(reqType, ch->count, ch->id, getStaticUnitsCallback, ch);
+				if (status != ECA_NORMAL) fprintf(stderr, "Problem creating ca_get request for channel %s: %s\n",ch->name, ca_message(status));
+				status = ca_flush_io();
+				if (status != ECA_NORMAL) fprintf(stderr, "Problem flushing channel %s: %s.\n", ch->name, ca_message(status));
+			}
+    	}
+
+    }
+    else if(args.op == CA_OP_CONN_DOWN){
+    	//clear metadata
+    	strClear(outUnits[ch->i]);
+    }
+}
+
+bool checkStatus(int status){
+//checks status of channel create_ and clear_
+    if (status != ECA_NORMAL){
+        fprintf(stderr, "CA error %s occurred while trying "
+                "to start channel access.\n", ca_message(status));
+        SEVCHK(status, "CA error");
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
+bool createChannelMustSucceed(const char *pChanName, caCh *pConnStateCallback, void *pUserPrivate, capri priority, chid *pChanID){
+//creates CA connection
+    int status = ca_create_channel(pChanName, pConnStateCallback, pUserPrivate, priority, pChanID);
+    return checkStatus(status);    // error if the channels are not created
 }
 
 
@@ -1546,60 +1701,123 @@ int caInit(struct channel *channels, int nChannels){
 //creates contexts and channels.
     int status, i;
 
-    //status = ca_context_create(ca_enable_preemptive_callback);
     status = ca_context_create(ca_disable_preemptive_callback);
 
     if (checkStatus(status) != EXIT_SUCCESS) return EXIT_FAILURE;
 
     for(i=0; i < nChannels; i++){
-        status = ca_create_channel(channels[i].name, 0 , 0, CA_PRIORITY, &channels[i].id);
-        if(checkStatus(status)) return EXIT_FAILURE;    // we exit if the channels are not created
+
+    	if(createChannelMustSucceed(channels[i].name, channelStatusCallback, &channels[i], CA_PRIORITY, &channels[i].id)) return EXIT_FAILURE;
 
         //if tool = cagets or cado, each channel has a sibling connecting to the proc field
         if (arguments.tool == cagets || arguments.tool == cado){
-        	status = ca_create_channel(channels[i].procName, 0 , 0, CA_PRIORITY, &channels[i].procId);
-        	if(checkStatus(status)) return EXIT_FAILURE;
-        }
-        else if (arguments.tool == cainfo){
-        	//if tool = cainfo, each channel has siblings connecting to the desc and *sv fields
-        	//we flush each connecting to each field in order to detect missing fields.
-        	status = ca_pend_io ( arguments.w );
-        	if(status == ECA_TIMEOUT){
-        		printf ("Cannot connect to channel %s.\n", channels[i].name);
-        		break;
-        	}
-
-        	status = ca_create_channel(channels[i].descName, 0 , 0, CA_PRIORITY, &channels[i].descId);
-        	if(checkStatus(status)) return EXIT_FAILURE;
-        	status = ca_pend_io ( arguments.w );
-        	if(status == ECA_TIMEOUT) printf ("Channel %s is missing DESC field.\n", channels[i].name);
-
-        	status = ca_create_channel(channels[i].hhsvName, 0 , 0, CA_PRIORITY, &channels[i].hhsvId);
-        	if(checkStatus(status)) return EXIT_FAILURE;
-        	status = ca_pend_io ( arguments.w );
-        	if(status == ECA_TIMEOUT) printf ("Channel %s is missing HHSV field.\n", channels[i].name);
-
-        	status = ca_create_channel(channels[i].hsvName, 0 , 0, CA_PRIORITY, &channels[i].hsvId);
-        	if(checkStatus(status) != EXIT_SUCCESS) return EXIT_FAILURE;
-        	status = ca_pend_io ( arguments.w );
-        	if(status == ECA_TIMEOUT) printf ("Channel %s is missing HSV field.\n", channels[i].name);
-
-        	status = ca_create_channel(channels[i].lsvName, 0 , 0, CA_PRIORITY, &channels[i].lsvId);
-        	if(checkStatus(status)) return EXIT_FAILURE;
-        	status = ca_pend_io ( arguments.w );
-        	if(status == ECA_TIMEOUT) printf ("Channel %s is missing LSV field.\n", channels[i].name);
-
-        	status = ca_create_channel(channels[i].llsvName, 0 , 0, CA_PRIORITY, &channels[i].llsvId);
-        	if(checkStatus(status)) return EXIT_FAILURE;
-        	status = ca_pend_io ( arguments.w );
-        	if(status == ECA_TIMEOUT) printf ("Channel %s is missing LLSV field.\n", channels[i].name);
+        	if (createChannelMustSucceed(channels[i].procName, 0 , 0, CA_PRIORITY, &channels[i].procId)) return EXIT_FAILURE;
         }
     }
 
-    status = ca_pend_io ( arguments.w ); //wait for channels to connect
-    if(status == ECA_TIMEOUT){
-        printf ("Some of the channels did not connect\n");
+    //wait for connection callbacks to complete
+    float elapsed = 0;
+    while (elapsed <=arguments.w){
+    	status = ca_pend_event (0.1);
+    	elapsed += 0.1;
+    	bool allDone=true;
+    	for (i=0; i<nChannels; ++i) allDone *= channels[i].firstConnection;
+    	if (allDone) break;
     }
+    for (i=0; i<nChannels; ++i){
+    	if (!channels[i].firstConnection) fprintf (stderr,"Channel %s not connected.\n", channels[i].name);
+    }
+
+    if (arguments.tool == cainfo){
+    	//if tool = cainfo, each channel has siblings connecting to the desc and *sv fields
+    	for (i=0; i<nChannels; ++i){
+    		if (!channels[i].firstConnection) continue; //skip if not connected
+
+    		if (createChannelMustSucceed(channels[i].descName, 0 , 0, CA_PRIORITY, &channels[i].descId)) return EXIT_FAILURE;
+    		if (createChannelMustSucceed(channels[i].hhsvName, 0 , 0, CA_PRIORITY, &channels[i].hhsvId)) return EXIT_FAILURE;
+    		if (createChannelMustSucceed(channels[i].hsvName, 0 , 0, CA_PRIORITY, &channels[i].hsvId)) return EXIT_FAILURE;
+    		if (createChannelMustSucceed(channels[i].lsvName, 0 , 0, CA_PRIORITY, &channels[i].lsvId)) return EXIT_FAILURE;
+    		if (createChannelMustSucceed(channels[i].llsvName, 0 , 0, CA_PRIORITY, &channels[i].llsvId)) return EXIT_FAILURE;
+
+			//we flush the channels now in order to detect what types of severities the record specifies.
+			status = ca_pend_io ( arguments.w );
+
+			if(status == ECA_TIMEOUT) {
+				//channel doesn't have usual sev fields
+				strClear(channels[i].hhsvName);
+				strClear(channels[i].hsvName);
+				strClear(channels[i].lsvName);
+				strClear(channels[i].llsvName);
+
+				//try multi-bit record severities
+				if (createChannelMustSucceed(channels[i].unsvName, 0 , 0, CA_PRIORITY, &channels[i].unsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].cosvName, 0 , 0, CA_PRIORITY, &channels[i].cosvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].zrsvName, 0 , 0, CA_PRIORITY, &channels[i].zrsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].onsvName, 0 , 0, CA_PRIORITY, &channels[i].onsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].twsvName, 0 , 0, CA_PRIORITY, &channels[i].twsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].thsvName, 0 , 0, CA_PRIORITY, &channels[i].thsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].frsvName, 0 , 0, CA_PRIORITY, &channels[i].frsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].fvsvName, 0 , 0, CA_PRIORITY, &channels[i].fvsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].sxsvName, 0 , 0, CA_PRIORITY, &channels[i].sxsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].svsvName, 0 , 0, CA_PRIORITY, &channels[i].svsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].eisvName, 0 , 0, CA_PRIORITY, &channels[i].eisvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].nisvName, 0 , 0, CA_PRIORITY, &channels[i].nisvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].tesvName, 0 , 0, CA_PRIORITY, &channels[i].tesvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].elsvName, 0 , 0, CA_PRIORITY, &channels[i].elsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].tvsvName, 0 , 0, CA_PRIORITY, &channels[i].tvsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].ttsvName, 0 , 0, CA_PRIORITY, &channels[i].ttsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].ftsvName, 0 , 0, CA_PRIORITY, &channels[i].ftsvId)) return EXIT_FAILURE;
+				if (createChannelMustSucceed(channels[i].ffsvName, 0 , 0, CA_PRIORITY, &channels[i].ffsvId)) return EXIT_FAILURE;
+
+				status = ca_pend_io ( arguments.w );
+
+				if(status == ECA_TIMEOUT) {
+					//channel doesn't have multi-bit severity fields
+					strClear(channels[i].unsvName);
+					strClear(channels[i].cosvName);
+					strClear(channels[i].zrsvName);
+					strClear(channels[i].onsvName);
+					strClear(channels[i].twsvName);
+					strClear(channels[i].thsvName);
+					strClear(channels[i].frsvName);
+					strClear(channels[i].fvsvName);
+					strClear(channels[i].sxsvName);
+					strClear(channels[i].svsvName);
+					strClear(channels[i].eisvName);
+					strClear(channels[i].nisvName);
+					strClear(channels[i].tesvName);
+					strClear(channels[i].elsvName);
+					strClear(channels[i].tvsvName);
+					strClear(channels[i].ttsvName);
+					strClear(channels[i].ftsvName);
+					strClear(channels[i].ffsvName);
+				}
+			}
+			else{
+				//channel doesn't have multi-bit severity fields
+				strClear(channels[i].unsvName);
+				strClear(channels[i].cosvName);
+				strClear(channels[i].zrsvName);
+				strClear(channels[i].onsvName);
+				strClear(channels[i].twsvName);
+				strClear(channels[i].thsvName);
+				strClear(channels[i].frsvName);
+				strClear(channels[i].fvsvName);
+				strClear(channels[i].sxsvName);
+				strClear(channels[i].svsvName);
+				strClear(channels[i].eisvName);
+				strClear(channels[i].nisvName);
+				strClear(channels[i].tesvName);
+				strClear(channels[i].elsvName);
+				strClear(channels[i].tvsvName);
+				strClear(channels[i].ttsvName);
+				strClear(channels[i].ftsvName);
+				strClear(channels[i].ffsvName);
+			}
+
+    	}
+    }
+
 
     return EXIT_SUCCESS;
 }
@@ -1708,10 +1926,11 @@ int main ( int argc, char ** argv )
             } else {
                 if (arguments.digits>=0)
                     sprintf(arguments.dblFormatStr, "%%-.%d%c", arguments.digits, opt);
-                else
+                else{
                     fprintf(stderr, "Precision %d for option '-%c' "
                             "out of range - ignored.\n", arguments.digits, opt);
-                arguments.digits = -1;
+                    arguments.digits = -1;
+                }
             }
             break;
         case 's':	//try to interpret values as strings
@@ -1779,7 +1998,7 @@ int main ( int argc, char ** argv )
                 		arguments.prec = -1;
                 	}
                 	else{ //write to dblFormatStr, keeping the format type
-                		char formatType = arguments.dblFormatStr[strlen(arguments.dblFormatStr)];
+                		char formatType = arguments.dblFormatStr[strlen(arguments.dblFormatStr)-1];
                         sprintf(arguments.dblFormatStr, "%%-.%d%c", arguments.prec, formatType);
                 	}
                 }
@@ -1935,7 +2154,19 @@ int main ( int argc, char ** argv )
 
 
     //check mutually exclusive arguments (without taking dbr type into account)
-    if (arguments.tool != camon){
+    if (arguments.tool == tool_unknown){
+    	usage(stderr, arguments.tool,argv[0]);
+    	return EXIT_FAILURE;
+    }
+    if(arguments.tool == cainfo && (arguments.s || arguments.num || arguments.bin  || arguments.hex || arguments.oct \
+    		|| arguments.d != -1 || arguments.prec != -1 || arguments.round != roundType_no_rounding || arguments.plain \
+    		|| arguments.digits != -1 || arguments.stat || arguments.nostat || arguments.noname || arguments.nounit \
+    		|| arguments.timestamp != '\0' || arguments.timeout != -1 || arguments.date || arguments.time || arguments.localdate \
+    		|| arguments.localtime || arguments.fieldSeparator != ' ' || arguments.inputSeparator != ' ' || arguments.numUpdates != -1\
+    		|| arguments.inNelm != 1 || arguments.outNelm != -1 || arguments.nord)){
+		fprintf(stderr, "The only option allowed for cainfo is -w.\n");
+    }
+    else if (arguments.tool != camon){
     	if (arguments.timestamp != 0){
     		fprintf(stderr, "Option -timestamp can only be specified with camon.\n");
     	}
@@ -1943,7 +2174,7 @@ int main ( int argc, char ** argv )
     		fprintf(stderr, "Option -n can only be specified with camon.\n");
     	}
     }
-    if (arguments.inNelm != 1 && (arguments.tool != caput && arguments.tool != caputq)){
+    else if (arguments.inNelm != 1 && (arguments.tool != caput && arguments.tool != caputq)){
 		fprintf(stderr, "Option -inNelm can only be specified with caput or caputq.\n");
     }
     if ((arguments.outNelm != -1 || arguments.num !=false || arguments.hex !=false || arguments.bin !=false || arguments.oct !=false)\
@@ -1974,20 +2205,17 @@ int main ( int argc, char ** argv )
     	strcpy(arguments.dblFormatStr,"%g");
     	arguments.fieldSeparator = ' ' ;
     }
-    if (arguments.tool == tool_unknown){
-    	usage(stderr, arguments.tool,argv[0]);
-    	return EXIT_FAILURE;
-    }
+
 
 	epicsTimeGetCurrent(&programStartTime);
 	validateTimestamp(programStartTime, "Start time");
 
 	//Remaining arg list refers to PVs
 	if (arguments.tool == caget || arguments.tool == camon || arguments.tool == cagets || arguments.tool == cado || arguments.tool == cainfo){
-		nChannels = argc - optind;       // Remaining arg list are PV names
+		nChannels = argc - optind;       // All remaining args are PV names
 	}
 	else if (arguments.tool == caput || arguments.tool == caputq){
-		//default case, it takes (inNelm+pv name) elements to define each channel
+		//It takes (inNelm+pv name) elements to define each channel
 		if ((argc - optind) % (arguments.inNelm +1)){
 			fprintf(stderr, "One of the PVs is missing the value to be written ('%s -h' for help).\n", argv[0]);
 			return EXIT_FAILURE;
@@ -2022,6 +2250,26 @@ int main ( int argc, char ** argv )
     	channels[i].hsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
     	channels[i].lsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
     	channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].unsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].cosvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].zrsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].onsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].twsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].thsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].frsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].fvsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].sxsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].svsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].eisvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].nisvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].tesvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].elsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].tvsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].ttsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].ftsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	channels[i].ffsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+
         //name and condition strings dont have to be allocated because they merely point somewhere else
     }
 
@@ -2042,21 +2290,17 @@ int main ( int argc, char ** argv )
 					if (charsToWrite >= MAX_STRING_SIZE) fprintf(stderr,"Input %s is longer than the allowed size %d - truncating.\n", argv[optind+1], MAX_STRING_SIZE);
 					optind++;
 				}
+				channels[i].inNelm = arguments.inNelm;
         	}
         	else{ //next argument is a string of values separated by inputSeparator
         		//count the number of values in it (= number of separators +1)
         		int count;
-        		//char *str = arg;
         		for (j=0, count=0; argv[optind+1][j]; j++) {
         			count += (argv[optind+1][j] == arguments.inputSeparator);
         		}
         		count+=1;
         		//and use it to allocate the string
         		channels[i].writeStr = callocMustSucceed (count *MAX_STRING_SIZE, sizeof(char), "main");
-        		if (!channels[i].writeStr ) {
-        			fprintf(stderr, "Memory allocation for channel structures failed.\n");
-        			return EXIT_FAILURE;
-        		}
 
         		if (count == 1){//the argument to write consists of just a single element.
 					int charsToWrite = snprintf(&channels[i].writeStr[0], MAX_STRING_SIZE, "%s", argv[optind+1]);
@@ -2102,6 +2346,7 @@ int main ( int argc, char ** argv )
         	}
         }
         else if(arguments.tool == cainfo){
+        	//set sibling channels for getting desc and severity data
         	size_t lenName = strlen(channels[i].name);
         	assert (lenName < LEN_RECORD_NAME + 4);//worst case scenario: longest name + .VAL
 
@@ -2110,34 +2355,84 @@ int main ( int argc, char ** argv )
         	strcpy(channels[i].hsvName, channels[i].name);
         	strcpy(channels[i].lsvName, channels[i].name);
         	strcpy(channels[i].llsvName, channels[i].name);
+        	strcpy(channels[i].unsvName, channels[i].name);
+        	strcpy(channels[i].cosvName, channels[i].name);
+        	strcpy(channels[i].zrsvName, channels[i].name);
+        	strcpy(channels[i].onsvName, channels[i].name);
+        	strcpy(channels[i].twsvName, channels[i].name);
+        	strcpy(channels[i].thsvName, channels[i].name);
+        	strcpy(channels[i].frsvName, channels[i].name);
+        	strcpy(channels[i].fvsvName, channels[i].name);
+        	strcpy(channels[i].sxsvName, channels[i].name);
+        	strcpy(channels[i].svsvName, channels[i].name);
+        	strcpy(channels[i].eisvName, channels[i].name);
+        	strcpy(channels[i].nisvName, channels[i].name);
+        	strcpy(channels[i].tesvName, channels[i].name);
+        	strcpy(channels[i].elsvName, channels[i].name);
+        	strcpy(channels[i].tvsvName, channels[i].name);
+        	strcpy(channels[i].ttsvName, channels[i].name);
+        	strcpy(channels[i].ftsvName, channels[i].name);
+        	strcpy(channels[i].ffsvName, channels[i].name);
 
-        	//append .DESC, .HHSV, .HSV, .LSV, .LLSV
-        	if (lenName > 4 && strcmp(&channels[i].name[lenName- 4], ".VAL") == 0){
+        	//append .DESC, .HHSV, .HSV, .LSV, .LLSV, etc
+        	if (lenName > 4 && endsWith(channels[i].name, ".VAL")){
         		//if last 4 elements equal .VAL, replace them
         		strcpy(&channels[i].descName[lenName - 4],".DESC");
         		strcpy(&channels[i].hhsvName[lenName - 4],".HHSV");
         		strcpy(&channels[i].hsvName[lenName - 4],".HSV");
         		strcpy(&channels[i].lsvName[lenName - 4],".LSV");
         		strcpy(&channels[i].llsvName[lenName - 4],".LLSV");
+        		strcpy(&channels[i].unsvName[lenName - 4],".UNSV");
+        		strcpy(&channels[i].cosvName[lenName - 4],".COSV");
+        		strcpy(&channels[i].zrsvName[lenName - 4],".ZRSV");
+        		strcpy(&channels[i].onsvName[lenName - 4],".ONSV");
+        		strcpy(&channels[i].twsvName[lenName - 4],".TWSV");
+        		strcpy(&channels[i].thsvName[lenName - 4],".THSV");
+        		strcpy(&channels[i].frsvName[lenName - 4],".FRSV");
+        		strcpy(&channels[i].fvsvName[lenName - 4],".FVSV");
+        		strcpy(&channels[i].sxsvName[lenName - 4],".SXSV");
+        		strcpy(&channels[i].svsvName[lenName - 4],".SVSV");
+        		strcpy(&channels[i].eisvName[lenName - 4],".EISV");
+        		strcpy(&channels[i].nisvName[lenName - 4],".NISV");
+        		strcpy(&channels[i].tesvName[lenName - 4],".TESV");
+        		strcpy(&channels[i].elsvName[lenName - 4],".ELSV");
+        		strcpy(&channels[i].tvsvName[lenName - 4],".TVSV");
+        		strcpy(&channels[i].ttsvName[lenName - 4],".TTSV");
+        		strcpy(&channels[i].ftsvName[lenName - 4],".FTSV");
+        		strcpy(&channels[i].ffsvName[lenName - 4],".FFSV");
         	}
         	else{
         		//otherwise simply append
-        		strcat(&channels[i].descName[strlen(channels[i].descName)],".DESC");
-        		strcat(&channels[i].hhsvName[strlen(channels[i].hhsvName)],".HHSV");
-        		strcat(&channels[i].hsvName[strlen(channels[i].hsvName)],".HSV");
-        		strcat(&channels[i].lsvName[strlen(channels[i].lsvName)],".LSV");
-        		strcat(&channels[i].llsvName[strlen(channels[i].llsvName)],".LLSV");
-
+        		strcat(channels[i].descName,".DESC");
+        		strcat(channels[i].hhsvName,".HHSV");
+        		strcat(channels[i].hsvName,".HSV");
+        		strcat(channels[i].lsvName,".LSV");
+        		strcat(channels[i].llsvName,".LLSV");
+        		strcat(channels[i].unsvName,".UNSV");
+        		strcat(channels[i].cosvName,".COSV");
+        		strcat(channels[i].zrsvName,".ZRSV");
+        		strcat(channels[i].onsvName,".ONSV");
+        		strcat(channels[i].twsvName,".TWSV");
+        		strcat(channels[i].thsvName,".THSV");
+        		strcat(channels[i].frsvName,".FRSV");
+        		strcat(channels[i].fvsvName,".FVSV");
+        		strcat(channels[i].sxsvName,".SXSV");
+        		strcat(channels[i].svsvName,".SVSV");
+        		strcat(channels[i].eisvName,".EISV");
+        		strcat(channels[i].nisvName,".NISV");
+        		strcat(channels[i].tesvName,".TESV");
+        		strcat(channels[i].elsvName,".ELSV");
+        		strcat(channels[i].tvsvName,".TVSV");
+        		strcat(channels[i].ttsvName,".TTSV");
+        		strcat(channels[i].ftsvName,".FTSV");
+        		strcat(channels[i].ffsvName,".FFSV");
         	}
 
         }
     }
 
 
-    //dumpArguments(&arguments);
-
     //allocate memory for output strings
-	outValue = callocMustSucceed(nChannels, sizeof(char *),"main");
 	outDate = callocMustSucceed(nChannels, sizeof(char *),"main");
 	outTime = callocMustSucceed(nChannels, sizeof(char *),"main");
 	outSev = callocMustSucceed(nChannels, sizeof(char *),"main");
@@ -2146,10 +2441,7 @@ int main ( int argc, char ** argv )
 	outTimestamp = callocMustSucceed(nChannels, sizeof(char *),"main");
 	outLocalDate = callocMustSucceed(nChannels, sizeof(char *),"main");
 	outLocalTime = callocMustSucceed(nChannels, sizeof(char *),"main");
-	outEnumStrs = callocMustSucceed(nChannels, sizeof(char **),"main");
-	numEnumStrs = callocMustSucceed(nChannels, sizeof(unsigned int),"main");
 	for(i = 0; i < nChannels; i++){
-		outValue[i] = callocMustSucceed(LEN_VALUE, sizeof(char),"main");
 		outDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
 		outTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
 		outSev[i] = callocMustSucceed(LEN_SEVSTAT, sizeof(char),"main");
@@ -2158,20 +2450,20 @@ int main ( int argc, char ** argv )
 		outTimestamp[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
 		outLocalDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
 		outLocalTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
-		outEnumStrs[i] = callocMustSucceed(MAX_ENUM_STATES, sizeof(char *),"main");
-		for (j=0; j < MAX_ENUM_STATES; ++j){
-			outEnumStrs[i][j] = callocMustSucceed(MAX_ENUM_STRING_SIZE, sizeof(char),"main");
-		}
 	}
 	//memory for timestamp
 	timestampRead = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
 	lastUpdate = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
 	firstUpdate = mallocMustSucceed(nChannels * sizeof(bool),"main");
 
+	//start channel access
     if(caInit(channels, nChannels) != EXIT_SUCCESS) return EXIT_FAILURE;
 
     if (arguments.tool == cainfo){
     	cainfoRequest(channels, nChannels);
+    }
+    else if(arguments.tool == camon || arguments.tool == cawait){
+    	monitorLoop(channels, nChannels);
     }
     else{
     	caRequest(channels, nChannels);
@@ -2188,12 +2480,29 @@ int main ( int argc, char ** argv )
     	free(channels[i].hsvName);
     	free(channels[i].lsvName);
     	free(channels[i].llsvName);
+    	free(channels[i].unsvName);
+    	free(channels[i].cosvName);
+    	free(channels[i].zrsvName);
+    	free(channels[i].onsvName);
+    	free(channels[i].twsvName);
+    	free(channels[i].thsvName);
+    	free(channels[i].frsvName);
+    	free(channels[i].fvsvName);
+    	free(channels[i].sxsvName);
+    	free(channels[i].svsvName);
+    	free(channels[i].eisvName);
+    	free(channels[i].nisvName);
+    	free(channels[i].tesvName);
+    	free(channels[i].elsvName);
+    	free(channels[i].tvsvName);
+    	free(channels[i].ttsvName);
+    	free(channels[i].ftsvName);
+    	free(channels[i].ffsvName);
     }
     free(channels);
 
     //free output strings
     for(i = 0; i < nChannels; i++){
-    	free(outValue[i]);
     	free(outDate[i]);
     	free(outTime[i]);
     	free(outSev[i]);
@@ -2202,10 +2511,7 @@ int main ( int argc, char ** argv )
     	free(outTimestamp[i]);
     	free(outLocalDate[i]);
     	free(outLocalTime[i]);
-    	for (j=0 ; j< MAX_ENUM_STATES; ++j)	free(outEnumStrs[i][j]);
-    	free(outEnumStrs[i]);
     }
-    free(outValue);
     free(outDate);
     free(outTime);
     free(outSev);
@@ -2214,7 +2520,6 @@ int main ( int argc, char ** argv )
     free(outTimestamp);
     free(outLocalDate);
     free(outLocalTime);
-	free(outEnumStrs);
 
     //free monitor's timestamp
     free(timestampRead);
