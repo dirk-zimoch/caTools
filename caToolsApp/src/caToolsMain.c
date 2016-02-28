@@ -1095,6 +1095,7 @@ void monitorLoop (struct channel *channels, int nChannels){
 		for (i=0; i<nChannels;++i) firstUpdate[i]=false;
 	}
 
+	runMonitor = true;
 	while (runMonitor){
 		ca_pend_event(0.1);
 
@@ -1657,7 +1658,7 @@ void channelStatusCallback(struct connection_handler_args args){
 					validateTimestamp(timeoutTime, "timeout");
 					epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
 				}
-				runMonitor = true;
+				runMonitor = true;//we need this here to display the current state of the channel
 			}
 
 			ch->firstConnection = true;
