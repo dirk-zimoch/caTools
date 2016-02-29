@@ -199,7 +199,7 @@ bool *firstUpdate;					//indicates that lastUpdate has not been initialized
 epicsTimeStamp timeoutTime;			//when to stop monitoring (-timeout)
 
 bool runMonitor;					//indicates when to stop monitoring according to -timeout or -n
-unsigned int numMonitorUpdates;		//counts updates needed by -n
+int numMonitorUpdates;		//counts updates needed by -n
 
 
 //templates for reading requested data
@@ -213,20 +213,20 @@ severity = ((struct T *)args.dbr)->severity;
 #define precision_get(T) precision = (((struct T *)args.dbr)->precision);
 
 
-void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
+void usage(FILE *stream, enum tool tool, char *programName){
 
 	//usage:
 	if (tool == caget || tool == cagets || tool == camon || tool == cado ){
-		fprintf(stream, "\nUsage: %s [flags] <channel> [<channel> ...]\n", programName);
+		fprintf(stream, "\nUsage: %s [flags] <pv> [<pv> ...]\n", programName);
 	}
 	else if (tool == cawait){
-		fprintf(stream, "\nUsage: %s [flags] <channel> <condition> [<channel> <condition> ...]\n", programName);
+		fprintf(stream, "\nUsage: %s [flags] <pv> <condition> [<pv> <condition> ...]\n", programName);
 	}
 	else if (tool == caput || tool == caputq  ){
-		fprintf(stream, "\nUsage: %s [flags] <channel> <value> [<channel> <value> ...]\n", programName);
+		fprintf(stream, "\nUsage: %s [flags] <pv> <value> [<pv> <value> ...]\n", programName);
 	}
 	else if (tool == cainfo  ){
-		fprintf(stream, "\nUsage: %s <channel> [<channel> ...]\n", programName);
+		fprintf(stream, "\nUsage: %s <pv> [<pv> ...]\n", programName);
 	}
 	else { //tool unknown
 		fprintf(stream, "\nUnknown tool. Try %s -tool with any of the following arguments: caget, caput, cagets, "\
@@ -238,13 +238,13 @@ void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 	fputs("\n",stream);
 
 	if (tool == caget ){
-		fputs("Reads values from channel(s).\n", stream);
+		fputs("Reads process value(s).\n", stream);
 	}
 	if (tool == cagets){
-		fputs("First writes 1 to PROC fields of the provided channels. Then reads the values.\n", stream);
+		fputs("First writes 1 to PROC fields of the provided records. Then reads the values.\n", stream);
 	}
 	if (tool == caput ){
-		fputs("Writes value(s) to channels(s). Then reads the updated values and displays them.\n", stream);
+		fputs("Writes value(s) to record(s). Then reads the updated values and displays them.\n", stream);
 		fputs("Arrays can be handled either by specifying number of elements as an argument to -inNelm option"\
 				" or grouping the elements to write in a string following pv name. E.g. the following two commands produce the same"\
 				" result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
@@ -253,7 +253,7 @@ void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 		fputs("caput -inNelm 3 pvA '1 2 3' pvB '4 5 6'\n", stream);
 	}
 	if (tool == caputq ){
-		fputs("Writes value(s) to channels(s), then exits. Does not have any output (except if an error occurs).\n", stream);
+		fputs("Writes value(s) to record(s), then exits. Does not have any output (except if an error occurs).\n", stream);
 		fputs("Arrays can be handled either by specifying number of elements as an argument to -inNelm option"\
 				" or grouping the elements to write in a string following pv name. E.g. the following two commands produce the same"\
 				" result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
@@ -262,19 +262,19 @@ void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 		fputs("caputq -inNelm 3 pvA '1 2 3' pvB '4 5 6'\n", stream);
 	}
 	if (tool == cado ){
-		fputs("First writes 1 to PROC fields of the provided channels, then exits. Does not have any output (except if an error occurs).\n", stream);
+		fputs("First writes 1 to PROC fields of the provided records, then exits. Does not have any output (except if an error occurs).\n", stream);
 	}
 	if (tool == camon ){
-		fputs("Monitors the provided channels.\n", stream);
+		fputs("Monitors the provided process values.\n", stream);
 	}
 	if (tool == cawait){
-		fputs("Monitors the channels, but only displays values when they match the provided conditions. The conditions are specified as a"\
+		fputs("Monitors the process values, but only displays the values when they match the provided conditions. The conditions are specified as a"\
 				" string containing the operator together with the values.\n", stream);
 		fputs("The following operators are supported:  >,<,<=,>=,==,!=, ==A...B(in interval), !=A...B(out of interval). For example, "\
 				"cawait pv '==1...5' ignores all pv values except those inside the interval [1,5].\n", stream);
 	}
 	if (tool == cainfo  ){
-		fputs("Displays detailed information about the provided channels.\n", stream);
+		fputs("Displays detailed information about the provided records.\n", stream);
 		fputs("-w <number>           timeout for CA calls\n", stream);
 		return; //does not have any other flags
 	}
@@ -317,8 +317,8 @@ void usage(FILE *stream, enum tool tool, char *programName){//TODO channel->pv?
 
 		if (tool == camon){
 			fputs("-timestamp <char>     display relative timestamps. <char> = r displays time elapsed since start " \
-					"of the program. <char> = u displays time elapsed since last update of any channel.  <char> = c displays "\
-					"time elapsed since last update separately for each channel\n", stream);
+					"of the program. <char> = u displays time elapsed since last update of any process value.  <char> = c displays "\
+					"time elapsed since last update separately for each process value\n", stream);
 			fputs("-n <number>           exit the program after <number> updates\n", stream);
 		}
 		if (tool == cawait){
@@ -458,11 +458,13 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
 		break;
 	case DBR_CHAR:
 	case DBR_STRING:
-	case DBR_ENUM:
 		if (sscanf(nativeValue, "%lf", &dblValue) <= 0){
-			fprintf(stderr, "Channel %s value %s cannot be converted to double.", channel.name, (char*)nativeValue);
+			fprintf(stderr, "Record %s value %s cannot be converted to double.\n", channel.name, (char*)nativeValue);
 			return -1;
 		}
+		break;
+	case DBR_ENUM:
+		dblValue = (double) *(uint16_t*)nativeValue;
 		break;
 	default:
 		fprintf(stderr, "Unrecognized DBR type.\n");
@@ -528,7 +530,7 @@ int printValue(int i, evargs args, int precision){
     		break;
     	case DBR_INT:{
     		int16_t valueInt16 = ((dbr_int_t*)value)[j];
-    		//display dec, hex, bin, oct if desired
+    		//display dec, hex, bin, oct, char if desired
     		if (arguments.hex){
     			printf("%" PRIx16, (uint16_t)valueInt16);
     		}
@@ -537,6 +539,9 @@ int printValue(int i, evargs args, int precision){
     		}
     		else if (arguments.bin){
     			printBits((uint16_t)valueInt16);
+    		}
+    		else if (arguments.s){
+    			printf("%c", (uint8_t)valueInt16);
     		}
     		else{
     			printf("%" PRId16, valueInt16);
@@ -749,8 +754,8 @@ int getTimeStamp(int i){
 
 		lastUpdate[commonI] = timestampRead[i]; // reset
 
-		if (!firstUpdate[commonI]){
-			firstUpdate[commonI] = true;
+		if (!firstUpdate[i]){
+			firstUpdate[i] = true;
 			showEmpty = true;
 		}
 	}
@@ -961,7 +966,7 @@ static void caReadCallback (evargs args){
     if (arguments.stat){//always display
     	//do nothing
     }
-    if (arguments.nostat){//never display
+    else if (arguments.nostat){//never display
     	strClear(outSev[ch->i]);
     	strClear(outStat[ch->i]);
     }
@@ -974,9 +979,9 @@ static void caReadCallback (evargs args){
 
    	//time
     if (args.type >= DBR_TIME_STRING && args.type <= DBR_TIME_DOUBLE){//otherwise we don't have it
-    	//we don't assume that manually specifying dbr_time implies -time or -date.
-    	if (arguments.date) epicsTimeToStrftime(outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &timestampRead[ch->i]);
-    	if (arguments.time) epicsTimeToStrftime(outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &timestampRead[ch->i]);
+    	//we assume that manually specifying dbr_time implies -time or -date.
+    	if (arguments.date || arguments.d != -1) epicsTimeToStrftime(outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &timestampRead[ch->i]);
+    	if (arguments.time || arguments.d != -1) epicsTimeToStrftime(outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &timestampRead[ch->i]);
     }
 
 
@@ -1078,7 +1083,7 @@ static void getStaticUnitsCallback (evargs args){
     	units_get_cb(dbr_gr_double);
     	break;
     default:
-    	fprintf(stderr, "Units for channel %s cannot be displayed.\n", ch->name);
+    	fprintf(stderr, "Units for record %s cannot be displayed.\n", ch->name);
     	break;
     }
 
@@ -1213,7 +1218,7 @@ void caRequest(struct channel *channels, int nChannels){
         	int inputI=1;
         	status = ca_array_put_callback(DBF_CHAR, 1, channels[i].procId, &inputI, caWriteCallback, &channels[i]);
         }
-		if (status != ECA_NORMAL) fprintf(stderr, "Problem creating put request for channel %s: %s.\n", channels[i].name,ca_message(status));
+		if (status != ECA_NORMAL) fprintf(stderr, "Problem creating put request for process value %s: %s.\n", channels[i].name,ca_message(status));
     }
 
     // wait for callbacks
@@ -1237,7 +1242,7 @@ void caRequest(struct channel *channels, int nChannels){
         		continue;
         	}
     		if (channels[i].done){
-    			status = ca_array_get_callback(channels[i].type, channels[i].count, channels[i].id, caReadCallback, &channels[i]);
+    			status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].id, caReadCallback, &channels[i]);
     			if (status != ECA_NORMAL) fprintf(stderr, "Problem creating get request for channel %s: %s.\n", channels[i].name,ca_message(status));
     		}
     		else{
@@ -1615,7 +1620,7 @@ void channelStatusCallback(struct connection_handler_args args){
 			else if(arguments.outNelm > 0 && arguments.outNelm < ch->count) ch->outNelm = arguments.outNelm;
 			else{
 				ch->outNelm = ch->count;
-				fprintf(stderr, "Invalid number %d of requested elements to read.", arguments.outNelm);
+				fprintf(stderr, "Invalid number %d of requested elements to read - number of elements in %s is %ld.\n", arguments.outNelm, ch->name, ch->count);
 			}
 
 			//request type
@@ -1635,9 +1640,9 @@ void channelStatusCallback(struct connection_handler_args args){
 	        				int reqType = dbf_type_to_DBR_GR(baseType);
 
 	        				status = ca_array_get_callback(reqType, ch->count, ch->id, getStaticUnitsCallback, ch);
-							if (status != ECA_NORMAL) fprintf(stderr, "Problem creating ca_get request for channel %s: %s\n",ch->name, ca_message(status));
-							status = ca_flush_io();
-							if (status != ECA_NORMAL) fprintf(stderr, "Problem flushing channel %s: %s.\n", ch->name, ca_message(status));
+							if (status != ECA_NORMAL) fprintf(stderr, "Problem creating ca_get request for process value %s: %s\n",ch->name, ca_message(status));
+							status = ca_flush_io();//flush this so it gets processed before everything else
+							if (status != ECA_NORMAL) fprintf(stderr, "Problem flushing process value %s: %s.\n", ch->name, ca_message(status));
 	        			}
 
 	        		}
@@ -1651,7 +1656,7 @@ void channelStatusCallback(struct connection_handler_args args){
 			if (arguments.tool == camon || arguments.tool == cawait){
 				//create subscription
 				status = ca_create_subscription(ch->type, ch->outNelm, ch->id, DBE_VALUE | DBE_ALARM | DBE_LOG, caReadCallback, ch, NULL);
-				if (status != ECA_NORMAL) fprintf(stderr, "Problem creating subscription for channel %s: %s.\n",ch->name, ca_message(status));
+				if (status != ECA_NORMAL) fprintf(stderr, "Problem creating subscription for process value %s: %s.\n",ch->name, ca_message(status));
 				if (arguments.tool == cawait && arguments.timeout!=-1){
 					//set first timeout
 					epicsTimeGetCurrent(&timeoutTime);
@@ -1659,6 +1664,7 @@ void channelStatusCallback(struct connection_handler_args args){
 					epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
 				}
 				runMonitor = true;//we need this here to display the current state of the channel
+				numMonitorUpdates--;//first print after connection does not count for -n
 			}
 
 			ch->firstConnection = true;
@@ -1667,9 +1673,9 @@ void channelStatusCallback(struct connection_handler_args args){
 			if (!arguments.nounit && (arguments.time || arguments.date || arguments.timestamp)){
 				int reqType = dbf_type_to_DBR_GR(ca_field_type(ch->id));
 				status = ca_array_get_callback(reqType, ch->count, ch->id, getStaticUnitsCallback, ch);
-				if (status != ECA_NORMAL) fprintf(stderr, "Problem creating ca_get request for channel %s: %s\n",ch->name, ca_message(status));
+				if (status != ECA_NORMAL) fprintf(stderr, "Problem creating ca_get request for process value %s: %s\n",ch->name, ca_message(status));
 				status = ca_flush_io();
-				if (status != ECA_NORMAL) fprintf(stderr, "Problem flushing channel %s: %s.\n", ch->name, ca_message(status));
+				if (status != ECA_NORMAL) fprintf(stderr, "Problem flushing process value %s: %s.\n", ch->name, ca_message(status));
 			}
     	}
 
@@ -1726,7 +1732,7 @@ int caInit(struct channel *channels, int nChannels){
     	if (allDone) break;
     }
     for (i=0; i<nChannels; ++i){
-    	if (!channels[i].firstConnection) fprintf (stderr,"Channel %s not connected.\n", channels[i].name);
+    	if (!channels[i].firstConnection) fprintf (stderr,"Process value %s not connected.\n", channels[i].name);
     }
 
     if (arguments.tool == cainfo){
@@ -1829,7 +1835,12 @@ int caDisconnect(struct channel * channels, int nChannels){
 
     for(i=0; i < nChannels; i++){
         status = ca_clear_channel(channels[i].id);
-        if( checkStatus(status) != EXIT_SUCCESS) exitStatus = EXIT_FAILURE;
+        if( status != ECA_NORMAL) {
+            fprintf(stderr, "CA error %s occurred while trying to stop channel access.\n", ca_message(status));
+        	SEVCHK(status, "CA error");
+        	exitStatus = EXIT_FAILURE;
+        	break;
+        }
     }
     return exitStatus;
 }
@@ -1863,6 +1874,9 @@ int main ( int argc, char ** argv )
     if (endsWith(argv[0],"cado")) arguments.tool = cado;
     if (endsWith(argv[0],"cainfo")) arguments.tool = cainfo;
 
+	epicsTimeGetCurrent(&programStartTime);
+	validateTimestamp(programStartTime, "Start time");
+
 
     static struct option long_options[] = {
         {"num",     	no_argument,        0,  0 },
@@ -1877,7 +1891,7 @@ int main ( int argc, char ** argv )
         {"nostat",  	no_argument,  		0,  0 },	//status and severity off
         {"noname",  	no_argument,        0,  0 },	//hide name
         {"nounit",  	no_argument,        0,  0 },	//hide units
-        {"timestamp",	required_argument, 	0,  0 },	//timestamp type ruc
+        {"timestamp",	required_argument, 	0,  0 },	//timestamp type r,u,c
         {"localdate",	no_argument, 		0,  0 },	//client date
         {"time",		no_argument, 		0,  0 },	//server time
         {"localtime",	no_argument, 		0,  0 },	//client time
@@ -2182,7 +2196,7 @@ int main ( int argc, char ** argv )
     		&& (arguments.tool == cado || arguments.tool == caputq)){
     	fprintf(stderr, "Option -outNelm, -num, -hex, -bin and -oct cannot be specified with cado or caputq, because they have no output.\n");
     }
-    if (arguments.nostat != false || arguments.stat != false){
+    if (arguments.nostat != false && arguments.stat != false){
     	fprintf(stderr, "Options -stat and -nostat are mutually exclusive.\n");
     	arguments.nostat = false;
     }
@@ -2208,8 +2222,7 @@ int main ( int argc, char ** argv )
     }
 
 
-	epicsTimeGetCurrent(&programStartTime);
-	validateTimestamp(programStartTime, "Start time");
+
 
 	//Remaining arg list refers to PVs
 	if (arguments.tool == caget || arguments.tool == camon || arguments.tool == cagets || arguments.tool == cado || arguments.tool == cainfo){
@@ -2234,44 +2247,42 @@ int main ( int argc, char ** argv )
 
     if (nChannels < 1)
     {
-        fprintf(stderr, "No channel name specified. ('%s -h' for help.)\n", argv[0]);
+        fprintf(stderr, "No record name specified. ('%s -h' for help.)\n", argv[0]);
         return EXIT_FAILURE;
     }
 
     //allocate memory for channel structures
     channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "main");
-    if (!channels) {
-    	fprintf(stderr, "Memory allocation for channel structures failed.\n");
-    	return EXIT_FAILURE;
-    }
     for (i=0;i<nChannels;++i){
-    	channels[i].procName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");//5 spaces for .(field name)
-    	channels[i].descName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].hhsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].hsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].lsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].unsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].cosvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].zrsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].onsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].twsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].thsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].frsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].fvsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].sxsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].svsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].eisvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].nisvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].tesvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].elsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].tvsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].ttsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].ftsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-    	channels[i].ffsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
-
-        //name and condition strings dont have to be allocated because they merely point somewhere else
+    	if (arguments.tool == cagets || cado){
+    		channels[i].procName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");//5 spaces for .(field name)
+    	}
+    	if(arguments.tool == cainfo){
+    		channels[i].descName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].hhsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].hsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].lsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].unsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].cosvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].zrsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].onsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].twsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].thsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].frsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].fvsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].sxsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].svsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].eisvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].nisvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].tesvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].elsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].tvsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].ttsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].ftsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    		channels[i].ffsvName = callocMustSucceed (LEN_RECORD_NAME + 5, sizeof(char), "main");
+    	}
     }
 
 
@@ -2301,7 +2312,7 @@ int main ( int argc, char ** argv )
         		}
         		count+=1;
         		//and use it to allocate the string
-        		channels[i].writeStr = callocMustSucceed (count *MAX_STRING_SIZE, sizeof(char), "main");
+        		channels[i].writeStr = callocMustSucceed (count*MAX_STRING_SIZE, sizeof(char), "main");
 
         		if (count == 1){//the argument to write consists of just a single element.
 					int charsToWrite = snprintf(&channels[i].writeStr[0], MAX_STRING_SIZE, "%s", argv[optind+1]);
@@ -2453,9 +2464,12 @@ int main ( int argc, char ** argv )
 		outLocalTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
 	}
 	//memory for timestamp
-	timestampRead = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
-	lastUpdate = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
-	firstUpdate = mallocMustSucceed(nChannels * sizeof(bool),"main");
+	if (arguments.tool == camon || arguments.tool == cawait){
+		timestampRead = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
+		lastUpdate = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
+		firstUpdate = mallocMustSucceed(nChannels * sizeof(bool),"main");
+		numMonitorUpdates = 0;
+	}
 
 	//start channel access
     if(caInit(channels, nChannels) != EXIT_SUCCESS) return EXIT_FAILURE;
