@@ -1,0 +1,17 @@
+# executable
+bin/*
+
+# latex source
+docs/*.log
+docs/*.aux
+docs/*.out
+docs/*.synctex.gz
+docs/*.toc
+docs/*.bbl
+docs/*.blg
+
+# QT Creator project files
+*.config
+*.creator*
+*.files
+*.includes

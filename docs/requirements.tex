@@ -1,0 +1,149 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8x]{inputenc}
+\usepackage{cite}
+\usepackage{hyperref}
+%\usepackage{float} %for H positioning
+
+
+\title{Software requirements for caTools}
+%\author{Sašo Skube, PSI}
+\date{}
+
+\renewcommand*{\theenumi}{\thesubsection.\arabic{enumi}}
+%\renewcommand*{\theenumii}{\theenumi.\arabic{enumii}}
+
+\begin{document}
+
+\maketitle
+
+%\tableofcontents
+%\newpage
+
+\section{Introduction}
+caTools represent a set of tools used to read, write and display information about EPICS channels. Two sets of tools currently exist. First set is written in TCL programming language and have been in use at PSI for many years. Later a second set of tools was added to EPICS base. The basic functionalities of both are equal, but each has different additional features. Furthermore, the input and output of both tools is not compatible. 
+
+The new version of the TCL programming language is not compatible to the previous ones, so the existing PSI tools cannot be used with the new TCL version. Thus a new set of caTools is needed, that will be backwards compatible with the existing PSI tools and that will have additional features from EPICS base tool set added.
+
+An analysis of the current tools is available inside a Jira ticket~\cite{jira_analyze}. A preliminary list of command line arguments for the new tools is available inside a Jira ticket~\cite{jira_requirements} as \texttt{prelimenaryArgs.pdf} attachment. The rest of this document describes the requirements for the new set of caTools.
+
+\section{Requirements}
+\subsection{General}
+\begin{enumerate}
+	\item The following tools shall be available:
+	\begin{description}
+		\item [caget] Reads and formats a value from each channel specified by the user. 
+		\item [cagets] Writes 1 to PROC field of a channel and reads it back after channel has finished processing.
+		\item [caput] Writes a value to a channel, waits for the processing to finish and reads back the new value.
+		\item [caputq] Writes a value to a channel, but does not wait for the processing to finish. Does not have any output (except if an error occurs).
+		\item [camon] Monitors a set of channels and outputs their values on each change.
+		\item [cado] Writes 1 to a channel, but does not wait for the processing to finish. Does not have any output (except if an error occurs).
+		\item [cawait] Monitors a channel and waits until specified conditions for the channel match. Then the value is displayed.
+		\item [cainfo] Displays detailed information about a channel. Has custom output, so the formatting options do not apply.
+	\end{description}
+	\item caTools shall be written in C programming language.
+	\item caTools shall compile to run on all terminal stations in PSI. At least the following platforms shall be supported:
+	\begin{itemize}
+		\item SL6-x86 SL6-x86\_64,
+		\item SL5-x86 SL5-x86\_64,
+		\item eldk52-e500v2,
+		\item eldk42-ppc4xxFP,
+		\item Windows (exact build system is not yet determined).
+	\end{itemize}
+	\item Input and expected output shall be backwards compatible with existing PSI tools, except for \textbf{caInfo} tool and array handling (output will be without curly braces).
+	\item Date and time of the record processing shall be available (CA server date/time).
+	\item Date and time when the record data was received on the client side shall be available (client local date/time).
+\end{enumerate}
+
+\subsection{Channel access}
+\begin{enumerate}
+	\item The user shall be able to request specified DBR type (eg. \texttt{DBR\_TIME\_CHAR}).
+	\item Default requested DBR type shall be matching record's field DBF type:
+	\begin{itemize}
+		\item By default, \texttt{GR} detail level (\texttt{DBR\_GR\_[native DBF]}) shall be used.
+		\item When only record processing time-stamp (CA server date/time) and/or severity and status are requested, \texttt{TIME} detail level shall be used (\texttt{DBR\_TIME\_[native DBF]}).
+		\item When more detailed information than severity, status and record processing time-stamp (CA server date/time) is requested, two requests shall be made. First request shall be using \texttt{TIME} detail level and second using \texttt{GR} detail level.
+		\item When less detailed information is requested, the detail level shall be set accordingly.
+	\end{itemize}
+	\item The user shall be able to specify channel access timeout (eg. how long to wait for channel to connect).
+\end{enumerate}
+
+\subsection{Tool specifics}
+\begin{enumerate}
+	\item \textbf{camon} shall have options to select incremental time-stamp:
+	\begin{itemize}
+		\item Time elapsed since start of program.
+		\item Time elapsed since last update.
+		\item Time elapsed since last update, by channel.
+	\end{itemize}
+	\item \textbf{camon} shall have an option to exit monitoring after user specified number of updates.
+	\item \textbf{cawait} shall have an option to exit after a user specified timeout.
+	\item \textbf{caInfo} tool shall display all the information available in \texttt{DBR\_CTRL\_XXX} DBR type, and more:
+	\begin{itemize}
+		\item native DBF type, array size, IOC name, access rights,
+		\item record type, description, severities assigned to alarm limits.
+	\end{itemize}
+\end{enumerate}
+
+\subsection{Value formatting}
+\begin{enumerate}
+	\item The format of the \texttt{decimal} values shall be settable:
+	\begin{itemize}
+		\item Round the value to closest integer, round to next integer, round to previous integer.
+		\item Scientific notation (mantissa/exponent) with specified precision - \%e format.
+		\item Decimal floating point notation with specified precision - \%f format.
+		\item Use the shortest representation between \%e and \%f.
+		\item Override the PREC field defined in the record.
+	\end{itemize}
+	\item The user shall be able to format enum or char value to integer (and vice-versa).
+	\item The user shall be able to set the format of the \texttt{integer} values to hex, binary or octal.
+	\item \label{itm:atoitoa} The user shall be able to force interpretation of \texttt{enum} and \texttt{char} values as integers or characters / array of characters.
+\end{enumerate}
+
+\subsection{Array handling}
+\begin{enumerate}
+	\item Arrays shall be printed as a list of values, where the formatting shall be based on the record's field native DBF type (eg. char type is displayed as an ASCII character, double type is displayed as a decimal number). Default behavior can be overridden by requirement~\ref{itm:atoitoa}.
+	\item Array input and output values separator shall be configurable.
+	\item The user shall be able to set the requested amount of array elements to read or write.
+	\item The user shall be able to print the number of elements in an array before printing out array values.
+\end{enumerate}
+
+\subsection{Output formatting}
+\begin{enumerate}
+	\item The default output format shall be in the following form: 
+	\begin{verbatim}
+		[date] [time] [channel name] [value] [EGU] [severity and status]
+	\end{verbatim}
+	\item Severity and status shall be displayed when not in \texttt{NO\_ALARM} state.
+	\item The user shall be able to force the severity and status to always be displayed.
+	\item The user shall be able to force the severity and status to never be displayed.
+	\item The user shall be able to hide channel name from the output.
+	\item The user shall be able to hide engineering units (EGU) from displaying next to values.
+	\item The value and output formatting shall be applied to all tools that honor the default output format equally.
+\end{enumerate}
+
+\subsection{Input formatting}
+\begin{enumerate}
+	\item The input format for \textbf{caget}, \textbf{cagets}, \textbf{camon} and \textbf{cado} shall be in the following form:
+	\begin{verbatim}
+		[tool] [arguments] [channel] [channel] ... [channel]
+	\end{verbatim}	
+	\item The input format for \textbf{cawait} shall be in the following form:
+	\begin{verbatim}
+		[cawait] [arguments] [[channel] [condition]] 
+		                              ... 
+		                     [[channel] [condition]]
+	\end{verbatim}
+	\item The input format for \textbf{caput}, \textbf{caputq} shall be in the following form:
+	\begin{verbatim}
+		[tool] [arguments] [[channel] [value]] ... [[channel] [value]]
+	\end{verbatim}
+	\item The input format for \textbf{caInfo} shall be in the following form:
+	\begin{verbatim}
+		cainfo [channel] [channel] ... [channel]
+	\end{verbatim}
+\end{enumerate}
+
+\bibliographystyle{plain}
+\bibliography{requirementReferences}
+
+\end{document}

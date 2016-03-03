@@ -19,11 +19,12 @@ CHECK_RELEASE = YES
 # Set this when you only want to compile this application
 #   for a subset of the cross-compiled target architectures
 #   that Base is built for.
-#CROSS_COMPILER_TARGET_ARCHS = SL6-x86
-#CROSS_COMPILER_TARGET_ARCHS += eldk52-e500v2
-#CROSS_COMPILER_TARGET_ARCHS += eldk42-ppc4xxFP
 
-
+CROSS_COMPILER_TARGET_ARCHS = SL6-x86
+CROSS_COMPILER_TARGET_ARCHS += SL5-x86
+CROSS_COMPILER_TARGET_ARCHS += eldk52-e500v2
+CROSS_COMPILER_TARGET_ARCHS += eldk42-ppc4xxFP
+CROSS_COMPILER_TARGET_ARCHS += mvl40-xscale_be
 
 # To install files into a location other than $(TOP) define
 #   INSTALL_LOCATION here.

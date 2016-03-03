@@ -32,7 +32,6 @@ EPICS_BASE=C:\epics\base-3.14.12.3
 endif
 
 #EPICS_BASE=/opt/epics/base
-EPICS_BASE=/opt/codac/epics/base
 
 
 # Set RULES here if you want to take build rules from somewhere
