@@ -23,7 +23,7 @@
 
 enum roundType {
     roundType_no_rounding = -1,
-    roundType_default,
+    roundType_round,
     roundType_ceil,
     roundType_floor
 };
@@ -51,8 +51,7 @@ struct arguments
    bool bin;				//display as bin
    bool oct;				//display as oct
    bool plain;				//ignore formatting switches
-   bool useDblFormatStr;    // precision for e, f, g option
-   char dblFormatStr[30]; 	// Format string to print doubles (see -e -f -g option)
+   char dblFormatType;     	//format type for floats (see -e -f -g option)
    bool s;					//try to interpret values as strings
    bool stat;				//status and severity on
    bool nostat;				//status and severity off
@@ -79,13 +78,12 @@ struct arguments arguments = {
         .dbrRequestType = -1,	//decide type based on requested data
 		.num = false,
 		.round = roundType_no_rounding,
-		.prec = -1,	//use precision from the record
+        .prec = -1,	//use precision from the record
 		.hex = false,
 		.bin = false,
 		.oct = false,
 		.plain = false,
-        .useDblFormatStr = false,
-		.dblFormatStr = "%g",
+        .dblFormatType = '\0',
 		.s = false,
 		.stat = false,
 		.nostat = false,
@@ -283,7 +281,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
     if (tool != cado){
         fputs("Channel Access options\n", stream);
         if (tool != cainfo) {
-            fputs("  -d <type>            Type of DBR request to use for communicating with the server.\n", stream);
+            fputs("  -dbrtype <type>      Type of DBR request to use for communicating with the server.\n", stream);
         }
         fputs("  -w <time>            Wait time in seconds, specifies CA timeout. (default: 1.0 s)\n", stream);
     }
@@ -319,7 +317,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -stat                Always display alarm status and severity.\n", stream);
 
         fputs("Formating output : Time options\n", stream);
-        fputs("  -date                Display server date.\n", stream);
+        fputs("  -d -date                Display server date.\n", stream);
         fputs("  -localdate           Display client date.\n", stream);
         fputs("  -localtime           Display client time.\n", stream);
         fputs("  -t, -time            Display server time.\n", stream);
@@ -331,9 +329,9 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -s                   Interpret value(s) as char (number to ascii).\n", stream);
 
         fputs("Formating output : Floating point format options\n", stream);
-        fputs("  -e <number>          Format doubles using scientific notation with precition <number>. Overrides -prec option.\n", stream);
-        fputs("  -f <number>          Format doubles using floating point with precition <number>. Overrides -prec option.\n", stream);
-        fputs("  -g <number>          Format doubles using shortest representation with precition <number>. Overrides -prec option.\n", stream);
+        fputs("  -e <number>          Format doubles using scientific notation with precision <number>. Overrides -prec option.\n", stream);
+        fputs("  -f <number>          Format doubles using floating point with precision <number>. Overrides -prec option.\n", stream);
+        fputs("  -g <number>          Format doubles using shortest representation with precision <number>. Overrides -prec option.\n", stream);
         fputs("  -prec <number>       Override PREC field with <number>. (default: PREC field).\n", stream);
         fputs("  -round <option>      Round floating point value(s). Options:\n", stream);
         fputs("                                 round: round to nearest (default).\n", stream);
@@ -349,7 +347,6 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -outFs <number>      Separator between array elements.\n", stream);
 	}
 }
-
 
 static inline void strClear(char *str){
 //clears input string str
@@ -520,17 +517,19 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
 		printf("%c", '0' + ((x >> i) & 1) ); \
 	}
 
-int printValue(int i, evargs args, int precision){
+int printValues(int i, evargs args, int precision){
 //Parses the data fetched by ca_get callback according to the data type and formatting arguments.
 //The result is printed to stdout.
 
     unsigned int baseType;
     void *value;
+    double valueDbl;
 
     value = dbr_value_ptr(args.dbr, args.type);
     baseType = args.type % (LAST_TYPE+1);   // convert appropriate TIME, GR, CTRL,... type to basic one
 
     //loop over the whole array
+
     int j; //element counter
 
     for (j=0; j<args.count; ++j){
@@ -538,19 +537,59 @@ int printValue(int i, evargs args, int precision){
     	if (j){
     		printf ("%c", arguments.fieldSeparator); //insert element separator
     	}
-
+        valueDbl = 0;
     	switch (baseType) {
     	case DBR_STRING:
     		printf("%.*s", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);
     		break;
+        case DBR_FLOAT:
+        case DBR_DOUBLE:{
+            if (baseType == DBR_FLOAT) valueDbl = ((dbr_float_t*)value)[j];
+            else valueDbl = ((dbr_double_t*)value)[j];
+
+            //round if desired or will be writen as hex oct or bin
+            if (arguments.round == roundType_round || arguments.hex || arguments.oct || arguments.bin) {
+                valueDbl = round(valueDbl);
+            }
+            else if(arguments.round == roundType_ceil) {
+                    valueDbl = ceil(valueDbl);
+            }
+            else if (arguments.round == roundType_floor) {
+                valueDbl = floor(valueDbl);
+            }
+
+            if (!(arguments.hex || arguments.oct || arguments.bin)) { // if hex oct or bin, do not brake
+                char format = 'f'; // default write as float
+                if (arguments.dblFormatType != '\0') {
+                    //override records default prec
+                    format = arguments.dblFormatType;
+                }
+                if (arguments.prec >= 0) {
+                    //use precision and format as specified by -efg or -prec arguments
+                    precision = arguments.prec;
+                }
+
+                if (precision != -1) { // when DBR_XXX_DOUBLE, DBR_XXX_FLOAT has precision info
+                    char formatStr[30];
+                    sprintf(formatStr, "%%-.%d%c", precision, format);
+                    printf(formatStr, valueDbl);
+                }
+                else {
+                    printf("%-f", valueDbl);
+                }
+                break;
+            }
+        }
     	case DBR_INT:{
-    		int16_t valueInt16 = ((dbr_int_t*)value)[j];
+            int16_t valueInt16;
+            if (baseType == DBR_FLOAT || baseType == DBR_DOUBLE) valueInt16 = (int16_t)valueDbl;
+            else valueInt16 = ((dbr_int_t*)value)[j];
     		//display dec, hex, bin, oct, char if desired
     		if (arguments.hex){
-    			printf("%" PRIx16, (uint16_t)valueInt16);
+                printf("0x%" PRIx16, (uint16_t)valueInt16);
     		}
     		else if (arguments.oct){
-    			printf("%" PRIo16, (uint16_t)valueInt16);
+                printf("0o%" PRIo16, (uint16_t)valueInt16);
     		}
     		else if (arguments.bin){
     			printBits((uint16_t)valueInt16);
@@ -561,28 +600,6 @@ int printValue(int i, evargs args, int precision){
     		else{
     			printf("%" PRId16, valueInt16);
     		}
-    		break;
-    	}
-		//case DBR_SHORT: equals DBR_INT
-    	case DBR_FLOAT:
-    	case DBR_DOUBLE:{
-    		double valueDbl;
-    		if (baseType == DBR_FLOAT) valueDbl = ((dbr_float_t*)value)[j];
-    		else valueDbl = ((dbr_double_t*)value)[j];
-
-    		//round if desired
-    		if (arguments.round == roundType_default) valueDbl = round(valueDbl);
-    		else if (arguments.round == roundType_ceil) valueDbl = ceil(valueDbl);
-    		else if (arguments.round == roundType_floor) valueDbl = floor(valueDbl);
-
-            if (!arguments.useDblFormatStr && arguments.prec == -1){
-    			//display with precision defined by the record
-    			printf("%-.*g", precision, valueDbl);
-    		}
-			else{
-				//use precision and format as specified by -efg or -prec arguments
-				printf(arguments.dblFormatStr, valueDbl);
-			}
     		break;
     	}
     	case DBR_ENUM: {
@@ -655,7 +672,7 @@ int printValue(int i, evargs args, int precision){
     		}
     		break;
     	}
-    	default:
+        default:
     		fprintf(stderr, "Unrecognized DBR type.\n");
     		break;
     	}
@@ -664,7 +681,6 @@ int printValue(int i, evargs args, int precision){
 
     return 0;
 }
-
 
 
 int printOutput(int i, evargs args, int precision){
@@ -697,8 +713,10 @@ int printOutput(int i, evargs args, int precision){
     //channel name
     if (!arguments.noname)	printf("%s ",((struct channel *)args.usr)->name);
 
+    if (arguments.nord)	printf("%lu ", args.count); // show nord if requested
+
     //value(s)
-    printValue(i, args, precision);
+    printValues(i, args, precision);
 
 	fputc(' ',stdout);
 
@@ -794,7 +812,6 @@ int getTimeStamp(int i){
 }
 
 
-
 static void caReadCallback (evargs args){
 //reads and parses data fetched by calls. First, the global strings holding the output are cleared. Then, depending
 //on the type of the returned data, the available information is extracted. The extracted info is then saved to the
@@ -826,6 +843,7 @@ static void caReadCallback (evargs args){
     }
 
     //read requested data
+    precision = -1; // for all double and float types without this info
     switch (args.type) {
     	case DBR_GR_STRING:
     	case DBR_CTRL_STRING:
@@ -932,7 +950,7 @@ static void caReadCallback (evargs args){
         case DBR_CTRL_FLOAT:
             severity_status_get(dbr_ctrl_float);
             units_get_cb(dbr_ctrl_float);
-            precision = (int)(((struct dbr_ctrl_float *)args.dbr)->precision);
+            precision_get(dbr_ctrl_float)
             break;
 
         case DBR_CTRL_ENUM:
@@ -1543,7 +1561,7 @@ void cainfoRequest(struct channel *channels, int nChannels){
 			printf("	Display upper limit: %f, lower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_disp_limit,\
 					((struct dbr_ctrl_double *)data)->lower_disp_limit);
 			fputc('\n',stdout);
-			printf("	Precision: %"PRId16"\n",((struct dbr_ctrl_double *)data)->precision);
+            printf("	Precision: %"PRId16"\n",((struct dbr_ctrl_double *)data)->precision);
 			printf("	RISC alignment: %"PRId16"\n",((struct dbr_ctrl_double *)data)->RISC_pad0);
 			break;
 		}
@@ -1630,7 +1648,6 @@ void channelStatusCallback(struct connection_handler_args args){
 
 			//how many array elements to request
 			ch->count = ca_element_count ( ch->id );
-			if (arguments.nord)	printf("# of elements in %s: %lu\n", ch->name, ch->count);
 			if (arguments.outNelm == -1) ch->outNelm = ch->count;
 			else if(arguments.outNelm > 0 && arguments.outNelm < ch->count) ch->outNelm = arguments.outNelm;
 			else{
@@ -1869,7 +1886,6 @@ bool endsWith(char * src, char * match){
 	else return false;
 }
 
-
 int main ( int argc, char ** argv )
 {//main function: reads arguments, allocates memory, calls ca* functions, frees memory and exits.
 
@@ -1892,354 +1908,353 @@ int main ( int argc, char ** argv )
 	epicsTimeGetCurrent(&programStartTime);
 	validateTimestamp(programStartTime, "Start time");
 
-
     static struct option long_options[] = {
-        {"num",     	no_argument,        0,  0 },
-        {"int",     	no_argument,        0,  0 },    //same as num
-        {"round",   	required_argument,  0,  0 },	//type of rounding:round, ceil, floor
-        {"prec",    	required_argument,  0,  0 },	//precision
-        {"hex",     	no_argument,        0,  0 },	//display as hex
-        {"bin",     	no_argument,        0,  0 },	//display as bin
-        {"oct",     	no_argument,        0,  0 },	//display as oct
-        {"plain",   	no_argument,        0,  0 },	//ignore formatting switches
-        {"stat",    	no_argument, 		0,  0 },	//status and severity on
-        {"nostat",  	no_argument,  		0,  0 },	//status and severity off
-        {"noname",  	no_argument,        0,  0 },	//hide name
-        {"nounit",  	no_argument,        0,  0 },	//hide units
-        {"timestamp",	required_argument, 	0,  0 },	//timestamp type r,u,c
-        {"localdate",	no_argument, 		0,  0 },	//client date
-        {"time",		no_argument, 		0,  0 },	//server time
-        {"localtime",	no_argument, 		0,  0 },	//client time
-        {"date",		no_argument, 		0,  0 },	//server date
-        {"inNelm",		required_argument,	0,  0 },	//number of array elements - write
-        {"outNelm",		required_argument,	0,  0 },	//number of array elements - read
-        {"outFs",		required_argument,	0,  0 },	//array field separator - read
-        {"inFs",		required_argument,	0,  0 },	//array field separator - write
-        {"nord",		no_argument,		0,  0 },	//display number of array elements
-        {"tool",		required_argument, 	0,	0 },	//tool
-        {"timeout",		required_argument, 	0,	0 },	//timeout
-        {0,         	0,                 	0,  0 }
-    };
-    putenv("POSIXLY_CORRECT="); //Behave correctly on GNU getopt systems = stop parsing after 1st non option is encountered
-    epicsInt32 digits;  // TODO: not right location?
-    while ((opt = getopt_long_only(argc, argv, ":w:d:e:f:g:n:sth", long_options, &opt_long)) != -1) {
-        switch (opt) {
-        case 'w':
-            if (sscanf(optarg, "%f", &arguments.caTimeout) != 1){    // type was not given as float
-                arguments.caTimeout = CA_DEFAULT_TIMEOUT;
-        		fprintf(stderr, "Requested timeout invalid - ignored. ('%s -h' for help.)\n", argv[0]);
-        	}
-            break;
-        case 'd':
-            if (sscanf(optarg, "%d", &arguments.dbrRequestType) != 1)     // type was not given as an integer
-        	{
-                dbr_text_to_type(optarg, arguments.dbrRequestType);
-                if (arguments.dbrRequestType == -1)                   // Invalid? Try prefix DBR_
-        		{
-        			char str[30] = "DBR_";
-        			strncat(str, optarg, 25);
-                    dbr_text_to_type(str, arguments.dbrRequestType);
-        		}
-        	}
-            if (arguments.dbrRequestType < DBR_STRING    || arguments.dbrRequestType > DBR_CTRL_DOUBLE){
-        		fprintf(stderr, "Requested dbr type out of range "
-        				"or invalid - ignored. ('%s -h' for help.)\n", argv[0]);
-                arguments.dbrRequestType = -1;
-        	}
-        	break;
-        case 'e':	//how to format doubles in strings
-        case 'f':
-        case 'g':
-            if (sscanf(optarg, "%d", &digits) != 1){
-                fprintf(stderr,
-                        "Invalid precision argument '%s' "
-                        "for option '-%c' - ignored.\n", optarg, opt);
-            } else {
-                if (digits>=0){
-                    sprintf(arguments.dblFormatStr, "%%-.%d%c", digits, opt);
-                    arguments.useDblFormatStr = true;
-                }
-                else{
-                    fprintf(stderr, "Precision %d for option '-%c' "
-                            "out of range - ignored.\n", digits, opt);
-                    arguments.useDblFormatStr = false;
-                }
-            }
-            break;
-        case 's':	//try to interpret values as strings
-            arguments.s = true;
-            break;
-        case 't':	//show server time
-        	arguments.time = true;
-        	break;
-        case 'n':	//stop monitor after numUpdates
-        	arguments.numUpdates = 1;
-			if (sscanf(optarg, "%d", &arguments.numUpdates) != 1){
-                fprintf(stderr, "Invalid argument '%s' for option '-%c' - ignored.\n", optarg, opt);
-            } else
-            {
-                if (arguments.numUpdates < 1) {
-                    fprintf(stderr, "Number of updates for option '-%c' must greater than zero - ignored.\n", opt);
-                    arguments.numUpdates = -1;
-                }
-            }
-        	break;
-        case 0:   // long options
-            switch (opt_long){
-            case 0:   // num
-                arguments.num = true;
-                break;
-            case 1:   // int
-                arguments.num = true;
-                break;
-            case 2:   // round
-            	;//declaration must not follow label
-                int type;
-                if (sscanf(optarg, "%d", &type) != 1){   // type was not given as a number [0, 1, 2]
-                    if(!strcmp("default", optarg)){
-                        arguments.round = roundType_default;
-                    } else if(!strcmp("ceil", optarg)){
-                        arguments.round = roundType_ceil;
-                    } else if(!strcmp("floor", optarg)){
-                        arguments.round = roundType_floor;
-                    } else {
-                        arguments.round = roundType_default;
-                        fprintf(stderr,
-                            "Invalid round type '%s' "
-                            "for option '-%c' - ignored.\n", optarg, opt);
-                    }
-                } else{ // type was given as a number
-                    if(roundType_floor < type || type < roundType_default){   // out of range check
-                        arguments.round = roundType_no_rounding;
-                        fprintf(stderr,
-                            "Invalid round type '%s' "
-                            "for option '-%c' - ignored.\n", optarg, opt);
-                    } else{
-                    	arguments.round = type;
-                    }
-                }
-                break;
-            case 3:   // prec
-                if (sscanf(optarg, "%d", &arguments.prec) != 1){
-                    fprintf(stderr,
-                            "Invalid precision argument '%s' "
-                            "for option '-%c' - ignored.\n", optarg, opt);
-                } else {
-                	if (arguments.prec < 0) {
-                		fprintf(stderr, "Precision %d for option '-%c' "
-                				"out of range - ignored.\n", arguments.prec, opt);
-                		arguments.prec = -1;
-                	}
-                	else{ //write to dblFormatStr, keeping the format type
-                		char formatType = arguments.dblFormatStr[strlen(arguments.dblFormatStr)-1];
-                        sprintf(arguments.dblFormatStr, "%%-.%d%c", arguments.prec, formatType);
-                	}
-                }
-                break;
-            case 4:   //hex
-                arguments.hex = true;
-                break;
-            case 5:   // bin
-                arguments.bin = true;
-                break;
-            case 6:   // oct
-                arguments.oct = true;
-                break;
-            case 7:   // plain
-                arguments.plain = true;
-                break;
-            case 8:   // stat
-                arguments.stat = true;
-                break;
-            case 9:	  // nostat
-				arguments.nostat = true;
-				break;
-            case 10:   // noname
-                arguments.noname = true;
-                break;
-            case 11:   // nounit
-                arguments.nounit = true;
-                break;
-            case 12:   // timestamp
-            	if (sscanf(optarg, "%c", &arguments.timestamp) != 1){
-            		fprintf(stderr,	"Invalid argument '%s' "
-            				"for option '-%c' - ignored. Allowed arguments: r,u,c.\n", optarg, opt);
-            		arguments.timestamp = 0;
-            	} else {
-            		if (arguments.timestamp != 'r' && arguments.timestamp != 'u' && arguments.timestamp != 'c') {
-            			fprintf(stderr,	"Invalid argument '%s' "
-							"for option '-%c' - ignored. Allowed arguments: r,u,c.\n", optarg, opt);
-            			arguments.timestamp = 0;
-            		}
-            	}
-            	break;
-            case 13:   // localdate
-            	arguments.localdate = true;
-            	break;
-            case 14:   // time
-            	arguments.time = true;
-            	break;
-            case 15:   // localtime
-            	arguments.localtime = true;
-            	break;
-            case 16:   // date
-            	arguments.date = true;
-            	break;
-            case 17:   // inNelm - number of elements - write
-            	if (sscanf(optarg, "%d", &arguments.inNelm) != 1){
-            		fprintf(stderr, "Invalid count argument '%s' "
-            				"for option '-%c' - ignored.\n", optarg, opt);
-            	}
-            	else {
-            		if (arguments.inNelm < 1) {
-            			fprintf(stderr, "Count number for option '-%c' "
-            					"must be positive integer - ignored.\n", opt);
-            			arguments.inNelm = 1;
-            		}
-            	}
-            	break;
-            case 18:   // outNelm - number of elements - read
-            	if (sscanf(optarg, "%d", &arguments.outNelm) != 1){
-            		fprintf(stderr, "Invalid count argument '%s' "
-            				"for option '-%c' - ignored.\n", optarg, opt);
-            	}
-            	else {
-            		if (arguments.outNelm < 1) {
-            			fprintf(stderr, "Count number for option '-%c' "
-            					"must be positive integer - ignored.\n", opt);
-            			arguments.outNelm = -1;
-            		}
-            	}
-            	break;
-            case 19:   // field separator for output
-            	if (sscanf(optarg, "%c", &arguments.fieldSeparator) != 1){
-            		fprintf(stderr, "Invalid argument '%s' "
-            				"for option '-%c' - ignored.\n", optarg, opt);
-            	}
-            	break;
-            case 20:   // field separator for input
-            	if (sscanf(optarg, "%c", &arguments.inputSeparator) != 1){
-            		fprintf(stderr, "Invalid argument '%s' "
-            				"for option '-%c' - ignored.\n", optarg, opt);
-            	}
-            	break;
-            case 21:   // nord
-            	arguments.nord = true;
-            	break;
-            case 22:	// tool
-            	;//c
-            	int tool;
-            	if (sscanf(optarg, "%d", &tool) != 1){   // type was not given as a number [0, 1, 2]
-            		if(!strcmp("caget", optarg)){
-            			arguments.tool = caget;
-            		} else if(!strcmp("camon", optarg)){
-            			arguments.tool = camon;
-            		} else if(!strcmp("caput", optarg)){
-            			arguments.tool = caput;
-            		} else if(!strcmp("caputq", optarg)){
-            			arguments.tool = caputq;
-            		} else if(!strcmp("cagets", optarg)){
-            			arguments.tool = cagets;
-            		} else if(!strcmp("cado", optarg)){
-            			arguments.tool = cado;
-            		} else if(!strcmp("cawait", optarg)){
-            			arguments.tool = cawait;
-            		} else if(!strcmp("cainfo", optarg)){
-            			arguments.tool = cainfo;
-            		}
-            	} else{ // type was given as a number
-            		if(tool >= caget|| tool <= cainfo){   //unknown tool case handled down below
-            			arguments.round = tool;
-            		}
-            	}
-            	break;
-            case 23:
-            	if (sscanf(optarg, "%f", &arguments.timeout) != 1){
-            		fprintf(stderr, "Invalid timeout argument '%s' "
-            				"for option '-%c' - ignored.\n", optarg, opt);
-            	}
-            	else {
-            		if (arguments.timeout <= 0) {
-            			fprintf(stderr, "Timeout argument must be positive - ignored.\n");
-            			arguments.timeout = -1;
-            		}
-            	}
-            	break;
-            }
-            break;
-        case '?':
-        	fprintf(stderr, "Unrecognized option: '-%c'. ('%s -h' for help.)\n", optopt, argv[0]);
-        	return EXIT_FAILURE;
-        	break;
-        case ':':
-        	fprintf(stderr, "Option '-%c' requires an argument. ('%s -h' for help.)\n", optopt, argv[0]);
-        	return EXIT_FAILURE;
+         {"num",     	no_argument,        0,  0 },
+         {"int",     	no_argument,        0,  0 },    //same as num
+         {"round",   	required_argument,  0,  0 },	//type of rounding:round, ceil, floor
+         {"prec",    	required_argument,  0,  0 },	//precision
+         {"hex",     	no_argument,        0,  0 },	//display as hex
+         {"bin",     	no_argument,        0,  0 },	//display as bin
+         {"oct",     	no_argument,        0,  0 },	//display as oct
+         {"plain",   	no_argument,        0,  0 },	//ignore formatting switches
+         {"stat",    	no_argument, 		0,  0 },	//status and severity on
+         {"nostat",  	no_argument,  		0,  0 },	//status and severity off
+         {"noname",  	no_argument,        0,  0 },	//hide name
+         {"nounit",  	no_argument,        0,  0 },	//hide units
+         {"timestamp",	required_argument, 	0,  0 },	//timestamp type r,u,c
+         {"localdate",	no_argument, 		0,  0 },	//client date
+         {"time",		no_argument, 		0,  0 },	//server time
+         {"localtime",	no_argument, 		0,  0 },	//client time
+         {"date",		no_argument, 		0,  0 },	//server date
+         {"inNelm",		required_argument,	0,  0 },	//number of array elements - write
+         {"outNelm",	required_argument,	0,  0 },	//number of array elements - read
+         {"outFs",		required_argument,	0,  0 },	//array field separator - read
+         {"inFs",		required_argument,	0,  0 },	//array field separator - write
+         {"nord",		no_argument,		0,  0 },	//display number of array elements
+         {"tool",		required_argument, 	0,	0 },	//tool
+         {"timeout",	required_argument, 	0,	0 },	//timeout
+         {"dbrtype",	required_argument, 	0,	0 },	//dbrtype
+         {0,         	0,                 	0,  0 }
+     };
+     putenv("POSIXLY_CORRECT="); //Behave correctly on GNU getopt systems = stop parsing after 1st non option is encountered
+     epicsInt32 digits;  // TODO: not right location?
 
-        	break;
-        case 'h':               //Print usage
-            usage(stdout, arguments.tool, argv[0]);
-            return EXIT_SUCCESS;
-        default:
-            usage(stderr, arguments.tool, argv[0]);
-            exit(EXIT_FAILURE);
-        }
-    }
+     while ((opt = getopt_long_only(argc, argv, ":w:e:f:g:n:sthd", long_options, &opt_long)) != -1) {
+         switch (opt) {
+         case 'w':
+             if (sscanf(optarg, "%f", &arguments.caTimeout) != 1){    // type was not given as float
+                 arguments.caTimeout = CA_DEFAULT_TIMEOUT;
+                 fprintf(stderr, "Requested timeout invalid - ignored. ('%s -h' for help.)\n", argv[0]);
+             }
+             break;
+         case 'd': // same as date
+             arguments.date = true;
+             break;
+         case 'e':	//how to format doubles in strings
+         case 'f':
+         case 'g':
+             if (sscanf(optarg, "%d", &digits) != 1){
+                 fprintf(stderr,
+                         "Invalid precision argument '%s' "
+                         "for option '-%c' - ignored.\n", optarg, opt);
+             } else {
+                 if (digits>=0){
+                     if (arguments.dblFormatType == '\0' && arguments.prec >= 0) { // in case of overiding -prec
+                         fprintf(stderr, "Option '-%c' overrides precision set with '-prec'.\n", opt);
+                     }
+                     arguments.dblFormatType = opt; // set 'e' 'f' or 'g'
+                     arguments.prec = digits;
+                 }
+                 else{
+                     fprintf(stderr, "Precision %d for option '-%c' "
+                             "out of range - ignored.\n", digits, opt);
+                 }
+             }
+             break;
+         case 's':	//try to interpret values as strings
+             arguments.s = true;
+             break;
+         case 't':	//same as time
+             arguments.time = true;
+             break;
+         case 'n':	//stop monitor after numUpdates
+             arguments.numUpdates = 1;
+             if (sscanf(optarg, "%d", &arguments.numUpdates) != 1){
+                 fprintf(stderr, "Invalid argument '%s' for option '-%c' - ignored.\n", optarg, opt);
+             } else
+             {
+                 if (arguments.numUpdates < 1) {
+                     fprintf(stderr, "Number of updates for option '-%c' must greater than zero - ignored.\n", opt);
+                     arguments.numUpdates = -1;
+                 }
+             }
+             break;
+         case 0:   // long options
+             switch (opt_long){
+             case 0:   // num
+                 arguments.num = true;
+                 break;
+             case 1:   // int
+                 arguments.num = true;
+                 break;
+             case 2:   // round
+                 ;//declaration must not follow label
+                 int type;
+                 if (sscanf(optarg, "%d", &type) != 1){   // type was not given as a number [0, 1, 2]
+                     if(!strcmp("default", optarg)){
+                         arguments.round = roundType_round;
+                     } else if(!strcmp("ceil", optarg)){
+                         arguments.round = roundType_ceil;
+                     } else if(!strcmp("floor", optarg)){
+                         arguments.round = roundType_floor;
+                     } else {
+                         arguments.round = roundType_round;
+                         fprintf(stderr,
+                             "Invalid round type '%s' "
+                             "for option '-%c' - ignored.\n", optarg, opt);
+                     }
+                 } else{ // type was given as a number
+                     if(roundType_floor < type || type < roundType_round){   // out of range check
+                         arguments.round = roundType_no_rounding;
+                         fprintf(stderr,
+                             "Invalid round type '%s' "
+                             "for option '-%c' - ignored.\n", optarg, opt);
+                     } else{
+                         arguments.round = type;
+                     }
+                 }
+                 break;
+             case 3:   // prec
+                 if (arguments.dblFormatType == '\0') { // formating with -f -g -e has priority
+                     if (sscanf(optarg, "%d", &arguments.prec) != 1){
+                         fprintf(stderr,
+                                 "Invalid precision argument '%s' "
+                                 "for option '-%c' - ignored.\n", optarg, opt);
+                     } else if (arguments.prec < 0) {
+                        fprintf(stderr, "Precision %d for option '-%c' "
+                                "out of range - ignored.\n", arguments.prec, opt);
+                        arguments.prec = -1;
+                     }
+                 }
+                 else {
+                     fprintf(stderr, "Option '-prec' ignored because of '-f', '-e' or '-g'.\n");
+                 }
+                 break;
+             case 4:   //hex
+                 arguments.hex = true;
+                 break;
+             case 5:   // bin
+                 arguments.bin = true;
+                 break;
+             case 6:   // oct
+                 arguments.oct = true;
+                 break;
+             case 7:   // plain
+                 arguments.plain = true;
+                 break;
+             case 8:   // stat
+                 arguments.stat = true;
+                 break;
+             case 9:	  // nostat
+                 arguments.nostat = true;
+                 break;
+             case 10:   // noname
+                 arguments.noname = true;
+                 break;
+             case 11:   // nounit
+                 arguments.nounit = true;
+                 break;
+             case 12:   // timestamp
+                 if (sscanf(optarg, "%c", &arguments.timestamp) != 1){
+                     fprintf(stderr,	"Invalid argument '%s' "
+                             "for option '-%c' - ignored. Allowed arguments: r,u,c.\n", optarg, opt);
+                     arguments.timestamp = 0;
+                 } else {
+                     if (arguments.timestamp != 'r' && arguments.timestamp != 'u' && arguments.timestamp != 'c') {
+                         fprintf(stderr,	"Invalid argument '%s' "
+                             "for option '-%c' - ignored. Allowed arguments: r,u,c.\n", optarg, opt);
+                         arguments.timestamp = 0;
+                     }
+                 }
+                 break;
+             case 13:   // localdate
+                 arguments.localdate = true;
+                 break;
+             case 14:   // time
+                 arguments.time = true;
+                 break;
+             case 15:   // localtime
+                 arguments.localtime = true;
+                 break;
+             case 16:   // date
+                 arguments.date = true;
+                 break;
+             case 17:   // inNelm - number of elements - write
+                 if (sscanf(optarg, "%d", &arguments.inNelm) != 1){
+                     fprintf(stderr, "Invalid count argument '%s' "
+                             "for option '-%c' - ignored.\n", optarg, opt);
+                 }
+                 else {
+                     if (arguments.inNelm < 1) {
+                         fprintf(stderr, "Count number for option '-%c' "
+                                 "must be positive integer - ignored.\n", opt);
+                         arguments.inNelm = 1;
+                     }
+                 }
+                 break;
+             case 18:   // outNelm - number of elements - read
+                 if (sscanf(optarg, "%d", &arguments.outNelm) != 1){
+                     fprintf(stderr, "Invalid count argument '%s' "
+                             "for option '-%c' - ignored.\n", optarg, opt);
+                 }
+                 else {
+                     if (arguments.outNelm < 1) {
+                         fprintf(stderr, "Count number for option '-%c' "
+                                 "must be positive integer - ignored.\n", opt);
+                         arguments.outNelm = -1;
+                     }
+                 }
+                 break;
+             case 19:   // field separator for output
+                 if (sscanf(optarg, "%c", &arguments.fieldSeparator) != 1){
+                     fprintf(stderr, "Invalid argument '%s' "
+                             "for option '-%c' - ignored.\n", optarg, opt);
+                 }
+                 break;
+             case 20:   // field separator for input
+                 if (sscanf(optarg, "%c", &arguments.inputSeparator) != 1){
+                     fprintf(stderr, "Invalid argument '%s' "
+                             "for option '-%c' - ignored.\n", optarg, opt);
+                 }
+                 break;
+             case 21:   // nord
+                 arguments.nord = true;
+                 break;
+             case 22:	// tool
+                 ;//c
+                 int tool;
+                 if (sscanf(optarg, "%d", &tool) != 1){   // type was not given as a number [0, 1, 2]
+                     if(!strcmp("caget", optarg)){
+                         arguments.tool = caget;
+                     } else if(!strcmp("camon", optarg)){
+                         arguments.tool = camon;
+                     } else if(!strcmp("caput", optarg)){
+                         arguments.tool = caput;
+                     } else if(!strcmp("caputq", optarg)){
+                         arguments.tool = caputq;
+                     } else if(!strcmp("cagets", optarg)){
+                         arguments.tool = cagets;
+                     } else if(!strcmp("cado", optarg)){
+                         arguments.tool = cado;
+                     } else if(!strcmp("cawait", optarg)){
+                         arguments.tool = cawait;
+                     } else if(!strcmp("cainfo", optarg)){
+                         arguments.tool = cainfo;
+                     }
+                 } else{ // type was given as a number
+                     if(tool >= caget|| tool <= cainfo){   //unknown tool case handled down below
+                         arguments.round = tool;
+                     }
+                 }
+                 break;
+             case 23: //timeout
+                 if (sscanf(optarg, "%f", &arguments.timeout) != 1){
+                     fprintf(stderr, "Invalid timeout argument '%s' "
+                             "for option '-%c' - ignored.\n", optarg, opt);
+                 }
+                 else {
+                     if (arguments.timeout <= 0) {
+                         fprintf(stderr, "Timeout argument must be positive - ignored.\n");
+                         arguments.timeout = -1;
+                     }
+                 }
+                 break;
+             case 24: //dbrtype
+                 if (sscanf(optarg, "%d", &arguments.dbrRequestType) != 1)     // type was not given as an integer
+                 {
+                     dbr_text_to_type(optarg, arguments.dbrRequestType);
+                     if (arguments.dbrRequestType == -1)                   // Invalid? Try prefix DBR_
+                     {
+                         char str[30] = "DBR_";
+                         strncat(str, optarg, 25);
+                         dbr_text_to_type(str, arguments.dbrRequestType);
+                     }
+                 }
+                 if (arguments.dbrRequestType < DBR_STRING    || arguments.dbrRequestType > DBR_CTRL_DOUBLE){
+                     fprintf(stderr, "Requested dbr type out of range "
+                             "or invalid - ignored. ('%s -h' for help.)\n", argv[0]);
+                     arguments.dbrRequestType = -1;
+                 }
+                 break;
+             }
+             break;
+         case '?':
+             fprintf(stderr, "Unrecognized option: '-%c'. ('%s -h' for help.)\n", optopt, argv[0]);
+             return EXIT_FAILURE;
+             break;
+         case ':':
+             fprintf(stderr, "Option '-%c' requires an argument. ('%s -h' for help.)\n", optopt, argv[0]);
+             return EXIT_FAILURE;
 
+             break;
+         case 'h':               //Print usage
+             usage(stdout, arguments.tool, argv[0]);
+             return EXIT_SUCCESS;
+         default:
+             usage(stderr, arguments.tool, argv[0]);
+             exit(EXIT_FAILURE);
+         }
+     }
 
-    //check mutually exclusive arguments (without taking dbr type into account)
-    if (arguments.tool == tool_unknown){
-    	usage(stderr, arguments.tool,argv[0]);
-    	return EXIT_FAILURE;
-    }
-    if(arguments.tool == cainfo && (arguments.s || arguments.num || arguments.bin  || arguments.hex || arguments.oct \
-            || arguments.dbrRequestType != -1 || arguments.prec != -1 || arguments.round != roundType_no_rounding || arguments.plain \
-            || arguments.useDblFormatStr || arguments.stat || arguments.nostat || arguments.noname || arguments.nounit \
-    		|| arguments.timestamp != '\0' || arguments.timeout != -1 || arguments.date || arguments.time || arguments.localdate \
-    		|| arguments.localtime || arguments.fieldSeparator != ' ' || arguments.inputSeparator != ' ' || arguments.numUpdates != -1\
-    		|| arguments.inNelm != 1 || arguments.outNelm != -1 || arguments.nord)){
-		fprintf(stderr, "The only option allowed for cainfo is -w.\n");
-    }
-    else if (arguments.tool != camon){
-    	if (arguments.timestamp != 0){
-    		fprintf(stderr, "Option -timestamp can only be specified with camon.\n");
-    	}
-    	if (arguments.numUpdates != -1){
-    		fprintf(stderr, "Option -n can only be specified with camon.\n");
-    	}
-    }
-    else if (arguments.inNelm != 1 && (arguments.tool != caput && arguments.tool != caputq)){
-		fprintf(stderr, "Option -inNelm can only be specified with caput or caputq.\n");
-    }
-    if ((arguments.outNelm != -1 || arguments.num !=false || arguments.hex !=false || arguments.bin !=false || arguments.oct !=false)\
-    		&& (arguments.tool == cado || arguments.tool == caputq)){
-    	fprintf(stderr, "Option -outNelm, -num, -hex, -bin and -oct cannot be specified with cado or caputq, because they have no output.\n");
-    }
-    if (arguments.nostat != false && arguments.stat != false){
-    	fprintf(stderr, "Options -stat and -nostat are mutually exclusive.\n");
-    	arguments.nostat = false;
-    }
-    if (((arguments.hex || arguments.bin) && arguments.oct) || \
-    		((arguments.oct || arguments.bin) && arguments.hex) || \
-    		((arguments.hex || arguments.oct) && arguments.bin) ){
-    	fprintf(stderr, "Options -hex and -bin and -oct are mutually exclusive.\n");
-    }
-    if (arguments.num && arguments.s){
-    	fprintf(stderr, "Options -num and -s are mutually exclusive.\n");
-    }
-    if (arguments.useDblFormatStr && arguments.prec != -1){
-        fprintf(stderr, "Precision specified twice: by -prec as well as argument to -e, -f or -g.\n");  // TODO: in kaj zdej?
-	}
-    if (arguments.plain && (arguments.num || arguments.hex ||arguments.bin||arguments.oct || arguments.useDblFormatStr || arguments.prec != -1 \
-    		|| arguments.s || arguments.round != roundType_no_rounding || strcmp(arguments.dblFormatStr,"%g") || arguments.fieldSeparator != ' ' )){
-    	printf("Warning: -plain option overrides all formatting switches.\n");
-    	arguments.num =false; arguments.hex =false; arguments.bin = false; arguments.oct =false; arguments.s =false;
-        arguments.useDblFormatStr = false; arguments.prec = -1;
-    	arguments.round = roundType_no_rounding;
-        strcpy(arguments.dblFormatStr,"%g");    // TODO: this is not default??
-    	arguments.fieldSeparator = ' ' ;
-    }
-
-
+     //check mutually exclusive arguments (without taking dbr type into account)
+     if (arguments.tool == tool_unknown){
+         usage(stderr, arguments.tool,argv[0]);
+         return EXIT_FAILURE;
+     }
+     if(arguments.tool == cainfo && (arguments.s || arguments.num || arguments.bin  || arguments.hex || arguments.oct \
+             || arguments.dbrRequestType != -1 || arguments.prec != -1 || arguments.round != roundType_no_rounding || arguments.plain \
+             || arguments.dblFormatType != '\0' || arguments.stat || arguments.nostat || arguments.noname || arguments.nounit \
+             || arguments.timestamp != '\0' || arguments.timeout != -1 || arguments.date || arguments.time || arguments.localdate \
+             || arguments.localtime || arguments.fieldSeparator != ' ' || arguments.inputSeparator != ' ' || arguments.numUpdates != -1\
+             || arguments.inNelm != 1 || arguments.outNelm != -1 || arguments.nord)){
+         fprintf(stderr, "The only option allowed for cainfo is -w.\n");
+     }
+     else if (arguments.tool != camon){
+         if (arguments.timestamp != 0){
+             fprintf(stderr, "Option -timestamp can only be specified with camon.\n");
+         }
+         if (arguments.numUpdates != -1){
+             fprintf(stderr, "Option -n can only be specified with camon.\n");
+         }
+     }
+     else if (arguments.inNelm != 1 && (arguments.tool != caput && arguments.tool != caputq)){
+         fprintf(stderr, "Option -inNelm can only be specified with caput or caputq.\n");
+     }
+     if ((arguments.outNelm != -1 || arguments.num !=false || arguments.hex !=false || arguments.bin !=false || arguments.oct !=false)\
+             && (arguments.tool == cado || arguments.tool == caputq)){
+         fprintf(stderr, "Option -outNelm, -num, -hex, -bin and -oct cannot be specified with cado or caputq, because they have no output.\n");
+     }
+     if (arguments.nostat != false && arguments.stat != false){
+         fprintf(stderr, "Options -stat and -nostat are mutually exclusive.\n");
+         arguments.nostat = false;
+     }
+     if (((arguments.hex || arguments.bin) && arguments.oct) || \
+             ((arguments.oct || arguments.bin) && arguments.hex) || \
+             ((arguments.hex || arguments.oct) && arguments.bin) ){
+         fprintf(stderr, "Options -hex and -bin and -oct are mutually exclusive.\n");
+     }
+     if (arguments.num && arguments.s){
+         fprintf(stderr, "Options -num and -s are mutually exclusive.\n");
+     }
+     if (arguments.plain && (arguments.num || arguments.hex ||arguments.bin||arguments.oct || arguments.dblFormatType != '\0' || arguments.prec != -1 \
+             || arguments.s || arguments.round != roundType_no_rounding || arguments.dblFormatType != '\0' || arguments.fieldSeparator != ' ' )){
+         printf("Warning: -plain option overrides all formatting switches.\n");
+         arguments.num =false; arguments.hex =false; arguments.bin = false; arguments.oct =false; arguments.s =false;
+         arguments.prec = -1;
+         arguments.round = roundType_no_rounding;
+         arguments.dblFormatType = '\0';
+         arguments.fieldSeparator = ' ' ;
+     }
 
 
 	//Remaining arg list refers to PVs
