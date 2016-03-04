@@ -9,9 +9,9 @@
 #include <inttypes.h>
 #include <getopt.h>
 #include <stdbool.h>
-#include <cantProceed.h>
 #include <assert.h>
 
+#include <cantProceed.h>
 #include "cadef.h"
 #include "alarmString.h"
 #include "alarm.h"
@@ -21,29 +21,29 @@
 #define CA_PRIORITY CA_PRIORITY_MIN
 #define CA_DEFAULT_TIMEOUT 1
 
-enum roundType{
-	roundType_no_rounding=-1,
-    roundType_default=0,
-    roundType_ceil=1,
-    roundType_floor=2
+enum roundType {
+    roundType_no_rounding = -1,
+    roundType_default,
+    roundType_ceil,
+    roundType_floor
 };
 
-enum tool{
-	tool_unknown=0,
-	caget=1,
-	camon=2,
-	caput=3,
-	caputq=4,
-	cagets=5,
-	cado=6,
-	cawait=7,
-	cainfo=8
+enum tool {
+    tool_unknown = 0,
+    caget,
+    camon,
+    caput,
+    caputq,
+    cagets,
+    cado,
+    cawait,
+    cainfo
 };
 
 struct arguments
 {
-   float w;                 //ca timeout
-   int  d;					//dbr request type
+   float caTimeout;         //ca timeout
+   epicsInt32  dbrRequestType;           //dbr request type
    bool num;    			//same as -int
    enum roundType round;	//type of rounding:default, ceil, floor
    int prec;				//precision
@@ -51,7 +51,7 @@ struct arguments
    bool bin;				//display as bin
    bool oct;				//display as oct
    bool plain;				//ignore formatting switches
-   int digits;  			// precision for e, f, g option
+   bool useDblFormatStr;    // precision for e, f, g option
    char dblFormatStr[30]; 	// Format string to print doubles (see -e -f -g option)
    bool s;					//try to interpret values as strings
    bool stat;				//status and severity on
@@ -75,8 +75,8 @@ struct arguments
 
 //intialize arguments
 struct arguments arguments = {
-        .w = CA_DEFAULT_TIMEOUT,
-        .d = -1,	//decide type based on requested data
+        .caTimeout = CA_DEFAULT_TIMEOUT,
+        .dbrRequestType = -1,	//decide type based on requested data
 		.num = false,
 		.round = roundType_no_rounding,
 		.prec = -1,	//use precision from the record
@@ -84,7 +84,7 @@ struct arguments arguments = {
 		.bin = false,
 		.oct = false,
 		.plain = false,
-		.digits = -1,
+        .useDblFormatStr = false,
 		.dblFormatStr = "%g",
 		.s = false,
 		.stat = false,
@@ -208,7 +208,7 @@ status = ((struct T *)args.dbr)->status; \
 severity = ((struct T *)args.dbr)->severity;
 #define timestamp_get(T) \
 	timestampRead[ch->i] = ((struct T *)args.dbr)->stamp;\
-	validateTimestamp(timestampRead[ch->i], ch->name);
+    validateTimestamp(timestampRead[ch->i], ch->name);
 #define units_get_cb(T) sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
 #define precision_get(T) precision = (((struct T *)args.dbr)->precision);
 
@@ -264,7 +264,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Monitors the PV(s).\n", stream);
 	}
     if (tool == cawait) {
-        fputs("Monitors the PV(s), but only displays the values when they match the provided conditions. The conditions are specified as a"\
+         fputs("Monitors the PV(s), but only displays the values when they match the provided conditions. The conditions are specified as a"\
 				" string containing the operator together with the values.\n", stream);
         fputs("Following operators are supported:  >,<,<=,>=,==,!=, ==A...B(in interval), !=A...B(out of interval). For example, "\
 				"cawait pv '==1...5' ignores all pv values except those inside the interval [1,5].\n", stream);
@@ -575,7 +575,7 @@ int printValue(int i, evargs args, int precision){
     		else if (arguments.round == roundType_ceil) valueDbl = ceil(valueDbl);
     		else if (arguments.round == roundType_floor) valueDbl = floor(valueDbl);
 
-            if (arguments.digits == -1 && arguments.prec == -1){
+            if (!arguments.useDblFormatStr && arguments.prec == -1){
     			//display with precision defined by the record
     			printf("%-.*g", precision, valueDbl);
     		}
@@ -995,8 +995,8 @@ static void caReadCallback (evargs args){
    	//time
     if (args.type >= DBR_TIME_STRING && args.type <= DBR_TIME_DOUBLE){//otherwise we don't have it
     	//we assume that manually specifying dbr_time implies -time or -date.
-    	if (arguments.date || arguments.d != -1) epicsTimeToStrftime(outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &timestampRead[ch->i]);
-    	if (arguments.time || arguments.d != -1) epicsTimeToStrftime(outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &timestampRead[ch->i]);
+        if (arguments.date || arguments.dbrRequestType != -1) epicsTimeToStrftime(outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &timestampRead[ch->i]);
+        if (arguments.time || arguments.dbrRequestType != -1) epicsTimeToStrftime(outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &timestampRead[ch->i]);
     }
 
 
@@ -1238,7 +1238,7 @@ void caRequest(struct channel *channels, int nChannels){
 
     // wait for callbacks
     float elapsed = 0;
-    while (elapsed <=arguments.w){
+    while (elapsed <=arguments.caTimeout){
     	status = ca_pend_event (0.1);
     	elapsed += 0.1;
     	bool allDone=true;
@@ -1266,7 +1266,7 @@ void caRequest(struct channel *channels, int nChannels){
     	}
 
     	//wait for read callbacks
-        while (elapsed <=arguments.w){
+        while (elapsed <=arguments.caTimeout){
         	status = ca_pend_event (0.1);
         	elapsed += 0.1;
         	bool allDone=true;
@@ -1423,7 +1423,7 @@ void cainfoRequest(struct channel *channels, int nChannels){
 		}
 
 
-		ca_pend_io(arguments.w);
+        ca_pend_io(arguments.caTimeout);
 
 		//start printing
 		fputc('\n',stdout);
@@ -1639,7 +1639,7 @@ void channelStatusCallback(struct connection_handler_args args){
 			}
 
 			//request type
-			if (arguments.d == -1){   //if DBR type not specified, decide based on desired details
+            if (arguments.dbrRequestType == -1){   //if DBR type not specified, decide based on desired details
 	        	if (arguments.time || arguments.date || arguments.timestamp){
 	        		//time specified, use TIME_
 	        		if (arguments.s && ca_field_type(ch->id) == DBF_ENUM){
@@ -1666,7 +1666,7 @@ void channelStatusCallback(struct connection_handler_args args){
 	        		ch->type = dbf_type_to_DBR_GR(ca_field_type(ch->id));
 	        	}
 			}
-			else ch->type = arguments.d;
+            else ch->type = arguments.dbrRequestType;
 
 			if (arguments.tool == camon || arguments.tool == cawait){
 				//create subscription
@@ -1739,7 +1739,7 @@ int caInit(struct channel *channels, int nChannels){
 
     //wait for connection callbacks to complete
     float elapsed = 0;
-    while (elapsed <=arguments.w){
+    while (elapsed <=arguments.caTimeout){
     	status = ca_pend_event (0.1);
     	elapsed += 0.1;
     	bool allDone=true;
@@ -1762,7 +1762,7 @@ int caInit(struct channel *channels, int nChannels){
     		if (createChannelMustSucceed(channels[i].llsvName, 0 , 0, CA_PRIORITY, &channels[i].llsvId)) return EXIT_FAILURE;
 
 			//we flush the channels now in order to detect what types of severities the record specifies.
-			status = ca_pend_io ( arguments.w );
+            status = ca_pend_io ( arguments.caTimeout );
 
 			if(status == ECA_TIMEOUT) {
 				//channel doesn't have usual sev fields
@@ -1791,7 +1791,7 @@ int caInit(struct channel *channels, int nChannels){
 				if (createChannelMustSucceed(channels[i].ftsvName, 0 , 0, CA_PRIORITY, &channels[i].ftsvId)) return EXIT_FAILURE;
 				if (createChannelMustSucceed(channels[i].ffsvName, 0 , 0, CA_PRIORITY, &channels[i].ffsvId)) return EXIT_FAILURE;
 
-				status = ca_pend_io ( arguments.w );
+                status = ca_pend_io ( arguments.caTimeout );
 
 				if(status == ECA_TIMEOUT) {
 					//channel doesn't have multi-bit severity fields
@@ -1921,45 +1921,48 @@ int main ( int argc, char ** argv )
         {0,         	0,                 	0,  0 }
     };
     putenv("POSIXLY_CORRECT="); //Behave correctly on GNU getopt systems = stop parsing after 1st non option is encountered
+    epicsInt32 digits;  // TODO: not right location?
     while ((opt = getopt_long_only(argc, argv, ":w:d:e:f:g:n:sth", long_options, &opt_long)) != -1) {
         switch (opt) {
         case 'w':
-        	if (sscanf(optarg, "%f", &arguments.w) != 1){    // type was not given as float
-        		arguments.w = CA_DEFAULT_TIMEOUT;
+            if (sscanf(optarg, "%f", &arguments.caTimeout) != 1){    // type was not given as float
+                arguments.caTimeout = CA_DEFAULT_TIMEOUT;
         		fprintf(stderr, "Requested timeout invalid - ignored. ('%s -h' for help.)\n", argv[0]);
         	}
             break;
         case 'd':
-        	if (sscanf(optarg, "%d", &arguments.d) != 1)     // type was not given as an integer
+            if (sscanf(optarg, "%d", &arguments.dbrRequestType) != 1)     // type was not given as an integer
         	{
-        		dbr_text_to_type(optarg, arguments.d);
-        		if (arguments.d == -1)                   // Invalid? Try prefix DBR_
+                dbr_text_to_type(optarg, arguments.dbrRequestType);
+                if (arguments.dbrRequestType == -1)                   // Invalid? Try prefix DBR_
         		{
         			char str[30] = "DBR_";
         			strncat(str, optarg, 25);
-        			dbr_text_to_type(str, arguments.d);
+                    dbr_text_to_type(str, arguments.dbrRequestType);
         		}
         	}
-        	if (arguments.d < DBR_STRING    || arguments.d > DBR_CTRL_DOUBLE){
+            if (arguments.dbrRequestType < DBR_STRING    || arguments.dbrRequestType > DBR_CTRL_DOUBLE){
         		fprintf(stderr, "Requested dbr type out of range "
         				"or invalid - ignored. ('%s -h' for help.)\n", argv[0]);
-        		arguments.d = -1;
+                arguments.dbrRequestType = -1;
         	}
         	break;
         case 'e':	//how to format doubles in strings
         case 'f':
         case 'g':
-            if (sscanf(optarg, "%d", &arguments.digits) != 1){
+            if (sscanf(optarg, "%d", &digits) != 1){
                 fprintf(stderr,
                         "Invalid precision argument '%s' "
                         "for option '-%c' - ignored.\n", optarg, opt);
             } else {
-                if (arguments.digits>=0)
-                    sprintf(arguments.dblFormatStr, "%%-.%d%c", arguments.digits, opt);
+                if (digits>=0){
+                    sprintf(arguments.dblFormatStr, "%%-.%d%c", digits, opt);
+                    arguments.useDblFormatStr = true;
+                }
                 else{
                     fprintf(stderr, "Precision %d for option '-%c' "
-                            "out of range - ignored.\n", arguments.digits, opt);
-                    arguments.digits = -1;
+                            "out of range - ignored.\n", digits, opt);
+                    arguments.useDblFormatStr = false;
                 }
             }
             break;
@@ -2189,8 +2192,8 @@ int main ( int argc, char ** argv )
     	return EXIT_FAILURE;
     }
     if(arguments.tool == cainfo && (arguments.s || arguments.num || arguments.bin  || arguments.hex || arguments.oct \
-    		|| arguments.d != -1 || arguments.prec != -1 || arguments.round != roundType_no_rounding || arguments.plain \
-    		|| arguments.digits != -1 || arguments.stat || arguments.nostat || arguments.noname || arguments.nounit \
+            || arguments.dbrRequestType != -1 || arguments.prec != -1 || arguments.round != roundType_no_rounding || arguments.plain \
+            || arguments.useDblFormatStr || arguments.stat || arguments.nostat || arguments.noname || arguments.nounit \
     		|| arguments.timestamp != '\0' || arguments.timeout != -1 || arguments.date || arguments.time || arguments.localdate \
     		|| arguments.localtime || arguments.fieldSeparator != ' ' || arguments.inputSeparator != ' ' || arguments.numUpdates != -1\
     		|| arguments.inNelm != 1 || arguments.outNelm != -1 || arguments.nord)){
@@ -2223,16 +2226,16 @@ int main ( int argc, char ** argv )
     if (arguments.num && arguments.s){
     	fprintf(stderr, "Options -num and -s are mutually exclusive.\n");
     }
-    if (arguments.digits != -1 && arguments.prec != -1){
-    	fprintf(stderr, "Precision specified twice: by -prec as well as argument to -e, -f or -g.\n");
+    if (arguments.useDblFormatStr && arguments.prec != -1){
+        fprintf(stderr, "Precision specified twice: by -prec as well as argument to -e, -f or -g.\n");  // TODO: in kaj zdej?
 	}
-    if (arguments.plain && (arguments.num || arguments.hex ||arguments.bin||arguments.oct || arguments.digits != -1 || arguments.prec != -1 \
+    if (arguments.plain && (arguments.num || arguments.hex ||arguments.bin||arguments.oct || arguments.useDblFormatStr || arguments.prec != -1 \
     		|| arguments.s || arguments.round != roundType_no_rounding || strcmp(arguments.dblFormatStr,"%g") || arguments.fieldSeparator != ' ' )){
     	printf("Warning: -plain option overrides all formatting switches.\n");
     	arguments.num =false; arguments.hex =false; arguments.bin = false; arguments.oct =false; arguments.s =false;
-    	arguments.digits = -1; arguments.prec = -1;
+        arguments.useDblFormatStr = false; arguments.prec = -1;
     	arguments.round = roundType_no_rounding;
-    	strcpy(arguments.dblFormatStr,"%g");
+        strcpy(arguments.dblFormatStr,"%g");    // TODO: this is not default??
     	arguments.fieldSeparator = ' ' ;
     }
 
@@ -2479,8 +2482,8 @@ int main ( int argc, char ** argv )
 		outLocalTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
 	}
 	//memory for timestamp
-	if (arguments.tool == camon || arguments.tool == cawait){
-		timestampRead = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
+    timestampRead = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
+    if (arguments.tool == camon || arguments.tool == cawait){
 		lastUpdate = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
 		firstUpdate = mallocMustSucceed(nChannels * sizeof(bool),"main");
 		numMonitorUpdates = 0;
