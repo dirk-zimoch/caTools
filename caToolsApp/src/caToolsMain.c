@@ -253,7 +253,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
 				" result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
         fputs("  caput -inNelm 3 pvA 1 2 3 pvB 4 5 6\n", stream);
         fputs("  caput pvA '1 2 3' pvB '4 5 6'\n", stream);
-        fputs("  caput -inFs ; pvA '1;2;3' pvB '4;5;6'\n", stream);
+        fputs("  caput -inSep ; pvA '1;2;3' pvB '4;5;6'\n", stream);
 	}
     if (tool == cado) {
         fputs("Writes 1 to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
@@ -290,7 +290,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
     if (tool == caput || tool == caputq) {
         fputs("Formating input : Array format options\n", stream);
         fputs("  -inNelm <number>     Number of array elements to write. Must match the number of provided values.\n", stream);
-        fputs("  -inFs <separator>    Separator used between array elements in <value>. If not specified, space is used.\n", stream);
+        fputs("  -inSep <separator>   Separator used between array elements in <value>. If not specified, space is used.\n", stream);
     }
 
     // flags associated with monitoring
@@ -344,7 +344,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Formating output : Array format options\n", stream);
         fputs("  -nord                Display number of array elements before their values.\n", stream);
         fputs("  -outNelm <number>    Number of array elements to read.\n", stream);
-        fputs("  -outFs <number>      Separator between array elements.\n", stream);
+        fputs("  -outSep <number>     Separator between array elements.\n", stream);
 	}
 }
 
@@ -1929,8 +1929,8 @@ int main ( int argc, char ** argv )
         {"date",		no_argument, 		0,  0 },	//server date
         {"inNelm",		required_argument,	0,  0 },	//number of array elements - write
         {"outNelm", 	required_argument,	0,  0 },	//number of array elements - read
-        {"outFs",		required_argument,	0,  0 },	//array field separator - read
-        {"inFs",		required_argument,	0,  0 },	//array field separator - write
+        {"outSep",		required_argument,	0,  0 },	//array field separator - read
+        {"inSep",		required_argument,	0,  0 },	//array field separator - write
         {"nord",		no_argument,		0,  0 },	//display number of array elements
         {"tool",		required_argument, 	0,	0 },	//tool
         {"timeout",   	required_argument, 	0,	0 },	//timeout
@@ -2355,14 +2355,14 @@ int main ( int argc, char ** argv )
 					channels[i].inNelm = 1;
         		}
         		else{//parse the string assuming each element is delimited by the inputSeparator char
-        			char inFs[2] = {arguments.inputSeparator, 0};
+                    char inSep[2] = {arguments.inputSeparator, 0};
         			j=0;
-        			char *token = strtok(argv[optind+1], inFs);
+                    char *token = strtok(argv[optind+1], inSep);
         			while(token) {
         				int charsToWrite = snprintf(&channels[i].writeStr[j*MAX_STRING_SIZE] , MAX_STRING_SIZE, "%s", token);
         				if (charsToWrite >= MAX_STRING_SIZE) fprintf(stderr,"Input %s is longer than the allowed size %d - truncating.\n", token, MAX_STRING_SIZE);
         				j++;
-        				token = strtok(NULL, inFs);
+                        token = strtok(NULL, inSep);
         			}
         			channels[i].inNelm = j;
         		}
