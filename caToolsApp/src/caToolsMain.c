@@ -42,7 +42,7 @@ enum tool{
 
 struct arguments
 {
-   float w;					//ca timeout
+   float w;                 //ca timeout
    int  d;					//dbr request type
    bool num;    			//same as -int
    enum roundType round;	//type of rounding:default, ceil, floor
@@ -75,8 +75,8 @@ struct arguments
 
 //intialize arguments
 struct arguments arguments = {
-		.w = CA_DEFAULT_TIMEOUT,
-		.d = -1,	//decide type based on requested data
+        .w = CA_DEFAULT_TIMEOUT,
+        .d = -1,	//decide type based on requested data
 		.num = false,
 		.round = roundType_no_rounding,
 		.prec = -1,	//use precision from the record
@@ -216,16 +216,16 @@ severity = ((struct T *)args.dbr)->severity;
 void usage(FILE *stream, enum tool tool, char *programName){
 
 	//usage:
-	if (tool == caget || tool == cagets || tool == camon || tool == cado ){
+    if (tool == caget || tool == cagets || tool == camon || tool == cado) {
 		fprintf(stream, "\nUsage: %s [flags] <pv> [<pv> ...]\n", programName);
 	}
-	else if (tool == cawait){
+    else if (tool == cawait) {
 		fprintf(stream, "\nUsage: %s [flags] <pv> <condition> [<pv> <condition> ...]\n", programName);
 	}
-	else if (tool == caput || tool == caputq  ){
+    else if (tool == caput || tool == caputq  ) {
 		fprintf(stream, "\nUsage: %s [flags] <pv> <value> [<pv> <value> ...]\n", programName);
 	}
-	else if (tool == cainfo  ){
+    else if (tool == cainfo  ) {
 		fprintf(stream, "\nUsage: %s <pv> [<pv> ...]\n", programName);
 	}
 	else { //tool unknown
@@ -237,101 +237,116 @@ void usage(FILE *stream, enum tool tool, char *programName){
 	//descriptions
 	fputs("\n",stream);
 
-	if (tool == caget ){
-		fputs("Reads process value(s).\n", stream);
+    if (tool == caget) {
+        fputs("Reads PV values(s).\n", stream);
 	}
-	if (tool == cagets){
-		fputs("First writes 1 to PROC fields of the provided records. Then reads the values.\n", stream);
+    if (tool == cagets) {
+        fputs("First processes the PV(s), then reads the value(s).\n", stream);
 	}
-	if (tool == caput ){
-		fputs("Writes value(s) to record(s). Then reads the updated values and displays them.\n", stream);
+    if (tool == caput || tool == caputq) {
+        if (tool == caput) {
+            fputs("Writes value(s) to the PV(s), waits until processing finishes and returns updated value(s).\n", stream);
+        }
+        else { //caputq
+            fputs("Writes value(s) to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
+        }
 		fputs("Arrays can be handled either by specifying number of elements as an argument to -inNelm option"\
-				" or grouping the elements to write in a string following pv name. E.g. the following two commands produce the same"\
+                " or grouping the array elements in a single string after PV name. See following examples which produce the same"\
 				" result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
-		fputs("caput -inNelm 3 pvA 1 2 3 pvB 4 5 6 \ncaput pvA '1 2 3' pvB '4 5 6'\n", stream);
-		fputs("The following tries to write '1 2 3', 'pvB' and '4 5 6' into pvA record:\n", stream);
-		fputs("caput -inNelm 3 pvA '1 2 3' pvB '4 5 6'\n", stream);
+        fputs("  caput -inNelm 3 pvA 1 2 3 pvB 4 5 6\n", stream);
+        fputs("  caput pvA '1 2 3' pvB '4 5 6'\n", stream);
+        fputs("  caput -inFs ; pvA '1;2;3' pvB '4;5;6'\n", stream);
 	}
-	if (tool == caputq ){
-		fputs("Writes value(s) to record(s), then exits. Does not have any output (except if an error occurs).\n", stream);
-		fputs("Arrays can be handled either by specifying number of elements as an argument to -inNelm option"\
-				" or grouping the elements to write in a string following pv name. E.g. the following two commands produce the same"\
-				" result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
-		fputs("caputq -inNelm 3 pvA 1 2 3 pvB 4 5 6 \ncaputq pvA '1 2 3' pvB '4 5 6'\n", stream);
-		fputs("The following tries to write '1 2 3', 'pvB' and '4 5 6' into pvA record:\n", stream);
-		fputs("caputq -inNelm 3 pvA '1 2 3' pvB '4 5 6'\n", stream);
+    if (tool == cado) {
+        fputs("Writes 1 to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
 	}
-	if (tool == cado ){
-		fputs("First writes 1 to PROC fields of the provided records, then exits. Does not have any output (except if an error occurs).\n", stream);
+    if (tool == camon) {
+        fputs("Monitors the PV(s).\n", stream);
 	}
-	if (tool == camon ){
-		fputs("Monitors the provided process values.\n", stream);
-	}
-	if (tool == cawait){
-		fputs("Monitors the process values, but only displays the values when they match the provided conditions. The conditions are specified as a"\
+    if (tool == cawait) {
+        fputs("Monitors the PV(s), but only displays the values when they match the provided conditions. The conditions are specified as a"\
 				" string containing the operator together with the values.\n", stream);
-		fputs("The following operators are supported:  >,<,<=,>=,==,!=, ==A...B(in interval), !=A...B(out of interval). For example, "\
+        fputs("Following operators are supported:  >,<,<=,>=,==,!=, ==A...B(in interval), !=A...B(out of interval). For example, "\
 				"cawait pv '==1...5' ignores all pv values except those inside the interval [1,5].\n", stream);
 	}
-	if (tool == cainfo  ){
+    if (tool == cainfo) {
 		fputs("Displays detailed information about the provided records.\n", stream);
-		fputs("-w <number>           timeout for CA calls\n", stream);
-		return; //does not have any other flags
 	}
 
+    //flags common for all tools
+    fputs("\n", stream);
+    fputs("Accepted flags:\n", stream);
+    fputs("\n", stream);
+    fputs("  -h                   Help: Print this message\n", stream);
 
-	//flags
-	fputs("\n\n", stream);
-	fputs("Accepted flags:\n", stream);
+    //flags common for most of the tools
+    if (tool != cado){
+        fputs("Channel Access options\n", stream);
+        if (tool != cainfo) {
+            fputs("  -d <type>            Type of DBR request to use for communicating with the server.\n", stream);
+        }
+        fputs("  -w <time>            Wait time in seconds, specifies CA timeout. (default: 1.0 s)\n", stream);
+    }
 
-	//common for all tools
-	fputs("-d <type>             type of DBR request to use for communicating with the server\n", stream);
-	fputs("-w <number>           timeout for CA calls\n", stream);
+    //flags associated with writing
+    if (tool == caput || tool == caputq) {
+        fputs("Formating input : Array format options\n", stream);
+        fputs("  -inNelm <number>     Number of array elements to write. Must match the number of provided values.\n", stream);
+        fputs("  -inFs <separator>    Separator used between array elements in <value>. If not specified, space is used.\n", stream);
+    }
 
-	//flags associated with reading
+    // flags associated with monitoring
+    if (tool == camon) {
+        fputs("Monitoring options\n", stream);
+        fputs("  -n <number>          Exit the program after <number> updates.\n", stream);
+        fputs("  -timestamp <otpion>  Display relative timestamps. Options:\n", stream);
+        fputs("                            r: time elapsed since start of the program,\n", stream);
+        fputs("                            u: time elapsed since last update of any PV,\n", stream);
+        fputs("                            c: time elapsed since last update separately for each PV.\n", stream);
+    }
+    if (tool == cawait) {
+        fputs("Waiting options\n", stream);
+        fputs("  -timeout <number>    Exit the program after <number> seconds without an update.\n", stream);
+    }
+
+    //Flags associated with returned values. Used by both reading and writing tools.
 	if (tool == caget || tool == cagets || tool == camon \
-			|| tool == cawait ||  tool == caput ){
-		fputs("-num                  display enum/char values as numbers\n", stream);
-		fputs("-int                  same as -num\n", stream);
-		fputs("-round <type>         rounding of floating point values. Arguments: ceil, floor, default.\n", stream);
-		fputs("-prec <number>        precision for displaying floating point values. Default is equal to PREC field of the record.\n", stream);
-		fputs("-hex                  display integer values in hexadecimal format\n", stream);
-		fputs("-oct                  display integer values in octal format\n", stream);
-		fputs("-plain                ignore formatting switches\n", stream);
-		fputs("-stat                 always display alarm status and severity\n", stream);
-		fputs("-nostat               never display alarm status and severity\n", stream);
-		fputs("-noname               hide record name\n", stream);
-		fputs("-date                 display server date\n", stream);
-		fputs("-localdate            display client date\n", stream);
-		fputs("-time                 display server time\n", stream);
-		fputs("-localtime            display client time\n", stream);
-		fputs("-outNelm  <number>    number of array elements to read\n", stream);
-		fputs("-outFs <number>       field separator for displaying array elements\n", stream);
-		fputs("-nord                 display number of array elements before their values\n", stream);
-		fputs("-w <number>           timeout for CA calls\n", stream);
-		fputs("-e <number>           format doubles using scientific notation with precition <number>. Overrides -prec option.\n", stream);
-		fputs("-f <number>           format doubles using floating point with precition <number>. Overrides -prec option.\n", stream);
-		fputs("-g <number>           format doubles using shortest representation with precition <number>. Overrides -prec option.\n", stream);
-		fputs("-s                    interpret values as strings\n", stream);
-		fputs("-t                    same as -time\n", stream);
+            || tool == cawait ||  tool == caput) {
+        fputs("Formating output : General options\n", stream);
+        fputs("  -noname              Hide PV name.\n", stream);
+        fputs("  -nostat              Never display alarm status and severity.\n", stream);
+        fputs("  -plain               Ignore any formatting switches\n", stream);
+        fputs("  -stat                Always display alarm status and severity.\n", stream);
 
-		if (tool == camon){
-			fputs("-timestamp <char>     display relative timestamps. <char> = r displays time elapsed since start " \
-					"of the program. <char> = u displays time elapsed since last update of any process value.  <char> = c displays "\
-					"time elapsed since last update separately for each process value\n", stream);
-			fputs("-n <number>           exit the program after <number> updates\n", stream);
-		}
-		if (tool == cawait){
-			fputs("-timeout <number>     exit the program after <number> seconds without an update\n", stream);
-		}
+        fputs("Formating output : Time options\n", stream);
+        fputs("  -date                Display server date.\n", stream);
+        fputs("  -localdate           Display client date.\n", stream);
+        fputs("  -localtime           Display client time.\n", stream);
+        fputs("  -t, -time            Display server time.\n", stream);
 
-	}
+        fputs("Formating output : Intiger format options\n", stream);
+        fputs("  -bin                 Display integer values in binary format.\n", stream);
+        fputs("  -hex                 Display integer values in hexadecimal format.\n", stream);
+        fputs("  -oct                 Display integer values in octal format.\n", stream);
+        fputs("  -s                   Interpret value(s) as char (number to ascii).\n", stream);
 
-	//flags associated with writing
-	if (tool == caput || tool == caputq ){
-		fputs("-inNelm               number of array elements to write. Needs to match the number of provided values.\n", stream);
-		fputs("-inFs                 field separator used in the string containing array elements to write\n", stream);
+        fputs("Formating output : Floating point format options\n", stream);
+        fputs("  -e <number>          Format doubles using scientific notation with precition <number>. Overrides -prec option.\n", stream);
+        fputs("  -f <number>          Format doubles using floating point with precition <number>. Overrides -prec option.\n", stream);
+        fputs("  -g <number>          Format doubles using shortest representation with precition <number>. Overrides -prec option.\n", stream);
+        fputs("  -prec <number>       Override PREC field with <number>. (default: PREC field).\n", stream);
+        fputs("  -round <option>      Round floating point value(s). Options:\n", stream);
+        fputs("                                 round: round to nearest (default).\n", stream);
+        fputs("                                 ceil: round up,\n", stream);
+        fputs("                                 floor: round down,\n", stream);
 
+        fputs("Formating output : Enum/char format options\n", stream);
+        fputs("  -int, -num           Display enum/char values as numbers.\n", stream);
+
+        fputs("Formating output : Array format options\n", stream);
+        fputs("  -nord                Display number of array elements before their values.\n", stream);
+        fputs("  -outNelm <number>    Number of array elements to read.\n", stream);
+        fputs("  -outFs <number>      Separator between array elements.\n", stream);
 	}
 }
 
@@ -560,7 +575,7 @@ int printValue(int i, evargs args, int precision){
     		else if (arguments.round == roundType_ceil) valueDbl = ceil(valueDbl);
     		else if (arguments.round == roundType_floor) valueDbl = floor(valueDbl);
 
-    		if (arguments.digits == -1 && arguments.prec == -1){
+            if (arguments.digits == -1 && arguments.prec == -1){
     			//display with precision defined by the record
     			printf("%-.*g", precision, valueDbl);
     		}
@@ -1881,7 +1896,7 @@ int main ( int argc, char ** argv )
     static struct option long_options[] = {
         {"num",     	no_argument,        0,  0 },
         {"int",     	no_argument,        0,  0 },    //same as num
-        {"round",   	required_argument,  0,  0 },	//type of rounding:default, ceil, floor
+        {"round",   	required_argument,  0,  0 },	//type of rounding:round, ceil, floor
         {"prec",    	required_argument,  0,  0 },	//precision
         {"hex",     	no_argument,        0,  0 },	//display as hex
         {"bin",     	no_argument,        0,  0 },	//display as bin
