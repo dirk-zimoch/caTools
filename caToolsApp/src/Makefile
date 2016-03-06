@@ -18,6 +18,8 @@ caTools_SRCS += caToolsMain.c
 # Finally link to the EPICS Base libraries
 caTools_LIBS += $(EPICS_BASE_IOC_LIBS)
 
+USR_CFLAGS_DEFAULT += -std=c99
+
 #=============================
 
 include $(TOP)/configure/RULES
