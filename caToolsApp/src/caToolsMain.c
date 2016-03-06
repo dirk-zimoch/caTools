@@ -177,6 +177,7 @@ struct channel{
     char			*writeStr;	// value(s) to be written
     enum operator	conditionOperator; //cawait operator
     double 			conditionOperands[2]; //cawait operands
+    bool            isConditionMet; // cawait indication that the condition was met
 };
 
 
@@ -482,7 +483,7 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
         }
         break;
     case DBR_ENUM:
-        dblValue = (double) *(uint16_t*)nativeValue;
+        dblValue = (double) *(dbr_enum_t*)nativeValue;
         break;
     default:
         fprintf(stderr, "Unrecognized DBR type.\n");
@@ -802,6 +803,7 @@ int getTimeStamp(int i) {
             negative = epicsTimeDiffFull(&elapsed, &timestampRead[i], &lastUpdate[commonI]);
         }
         else {
+            firstUpdate[i] = true;
             showEmpty = true;
         }
 
@@ -1054,10 +1056,11 @@ static void caReadCallback (evargs args){
         if (arguments.timestamp) getTimeStamp(ch->i);	//calculate relative timestamps.
 
         if (arguments.numUpdates != -1) {
+            numMonitorUpdates++;	//increase counter of updates
+
             if (numMonitorUpdates > arguments.numUpdates) { // when channel subscription is made an update fires. This one does not count towards numMonitorUpdates.
                 runMonitor = false;
             }
-            numMonitorUpdates++;	//increase counter of updates
         }
 
         if (arguments.tool == cawait) {
@@ -1077,16 +1080,10 @@ static void caReadCallback (evargs args){
             //check display condition
             if (cawaitEvaluateCondition(*ch, args) == 1) {
                 runMonitor = false;
-            }
-            else {
-                shouldPrint = false; // do not print if the condition is not met
-            }
-
-            if(!firstUpdate[ch->i]) {    // caWait will not print when channel subscription is made. This prevents double print-out when condition is met right at the start.
+            }else{
                 shouldPrint = false;
             }
         }
-        firstUpdate[ch->i] = true;
     }
 
 
@@ -1148,7 +1145,6 @@ void monitorLoop (struct channel *channels, int nChannels){
 //runs monitor loop. Stops after -n updates (camon, cawait) or
 //after -timeout is exceeded (cawait).
 
-    runMonitor = true;
     while (runMonitor){
         ca_pend_event(0.1);
     }
@@ -1706,7 +1702,7 @@ void channelStatusCallback(struct connection_handler_args args){
                     epicsTimeGetCurrent(&timeoutTime);
                     epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
                 }
-                runMonitor = true;//we need this here to display the current state of the channel
+                //TODOrunMonitor = true;//we need this here to display the current state of the channel
             }
 
             ch->firstConnection = true;
@@ -1898,6 +1894,8 @@ int main ( int argc, char ** argv )
     int nChannels=0;              // Number of channels
     int i,j;                      // counter
     struct channel *channels;
+
+    runMonitor = true;
 
 
     if (endsWith(argv[0],"caget")) arguments.tool = caget;
@@ -2331,6 +2329,7 @@ int main ( int argc, char ** argv )
         //printf("PV %d: %s\n", i, argv[optind]);
         channels[i].name = argv[optind];
         channels[i].i = i;	// channel number, serves to synchronise pvs and output.
+        channels[i].isConditionMet = false;
 
         if (arguments.tool == caput || arguments.tool == caputq){
             if (arguments.inNelm > 1){ //treat next nelm arguments as values
