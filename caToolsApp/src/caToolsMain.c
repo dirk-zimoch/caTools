@@ -177,7 +177,6 @@ struct channel{
     char			*writeStr;	// value(s) to be written
     enum operator	conditionOperator; //cawait operator
     double 			conditionOperands[2]; //cawait operands
-    bool            isConditionMet; // cawait indication that the condition was met
 };
 
 
@@ -2329,7 +2328,6 @@ int main ( int argc, char ** argv )
         //printf("PV %d: %s\n", i, argv[optind]);
         channels[i].name = argv[optind];
         channels[i].i = i;	// channel number, serves to synchronise pvs and output.
-        channels[i].isConditionMet = false;
 
         if (arguments.tool == caput || arguments.tool == caputq){
             if (arguments.inNelm > 1){ //treat next nelm arguments as values
