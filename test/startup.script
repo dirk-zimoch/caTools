@@ -1,0 +1,4 @@
+
+epicsEnvSet SYS TEST
+
+dbLoadRecords(test.template,"P=caTools-$(SYS)")

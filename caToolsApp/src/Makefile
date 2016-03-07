@@ -11,11 +11,14 @@ PROD = caTools
 #caTools_PROD_VERSION += 1
 
 # Build the main IOC entry point on workstation OSs.
-caTools_SRCS += caToolsMain.cpp
+#caTools_SRCS += caToolsMain.cpp
+caTools_SRCS += caToolsMain.c
 
 
 # Finally link to the EPICS Base libraries
 caTools_LIBS += $(EPICS_BASE_IOC_LIBS)
+
+USR_CFLAGS_DEFAULT += -std=c99
 
 #=============================
 
