@@ -315,7 +315,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -noname              Hide PV name.\n", stream);
         fputs("  -nostat              Never display alarm status and severity.\n", stream);
         fputs("  -stat                Always display alarm status and severity.\n", stream);
-        fputs("  -plain               Ignore all formatting switches, displays only PV value.\n", stream);
+        fputs("  -plain               Ignore all formatting switches (displays only PV value) except date/time related.\n", stream);
 
         fputs("Formating output : Time options\n", stream);
         fputs("  -d -date             Display server date.\n", stream);
@@ -2006,7 +2006,7 @@ int main ( int argc, char ** argv )
                 ;//declaration must not follow label
                 int type;
                 if (sscanf(optarg, "%d", &type) != 1) {   // type was not given as a number [0, 1, 2]
-                    if(!strcmp("default", optarg)) {
+                    if(!strcmp("round", optarg)) {
                         arguments.round = roundType_round;
                     } else if(!strcmp("ceil", optarg)) {
                         arguments.round = roundType_ceil;
@@ -2016,14 +2016,14 @@ int main ( int argc, char ** argv )
                         arguments.round = roundType_round;
                         fprintf(stderr,
                             "Invalid round type '%s' "
-                            "for option '-%c' - ignored.\n", optarg, opt);
+                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                     }
                 } else { // type was given as a number
                     if( type < roundType_round || roundType_floor < type) {   // out of range check
                         arguments.round = roundType_no_rounding;
                         fprintf(stderr,
                             "Invalid round type '%s' "
-                            "for option '-%c' - ignored.\n", optarg, opt);
+                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                     } else{
                         arguments.round = type;
                     }
@@ -2034,10 +2034,10 @@ int main ( int argc, char ** argv )
                     if (sscanf(optarg, "%d", &arguments.prec) != 1){
                         fprintf(stderr,
                                 "Invalid precision argument '%s' "
-                                "for option '-%c' - ignored.\n", optarg, opt);
+                                "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                     } else if (arguments.prec < 0) {
-                       fprintf(stderr, "Precision %d for option '-%c' "
-                               "out of range - ignored.\n", arguments.prec, opt);
+                       fprintf(stderr, "Precision %d for option '%s' "
+                               "out of range - ignored.\n", arguments.prec, long_options[opt_long].name);
                        arguments.prec = -1;
                     }
                 }
@@ -2072,12 +2072,12 @@ int main ( int argc, char ** argv )
             case 12:   // timestamp
                 if (sscanf(optarg, "%c", &arguments.timestamp) != 1){
                    fprintf(stderr,	"Invalid argument '%s' "
-                            "for option '-%c' - ignored. Allowed arguments: r,u,c.\n", optarg, opt);
+                            "for option '%s' - ignored. Allowed arguments: r,u,c.\n", optarg, long_options[opt_long].name);
                     arguments.timestamp = 0;
                 } else {
                     if (arguments.timestamp != 'r' && arguments.timestamp != 'u' && arguments.timestamp != 'c') {
                         fprintf(stderr,	"Invalid argument '%s' "
-                            "for option '-%c' - ignored. Allowed arguments: r,u,c.\n", optarg, opt);
+                            "for option '%s' - ignored. Allowed arguments: r,u,c.\n", optarg, long_options[opt_long].name);
                         arguments.timestamp = 0;
                     }
                 }
@@ -2097,12 +2097,12 @@ int main ( int argc, char ** argv )
             case 17:   // inNelm - number of elements - write
                 if (sscanf(optarg, "%d", &arguments.inNelm) != 1){
                     fprintf(stderr, "Invalid count argument '%s' "
-                            "for option '-%c' - ignored.\n", optarg, opt);
+                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                 }
                 else {
                     if (arguments.inNelm < 1) {
-                        fprintf(stderr, "Count number for option '-%c' "
-                                "must be positive integer - ignored.\n", opt);
+                        fprintf(stderr, "Count number for option '%s' "
+                                "must be positive integer - ignored.\n", long_options[opt_long].name);
                         arguments.inNelm = 1;
                     }
                 }
@@ -2110,12 +2110,12 @@ int main ( int argc, char ** argv )
             case 18:   // outNelm - number of elements - read
                 if (sscanf(optarg, "%d", &arguments.outNelm) != 1){
                     fprintf(stderr, "Invalid count argument '%s' "
-                            "for option '-%c' - ignored.\n", optarg, opt);
+                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                 }
                 else {
                     if (arguments.outNelm < 1) {
-                        fprintf(stderr, "Count number for option '-%c' "
-                                "must be positive integer - ignored.\n", opt);
+                        fprintf(stderr, "Count number for option '%s' "
+                                "must be positive integer - ignored.\n", long_options[opt_long].name);
                         arguments.outNelm = -1;
                     }
                 }
@@ -2123,13 +2123,13 @@ int main ( int argc, char ** argv )
             case 19:   // field separator for output
                 if (sscanf(optarg, "%c", &arguments.fieldSeparator) != 1){
                     fprintf(stderr, "Invalid argument '%s' "
-                            "for option '-%c' - ignored.\n", optarg, opt);
+                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                 }
                 break;
             case 20:   // field separator for input
                 if (sscanf(optarg, "%c", &arguments.inputSeparator) != 1){
                     fprintf(stderr, "Invalid argument '%s' "
-                            "for option '-%c' - ignored.\n", optarg, opt);
+                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                 }
                 break;
             case 21:   // nord
@@ -2166,7 +2166,7 @@ int main ( int argc, char ** argv )
             case 23: //timeout
                 if (sscanf(optarg, "%f", &arguments.timeout) != 1){
                     fprintf(stderr, "Invalid timeout argument '%s' "
-                            "for option '-%c' - ignored.\n", optarg, opt);
+                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                 }
                 else {
                     if (arguments.timeout <= 0) {
