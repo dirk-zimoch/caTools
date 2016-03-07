@@ -315,7 +315,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -noname              Hide PV name.\n", stream);
         fputs("  -nostat              Never display alarm status and severity.\n", stream);
         fputs("  -stat                Always display alarm status and severity.\n", stream);
-        fputs("  -plain               Ignore any formatting switches\n", stream);
+        fputs("  -plain               Ignore all formatting switches, displays only PV value.\n", stream);
 
         fputs("Formating output : Time options\n", stream);
         fputs("  -d -date             Display server date.\n", stream);
@@ -527,7 +527,7 @@ int printValue(evargs args, int precision){
 
     unsigned int baseType;
     void *value;
-    double valueDbl;
+    double valueDbl = 0;
 
     value = dbr_value_ptr(args.dbr, args.type);
     baseType = args.type % (LAST_TYPE+1);   // convert appropriate TIME, GR, CTRL,... type to basic one
@@ -541,7 +541,7 @@ int printValue(evargs args, int precision){
         if (j){
             printf ("%c", arguments.fieldSeparator); //insert element separator
         }
-        valueDbl = 0;
+
         switch (baseType) {
         case DBR_STRING:
             printf("%.*s", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);
@@ -562,7 +562,7 @@ int printValue(evargs args, int precision){
                 valueDbl = floor(valueDbl);
             }
 
-            if (!(arguments.hex || arguments.oct || arguments.bin)) { // if hex oct or bin, do not brake
+            if (!(arguments.hex || arguments.oct || arguments.bin)) { // if hex, oct or bin, do not brake but use DBR_LONG code to print out the value
                 char format = 'f'; // default write as float
                 if (arguments.dblFormatType != '\0') {
                     //override records default prec
@@ -573,7 +573,7 @@ int printValue(evargs args, int precision){
                     precision = arguments.prec;
                 }
 
-                if (precision != -1) { // when DBR_XXX_DOUBLE, DBR_XXX_FLOAT has precision info
+                if (precision != -1 && !arguments.plain) { // when DBR_XXX_DOUBLE, DBR_XXX_FLOAT has precision info. Also, print raw when -plain is used.
                     char formatStr[30];
                     sprintf(formatStr, "%%-.%d%c", precision, format);
                     printf(formatStr, valueDbl);
@@ -591,14 +591,17 @@ int printValue(evargs args, int precision){
 
             //display dec, hex, bin, oct if desired
             if (arguments.hex){
-                printf("%" PRIx32, valueInt32);
+                printf("0x%" PRIx32, valueInt32);
             }
             else if (arguments.oct){
-                printf("%" PRIo32, valueInt32);
+                printf("0o%" PRIo32, valueInt32);
             }
             else if (arguments.bin){
                 printf("0b");
                 printBits(valueInt32);
+            }
+            else if (arguments.s){
+                printf("%c", (uint8_t)valueInt32);
             }
             else{
                 printf("%" PRId32, valueInt32);
@@ -738,9 +741,10 @@ int printOutput(int i, evargs args, int precision){
     if (!isStrEmpty(outSev[i])) printf("(%s",outSev[i]);
 
     //status
-    if (!isStrEmpty(outStat[i])) printf(" %s",outStat[i]);
+    if (!isStrEmpty(outStat[i])) printf(" %s)",outStat[i]);
+    else if (!isStrEmpty(outSev[i])) putc(')', stdout);
 
-    printf(")\n");
+    putc('\n', stdout);
     return 0;
 }
 
@@ -2219,7 +2223,7 @@ int main ( int argc, char ** argv )
              || arguments.timestamp != '\0' || arguments.timeout != -1 || arguments.date || arguments.time || arguments.localdate \
              || arguments.localtime || arguments.fieldSeparator != ' ' || arguments.inputSeparator != ' ' || arguments.numUpdates != -1\
              || arguments.inNelm != 1 || arguments.outNelm != -1 || arguments.nord)){
-         fprintf(stderr, "The only option allowed for cainfo is -w.\n");
+         fprintf(stderr, "The only option allowed for cainfo is -w. Ignoring the rest.\n");
      }
      else if (arguments.tool != camon){
          if (arguments.timestamp != 0){
@@ -2249,14 +2253,17 @@ int main ( int argc, char ** argv )
      if (arguments.num && arguments.s){
          fprintf(stderr, "Options -num and -s are mutually exclusive.\n");
      }
-     if (arguments.plain && (arguments.num || arguments.hex ||arguments.bin||arguments.oct || arguments.dblFormatType != '\0' || arguments.prec != -1 \
-             || arguments.s || arguments.round != roundType_no_rounding || arguments.dblFormatType != '\0' || arguments.fieldSeparator != ' ' )){
-         printf("Warning: -plain option overrides all formatting switches.\n");
+     if (arguments.plain) {
+         printf("Warning: -plain option overrides all formatting switches.\n"); // TODO warning was not printed on PSI catools
          arguments.num =false; arguments.hex =false; arguments.bin = false; arguments.oct =false; arguments.s =false;
-         arguments.prec = -1;
+         arguments.prec = -1;   // prec is also handled in printValue()
          arguments.round = roundType_no_rounding;
          arguments.dblFormatType = '\0';
          arguments.fieldSeparator = ' ' ;
+         arguments.noname = true;
+         arguments.nostat = true;
+         arguments.stat = false;
+         arguments.nounit = true;
      }
 
 
