@@ -181,10 +181,11 @@ struct channel{
 
 
 //output strings
-static int const LEN_TIMESTAMP = 50;
-static int const LEN_RECORD_NAME = 61;
-static int const LEN_SEVSTAT = 30;
-static int const LEN_UNITS = 20+MAX_UNITS_SIZE;
+static uint32_t const LEN_TIMESTAMP = 50;
+static uint32_t const LEN_RECORD_NAME = 60;
+static uint32_t const LEN_SEVSTAT = 30;
+static uint32_t const LEN_UNITS = 20+MAX_UNITS_SIZE;
+static uint32_t const LEN_RECORD_FIELD = 4;
 char **outDate,**outTime, **outSev, **outStat, **outUnits, **outLocalDate, **outLocalTime;
 char **outTimestamp; //relative timestamps for camon
 
@@ -1891,12 +1892,29 @@ int caDisconnect(struct channel * channels, int nChannels){
 }
 
 
-bool endsWith(char * src, char * match){
+bool endsWith(char * src, char * match) {
 //checks whether end of src matches the string match.
-    if (strlen(src)>=strlen(match)){
+    if (strlen(src) >= strlen(match)) {
         return !strcmp(src + (strlen(src)-strlen(match)), match) ;
     }
     else return false;
+}
+
+/**
+ * @brief getBaseChannelName will strip chanel name to base channel name. Base channel name is chanel name, without field names (without .VAL, .PREC, ...)
+ * @param name channel name to strip (null terminated string)
+ */
+void getBaseChannelName(char *name) {
+    size_t len = strlen(name);
+    size_t i = 0;
+
+    while(i <= len) {  // field name + '.'
+        if(name[len-i] == '.') {    // found '.' which separates base record name and field name
+            name[len-i] = '\0';     // just terminate the string here.
+            break;
+        }
+        i++;
+    }
 }
 
 int main ( int argc, char ** argv )
@@ -2308,33 +2326,33 @@ int main ( int argc, char ** argv )
     channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "main");
     for (i=0;i<nChannels;++i){
         if (arguments.tool == cagets || arguments.tool == cado){
-            channels[i].procName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");//6 spaces for .(field name) + null termination
+            channels[i].procName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");//2 spaces for .(field name) + null termination
         }
         if(arguments.tool == cainfo){
-            channels[i].descName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].hhsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].hsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].lsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].unsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].cosvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].zrsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].onsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].twsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].thsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].frsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].fvsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].sxsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].svsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].eisvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].nisvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].tesvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].elsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].tvsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].ttsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].ftsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
-            channels[i].ffsvName = callocMustSucceed (LEN_RECORD_NAME + 6, sizeof(char), "main");
+            channels[i].descName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].hhsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].hsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].lsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].unsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].cosvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].zrsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].onsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].twsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].thsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].frsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].fvsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].sxsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].svsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].eisvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].nisvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].tesvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].elsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].tvsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].ttsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].ftsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+            channels[i].ffsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
         }
     }
 
@@ -2344,6 +2362,12 @@ int main ( int argc, char ** argv )
     for (i = 0; optind < argc; i++, optind++){
         //printf("PV %d: %s\n", i, argv[optind]);
         channels[i].name = argv[optind];
+
+        if(strlen(channels[i].name) > LEN_RECORD_NAME + LEN_RECORD_FIELD + 1) { //worst case scenario: longest name + longest field + '.' that separates name and field
+            fprintf(stderr, "Record name over %d characters: %s\n", LEN_RECORD_NAME + LEN_RECORD_FIELD + 1, channels[i].name);
+            return EXIT_FAILURE;
+        }
+
         channels[i].i = i;	// channel number, serves to synchronise pvs and output.
 
         if (arguments.tool == caput || arguments.tool == caputq){
@@ -2395,31 +2419,15 @@ int main ( int argc, char ** argv )
         }
         else if (arguments.tool == cagets || arguments.tool == cado) {
 
-            size_t lenName = strlen(channels[i].name);
-            if(lenName > LEN_RECORD_NAME + 4) { //worst case scenario: longest name + .PROC
-                fprintf(stderr, "Record name over %d characters: %s\n", LEN_RECORD_NAME + 4, channels[i].name);
-                return EXIT_FAILURE;
-            }
-
             strcpy(channels[i].procName, channels[i].name);
 
             //append .PROC
-            if (lenName > 4 && strcmp(&channels[i].procName[lenName - 4], ".VAL") == 0) {
-                //if last 4 elements equal .VAL, replace them
-                strcpy(&channels[i].procName[lenName - 4],".PROC");
-            }
-            else {
-                //otherwise simply append
-                strcat(&channels[i].procName[lenName],".PROC");
-            }
+            getBaseChannelName(channels[i].procName);
+            strcat(channels[i].procName,".PROC");
+            printf("chan: %s\tproc: %s\n", channels[i].name, channels[i].procName);
         }
         else if (arguments.tool == cainfo) {
             //set sibling channels for getting desc and severity data
-            size_t lenName = strlen(channels[i].name);
-            if(lenName > LEN_RECORD_NAME + 3) { //worst case scenario: longest name + .VAL
-                fprintf(stderr, "Record name over %d characters: %s\n", LEN_RECORD_NAME + 3, channels[i].name);
-                return EXIT_FAILURE;
-            }
 
             strcpy(channels[i].descName, channels[i].name);
             strcpy(channels[i].hhsvName, channels[i].name);
