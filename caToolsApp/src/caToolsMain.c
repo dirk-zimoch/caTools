@@ -661,10 +661,10 @@ int printValue(evargs args, int precision){
             }
             // else write value as number.
             if (arguments.hex){
-                printf("%" PRIx16, v);
+                printf("0x%" PRIx16, v);
             }
             else if (arguments.oct){
-                printf("%" PRIo16, v);
+                printf("0o%" PRIo16, v);
             }
             else if (arguments.bin){
                 printf("0b");
@@ -678,6 +678,16 @@ int printValue(evargs args, int precision){
         case DBR_CHAR:{
             if (arguments.num) {	//check if requested as a a number
                 printf("%" PRIu8, ((uint8_t*) value)[j]);
+            }
+            else if (arguments.hex){
+                printf("0x%" PRIx8, ((uint8_t*) value)[j]);
+            }
+            else if (arguments.oct){
+                printf("0o%" PRIo8, ((uint8_t*) value)[j]);
+            }
+            else if (arguments.bin){
+                printf("0b");
+                printBits(((uint8_t*) value)[j]);
             }
             else{
                 fputc(((char*) value)[j], stdout);
