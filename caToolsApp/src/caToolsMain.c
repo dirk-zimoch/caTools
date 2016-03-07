@@ -196,7 +196,7 @@ epicsTimeStamp *lastUpdate;			//timestamp indicating last update per channel
 bool *firstUpdate;					//indicates that lastUpdate has not been initialized
 epicsTimeStamp timeoutTime;			//when to stop monitoring (-timeout)
 
-bool runMonitor;					//indicates when to stop monitoring according to -timeout or -n
+bool runMonitor;					//indicates when to stop monitoring according to -timeout, -n or cawait condition is true
 uint32_t numMonitorUpdates;		//counts updates needed by -n
 
 void usage(FILE *stream, enum tool tool, char *programName){
@@ -284,7 +284,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
                   "           DBR_STS_INT    8  DBR_TIME_CHAR   18  DBR_CTRL_STRING 28\n", stream);
 
         }
-        fputs("  -w <time>            Wait time in seconds, specifies CA timeout. (default: 1.0 s)\n", stream);
+        fprintf(stream, "  -w <time>            Wait time in seconds, specifies CA timeout. (default: %d s)\n", CA_DEFAULT_TIMEOUT);
     }
 
     //flags associated with writing
@@ -314,8 +314,8 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Formating output : General options\n", stream);
         fputs("  -noname              Hide PV name.\n", stream);
         fputs("  -nostat              Never display alarm status and severity.\n", stream);
-        fputs("  -plain               Ignore any formatting switches\n", stream);
         fputs("  -stat                Always display alarm status and severity.\n", stream);
+        fputs("  -plain               Ignore any formatting switches\n", stream);
 
         fputs("Formating output : Time options\n", stream);
         fputs("  -d -date             Display server date.\n", stream);
@@ -735,12 +735,12 @@ int printOutput(int i, evargs args, int precision){
     if (!isStrEmpty(outUnits[i])) printf("%s ",outUnits[i]);
 
     //severity
-    if (!isStrEmpty(outSev[i])) printf("%s ",outSev[i]);
+    if (!isStrEmpty(outSev[i])) printf("(%s",outSev[i]);
 
     //status
-    if (!isStrEmpty(outStat[i])) printf("%s ",outStat[i]);
+    if (!isStrEmpty(outStat[i])) printf(" %s",outStat[i]);
 
-    fputc('\n',stdout);
+    printf(")\n");
     return 0;
 }
 
@@ -1018,11 +1018,11 @@ static void caReadCallback (evargs args){
 
     //check alarm limits
     if (arguments.stat || (!arguments.nostat && (status != 0 || severity != 0))) { //  display status/severity
-        if (status <= lastEpicsAlarmCond) strcpy(outStat[ch->i], epicsAlarmConditionStrings[status]);
-        else sprintf(outStat[ch->i],"UNKNOWN STATUS: %u",status);
+        if (status <= lastEpicsAlarmCond) sprintf(outStat[ch->i],"STAT:%s", epicsAlarmConditionStrings[status]); // strcpy(outStat[ch->i], epicsAlarmConditionStrings[status]);
+        else sprintf(outStat[ch->i],"UNKNOWN: %u",status);
 
-        if (severity <= lastEpicsAlarmSev) strcpy(outSev[ch->i], epicsAlarmConditionStrings[severity]);
-        else sprintf(outSev[ch->i],"UNKNOWN SEVERITY: %u",status);
+        if (severity <= lastEpicsAlarmSev) sprintf(outSev[ch->i],"SEVR:%s", epicsAlarmSeverityStrings[severity]);//strcpy(outSev[ch->i], epicsAlarmSeverityStrings[severity]);
+        else sprintf(outSev[ch->i],"UNKNOWN: %u",status);
 
 
     }
