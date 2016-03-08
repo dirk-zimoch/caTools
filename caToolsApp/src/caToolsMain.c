@@ -299,7 +299,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
     if (tool == camon) {
         fputs("Monitoring options\n", stream);
         fputs("  -n <number>          Exit the program after <number> updates.\n", stream);
-        fputs("  -timestamp <otpion>  Display relative timestamps. Options:\n", stream);
+        fputs("  -timestamp <option>  Display relative timestamps. Options:\n", stream);
         fputs("                            r: time elapsed since start of the program,\n", stream);
         fputs("                            u: time elapsed since last update of any PV,\n", stream);
         fputs("                            c: time elapsed since last update separately for each PV.\n", stream);
@@ -1202,6 +1202,8 @@ void caRequest(struct channel *channels, int nChannels) {
             continue;
         }
 
+
+
         if (arguments.tool == caget) {
             status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].id, caReadCallback, &channels[i]);
         }
@@ -1212,7 +1214,8 @@ void caRequest(struct channel *channels, int nChannels) {
             status = ECA_BADTYPE;
             switch (nakedType){
             case DBR_STRING:
-                status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, channels[i].writeStr, caWriteCallback, &channels[i]);
+                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, channels[i].writeStr);
+                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, channels[i].writeStr, caWriteCallback, &channels[i]);
                 break;
             case DBR_INT:{//and short
                 int16_t inputI[channels[i].inNelm];
@@ -1221,7 +1224,8 @@ void caRequest(struct channel *channels, int nChannels) {
                         fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
                     }
                 }
-                status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputI, caWriteCallback, &channels[i]);
+                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputI);
+                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputI, caWriteCallback, &channels[i]);
                 }
                 break;
             case DBR_FLOAT:{
@@ -1231,7 +1235,8 @@ void caRequest(struct channel *channels, int nChannels) {
                         fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
                     }
                 }
-                status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputF, caWriteCallback, &channels[i]);
+                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputF);
+                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputF, caWriteCallback, &channels[i]);
                 }
                 break;
             case DBR_ENUM:{
@@ -1245,11 +1250,13 @@ void caRequest(struct channel *channels, int nChannels) {
                         }
                         if (inputI[j]>=MAX_ENUM_STATES) fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", inputI[j]);
                     }
-                    status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputI, caWriteCallback, &channels[i]);
+                    if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputI);
+                    else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputI, caWriteCallback, &channels[i]);
                 }
                 else{
                     //send as a string
-                    status = ca_array_put_callback(DBR_STRING, channels[i].inNelm, channels[i].id, channels[i].writeStr, caWriteCallback, &channels[i]);
+                    if(arguments.tool == caputq) status = ca_array_put(DBR_STRING, channels[i].inNelm, channels[i].id, channels[i].writeStr);
+                    else status = ca_array_put_callback(DBR_STRING, channels[i].inNelm, channels[i].id, channels[i].writeStr, caWriteCallback, &channels[i]);
                 }
                 }
                 break;
@@ -1260,7 +1267,8 @@ void caRequest(struct channel *channels, int nChannels) {
                         fprintf(stderr, "Impossible to convert input %s to format %s\n",channels[i].writeStr, dbr_type_to_text(nakedType));
                     }
                 }
-                status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputC, caWriteCallback, &channels[i]);
+                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputC);
+                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputC, caWriteCallback, &channels[i]);
                 }
                 break;
             case DBR_LONG:{
@@ -1270,7 +1278,8 @@ void caRequest(struct channel *channels, int nChannels) {
                         fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
                     }
                 }
-                status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputL, caWriteCallback, &channels[i]);
+                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputL);
+                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputL, caWriteCallback, &channels[i]);
                 }
                 break;
             case DBR_DOUBLE:{
@@ -1280,17 +1289,24 @@ void caRequest(struct channel *channels, int nChannels) {
                         fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
                     }
                 }
-                status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputD, caWriteCallback, &channels[i]);
+                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputD);
+                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputD, caWriteCallback, &channels[i]);
                 }
                 break;
             }
         }
-        else if(arguments.tool == cagets || arguments.tool == cado){
+        else if(arguments.tool == cagets) {
             int inputI=1;
             status = ca_array_put_callback(DBF_CHAR, 1, channels[i].procId, &inputI, caWriteCallback, &channels[i]);
         }
+        else if(arguments.tool == cado) {
+            int inputI = 1;
+            status = ca_array_put(DBF_CHAR, 1, channels[i].id, &inputI); // old PSI tools behaved this way. Is it better to use ca_array_put?
+        }
         if (status != ECA_NORMAL) fprintf(stderr, "Problem creating request for process variable %s: %s.\n", channels[i].name,ca_message(status));
     }
+
+    if(arguments.tool == cado || arguments.tool == caputq) return;  // we do not wait if cado or caputq
 
     // wait for callbacks
     waitForCompletition(channels, nChannels, false);
@@ -1768,8 +1784,8 @@ int caInit(struct channel *channels, int nChannels){
 
         if(createChannelMustSucceed(channels[i].name, channelStatusCallback, &channels[i], CA_PRIORITY, &channels[i].id)) return EXIT_FAILURE;
 
-        //if tool = cagets or cado, each channel has a sibling connecting to the proc field
-        if (arguments.tool == cagets || arguments.tool == cado){
+        //if tool = cagets, each channel has a sibling connecting to the proc field
+        if (arguments.tool == cagets){
             if (createChannelMustSucceed(channels[i].procName, 0 , 0, CA_PRIORITY, &channels[i].procId)) return EXIT_FAILURE;
         }
     }
@@ -2417,7 +2433,7 @@ int main ( int argc, char ** argv )
             if (!cawaitParseCondition(&channels[i], argv[optind+1])) return EXIT_FAILURE;
             optind++;
         }
-        else if (arguments.tool == cagets || arguments.tool == cado) {
+        else if (arguments.tool == cagets) {
 
             strcpy(channels[i].procName, channels[i].name);
 
@@ -2454,58 +2470,54 @@ int main ( int argc, char ** argv )
             strcpy(channels[i].ffsvName, channels[i].name);
 
             //append .DESC, .HHSV, .HSV, .LSV, .LLSV, etc
-            if (lenName > 4 && endsWith(channels[i].name, ".VAL")){
-                //if last 4 elements equal .VAL, replace them
-                strcpy(&channels[i].descName[lenName - 4],".DESC");
-                strcpy(&channels[i].hhsvName[lenName - 4],".HHSV");
-                strcpy(&channels[i].hsvName[lenName - 4],".HSV");
-                strcpy(&channels[i].lsvName[lenName - 4],".LSV");
-                strcpy(&channels[i].llsvName[lenName - 4],".LLSV");
-                strcpy(&channels[i].unsvName[lenName - 4],".UNSV");
-                strcpy(&channels[i].cosvName[lenName - 4],".COSV");
-                strcpy(&channels[i].zrsvName[lenName - 4],".ZRSV");
-                strcpy(&channels[i].onsvName[lenName - 4],".ONSV");
-                strcpy(&channels[i].twsvName[lenName - 4],".TWSV");
-                strcpy(&channels[i].thsvName[lenName - 4],".THSV");
-                strcpy(&channels[i].frsvName[lenName - 4],".FRSV");
-                strcpy(&channels[i].fvsvName[lenName - 4],".FVSV");
-                strcpy(&channels[i].sxsvName[lenName - 4],".SXSV");
-                strcpy(&channels[i].svsvName[lenName - 4],".SVSV");
-                strcpy(&channels[i].eisvName[lenName - 4],".EISV");
-                strcpy(&channels[i].nisvName[lenName - 4],".NISV");
-                strcpy(&channels[i].tesvName[lenName - 4],".TESV");
-                strcpy(&channels[i].elsvName[lenName - 4],".ELSV");
-                strcpy(&channels[i].tvsvName[lenName - 4],".TVSV");
-                strcpy(&channels[i].ttsvName[lenName - 4],".TTSV");
-                strcpy(&channels[i].ftsvName[lenName - 4],".FTSV");
-                strcpy(&channels[i].ffsvName[lenName - 4],".FFSV");
-            }
-            else{
-                //otherwise simply append
-                strcat(channels[i].descName,".DESC");
-                strcat(channels[i].hhsvName,".HHSV");
-                strcat(channels[i].hsvName,".HSV");
-                strcat(channels[i].lsvName,".LSV");
-                strcat(channels[i].llsvName,".LLSV");
-                strcat(channels[i].unsvName,".UNSV");
-                strcat(channels[i].cosvName,".COSV");
-                strcat(channels[i].zrsvName,".ZRSV");
-                strcat(channels[i].onsvName,".ONSV");
-                strcat(channels[i].twsvName,".TWSV");
-                strcat(channels[i].thsvName,".THSV");
-                strcat(channels[i].frsvName,".FRSV");
-                strcat(channels[i].fvsvName,".FVSV");
-                strcat(channels[i].sxsvName,".SXSV");
-                strcat(channels[i].svsvName,".SVSV");
-                strcat(channels[i].eisvName,".EISV");
-                strcat(channels[i].nisvName,".NISV");
-                strcat(channels[i].tesvName,".TESV");
-                strcat(channels[i].elsvName,".ELSV");
-                strcat(channels[i].tvsvName,".TVSV");
-                strcat(channels[i].ttsvName,".TTSV");
-                strcat(channels[i].ftsvName,".FTSV");
-                strcat(channels[i].ffsvName,".FFSV");
-            }
+            getBaseChannelName(channels[i].descName);
+            getBaseChannelName(channels[i].hhsvName);
+            getBaseChannelName(channels[i].hsvName);
+            getBaseChannelName(channels[i].lsvName);
+            getBaseChannelName(channels[i].llsvName);
+            getBaseChannelName(channels[i].unsvName);
+            getBaseChannelName(channels[i].cosvName);
+            getBaseChannelName(channels[i].zrsvName);
+            getBaseChannelName(channels[i].onsvName);
+            getBaseChannelName(channels[i].twsvName);
+            getBaseChannelName(channels[i].thsvName);
+            getBaseChannelName(channels[i].frsvName);
+            getBaseChannelName(channels[i].fvsvName);
+            getBaseChannelName(channels[i].sxsvName);
+            getBaseChannelName(channels[i].svsvName);
+            getBaseChannelName(channels[i].eisvName);
+            getBaseChannelName(channels[i].nisvName);
+            getBaseChannelName(channels[i].tesvName);
+            getBaseChannelName(channels[i].elsvName);
+            getBaseChannelName(channels[i].tvsvName);
+            getBaseChannelName(channels[i].ttsvName);
+            getBaseChannelName(channels[i].ftsvName);
+            getBaseChannelName(channels[i].ffsvName);
+
+            // append
+            strcat(channels[i].descName,".DESC");
+            strcat(channels[i].hhsvName,".HHSV");
+            strcat(channels[i].hsvName,".HSV");
+            strcat(channels[i].lsvName,".LSV");
+            strcat(channels[i].llsvName,".LLSV");
+            strcat(channels[i].unsvName,".UNSV");
+            strcat(channels[i].cosvName,".COSV");
+            strcat(channels[i].zrsvName,".ZRSV");
+            strcat(channels[i].onsvName,".ONSV");
+            strcat(channels[i].twsvName,".TWSV");
+            strcat(channels[i].thsvName,".THSV");
+            strcat(channels[i].frsvName,".FRSV");
+            strcat(channels[i].fvsvName,".FVSV");
+            strcat(channels[i].sxsvName,".SXSV");
+            strcat(channels[i].svsvName,".SVSV");
+            strcat(channels[i].eisvName,".EISV");
+            strcat(channels[i].nisvName,".NISV");
+            strcat(channels[i].tesvName,".TESV");
+            strcat(channels[i].elsvName,".ELSV");
+            strcat(channels[i].tvsvName,".TVSV");
+            strcat(channels[i].ttsvName,".TTSV");
+            strcat(channels[i].ftsvName,".FTSV");
+            strcat(channels[i].ffsvName,".FFSV");
 
         }
     }
