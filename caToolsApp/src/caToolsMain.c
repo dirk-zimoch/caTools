@@ -67,7 +67,7 @@ struct arguments
    char inputSeparator;		//array field separator for input
    enum tool tool;			//tool type
    int numUpdates;			//number of monitor updates after which to quit
-   int inNelm;				//number of array elements to write
+   bool parseArray;         //use inputSeparator to parse array
    int outNelm;				//number of array elements to read
    bool nord;				//display number of array elements
 };
@@ -99,7 +99,7 @@ struct arguments arguments = {
         .inputSeparator = ' ',
         .tool = tool_unknown,
         .numUpdates = -1,	//never exit
-        .inNelm = 1,
+        .parseArray = false,
         .outNelm = -1,	//number of elements equal to field count
         .nord = false
 };
@@ -173,8 +173,8 @@ struct channel{
     long            outNelm;  	// requested number of elements for reading
     bool			firstConnection; // indicates if channel has connected at least once
     bool            done;   	// indicates if callback has finished processing this channel
-    int 			i;			// process value id
-    char			*writeStr;	// value(s) to be written
+    int 			i;			// process variable id
+    char			**writeStr;	// value(s) to be written
     enum operator	conditionOperator; //cawait operator
     double 			conditionOperands[2]; //cawait operands
 };
@@ -237,11 +237,12 @@ void usage(FILE *stream, enum tool tool, char *programName){
         else { //caputq
             fputs("Writes value(s) to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
         }
-        fputs("Arrays can be handled either by specifying number of elements as an argument to -inNelm option"\
-                " or grouping the array elements in a single string after PV name. See following examples which produce the same"\
-                " result, namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
-        fputs("  caput -inNelm 3 pvA 1 2 3 pvB 4 5 6\n", stream);
-        fputs("  caput pvA '1 2 3' pvB '4 5 6'\n", stream);
+        fputs("Array handling:\n", stream);
+        fputs(  "- When -a option is set, input separator (-inSep argument) is used to parse elements in an array.\n"\
+                "- When input separator (-inSep argument) is explicitly defined, -a option is automatically used."
+                " See following examples which produce the same result,"\
+                " namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
+        fputs("  caput -a pvA '1 2 3' pvB '4 5 6'\n", stream);
         fputs("  caput -inSep ; pvA '1;2;3' pvB '4;5;6'\n", stream);
     }
     if (tool == cado) {
@@ -291,8 +292,8 @@ void usage(FILE *stream, enum tool tool, char *programName){
     //flags associated with writing
     if (tool == caput || tool == caputq) {
         fputs("Formating input : Array format options\n", stream);
-        fputs("  -inNelm <number>     Number of array elements to write. Must match the number of provided values.\n", stream);
-        fputs("  -inSep <separator>   Separator used between array elements in <value>. If not specified, space is used.\n", stream);
+        fputs("  -inNelm <number>     Number of array elements to write, or 0 to use -inSep to get the number of elements. Must match the number of provided values.\n", stream);
+        fputs("  -inSep <separator>   Separator used between array elements in <value>. If not specified, space is used. Overrides -inNelm.\n", stream);
     }
 
     // flags associated with monitoring
@@ -324,7 +325,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -localtime           Display client time.\n", stream);
         fputs("  -t, -time            Display server time.\n", stream);
 
-        fputs("Formating output : Intiger format options\n", stream);
+        fputs("Formating output : Integer format options\n", stream);
         fputs("  -bin                 Display integer values in binary format.\n", stream);
         fputs("  -hex                 Display integer values in hexadecimal format.\n", stream);
         fputs("  -oct                 Display integer values in octal format.\n", stream);
@@ -1195,6 +1196,7 @@ void caRequest(struct channel *channels, int nChannels) {
     int status=-1, i, j;
 
 
+
     for(i=0; i < nChannels; i++) {
 
         if (!channels[i].firstConnection) {//skip disconnected channels
@@ -1208,102 +1210,129 @@ void caRequest(struct channel *channels, int nChannels) {
             status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].id, caReadCallback, &channels[i]);
         }
         else if (arguments.tool == caput || arguments.tool == caputq){
-            long nakedType = channels[i].type % (LAST_TYPE+1);   // use naked dbr_xx type for put
+            long baseType = channels[i].type % (LAST_TYPE+1);   // use naked dbr_xx type for put
+            void *input = callocMustSucceed(channels[i].inNelm, dbr_size[baseType], "request input");
+            int base = 0;   // used for number conversion in strto* functions
+            char *endptr;   // used in strto* functions
 
-            //convert input string to the nakedType
+            if(arguments.bin) base = 2;
+
+            //convert input string to the baseType
             status = ECA_BADTYPE;
-            switch (nakedType){
+            switch (baseType){
+            case DBR_INT://and short
+                for (j=0; j<channels[i].inNelm; ++j) {
+                    ((dbr_int_t *)input)[j] = (dbr_int_t)strtoll(channels[i].writeStr[j], &endptr, base);
+                    if (endptr == channels[i].writeStr[j] || *endptr != '\0') {
+                        fprintf(stderr, "Impossible to convert input %s to format %s\n",channels[i].writeStr[j], dbr_type_to_text(baseType));
+                        return; // TODO error code
+                    }
+                }
+                break;
+
+            case DBR_FLOAT:
+                for (j=0; j<channels[i].inNelm; ++j) {
+                    ((dbr_float_t *)input)[j] = (dbr_float_t)strtof(channels[i].writeStr[j], &endptr);
+                    if (endptr == channels[i].writeStr[j] || *endptr != '\0') {
+                        fprintf(stderr, "Impossible to convert input %s to format %s\n",channels[i].writeStr[j], dbr_type_to_text(baseType));
+                        return; // TODO error code
+                    }
+                }
+                break;
+
+            case DBR_ENUM:
+                ;//check if put data is provided as a number
+                bool isNumber = true;
+                for (j=0; j<channels[i].inNelm; ++j) {
+                    ((dbr_enum_t *)input)[j] = (dbr_enum_t)strtoull(channels[i].writeStr[j], &endptr, base);
+                    if (endptr == channels[i].writeStr[j] || *endptr != '\0') {
+                        isNumber = false;
+                    }
+                }
+
+                // if enum is entered as a string, reallocate memory and go to case DBR_STRING
+                if (!isNumber) {
+                    baseType = DBR_STRING;
+
+                    free(input);
+                    input = callocMustSucceed(channels[i].inNelm, dbr_size[baseType], "request input");
+                }
+                else {
+                    break;
+                }
+
+
             case DBR_STRING:
-                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, channels[i].writeStr);
-                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, channels[i].writeStr, caWriteCallback, &channels[i]);
-                break;
-            case DBR_INT:{//and short
-                int16_t inputI[channels[i].inNelm];
-                for (j=0;j<channels[i].inNelm; ++j){
-                    if (sscanf(&channels[i].writeStr[j*MAX_STRING_SIZE],"%"SCNd16,&inputI[j]) <= 0) {
-                        fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
-                    }
-                }
-                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputI);
-                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputI, caWriteCallback, &channels[i]);
+                for (j=0; j<channels[i].inNelm; ++j) {
+                    strcpy(((dbr_string_t *)input)[j], channels[i].writeStr[j]);
                 }
                 break;
-            case DBR_FLOAT:{
-                float inputF[channels[i].inNelm];
-                for (j=0;j<channels[i].inNelm; ++j){
-                    if (sscanf(&channels[i].writeStr[j*MAX_STRING_SIZE],"%f",&inputF[j]) <= 0) {
-                        fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
-                    }
-                }
-                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputF);
-                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputF, caWriteCallback, &channels[i]);
-                }
-                break;
-            case DBR_ENUM:{
-                //check if put data is provided as a number
-                uint16_t inputI[channels[i].inNelm];
-                if (sscanf(&channels[i].writeStr[0],"%"SCNu16,&inputI[0])){
-                    for (j=0;j<channels[i].inNelm; ++j){
-                        if (sscanf(&channels[i].writeStr[j*MAX_STRING_SIZE],"%"SCNu16,&inputI[j]) <= 0){
-                            fprintf(stderr, "String '%s' cannot be converted to enum index.\n", &channels[i].writeStr[j*MAX_STRING_SIZE]);
-                            break;
-                        }
-                        if (inputI[j]>=MAX_ENUM_STATES) fprintf(stderr, "Warning: enum index value '%d' may be too large.\n", inputI[j]);
-                    }
-                    if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputI);
-                    else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputI, caWriteCallback, &channels[i]);
-                }
-                else{
-                    //send as a string
-                    if(arguments.tool == caputq) status = ca_array_put(DBR_STRING, channels[i].inNelm, channels[i].id, channels[i].writeStr);
-                    else status = ca_array_put_callback(DBR_STRING, channels[i].inNelm, channels[i].id, channels[i].writeStr, caWriteCallback, &channels[i]);
-                }
-                }
-                break;
+
             case DBR_CHAR:{
-                char inputC[channels[i].inNelm];
-                for (j=0;j<channels[i].inNelm; ++j){
-                    if (sscanf(&channels[i].writeStr[j],"%c",&inputC[j]) <= 0) {
-                        fprintf(stderr, "Impossible to convert input %s to format %s\n",channels[i].writeStr, dbr_type_to_text(nakedType));
+                    // count number of characters to write
+                    size_t charsInStr = 0;
+                    size_t charsPerStr[channels[i].inNelm];
+                    for (j=0; j < channels[i].inNelm; ++j) {
+                        charsPerStr[j] = strlen(channels[i].writeStr[j]);
+                        charsInStr += charsPerStr[j];
                     }
-                }
-                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputC);
-                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputC, caWriteCallback, &channels[i]);
+
+                    if (charsInStr != channels[i].inNelm) { // don't fiddle with memory if we don't have to
+                        free(input);
+                        input = callocMustSucceed(charsInStr, dbr_size[baseType], "request input");
+                    }
+
+                    // store all the chars to write
+                    charsInStr = 0;
+                    for (j=0; j < channels[i].inNelm; ++j) {
+                        for (size_t k = 0; k < charsPerStr[j]; k++) {
+                            ((dbr_char_t *)input)[charsInStr] = (dbr_char_t)channels[i].writeStr[j][k];
+                            charsInStr++;
+                        }
+                    }
+                    channels[i].inNelm = charsInStr;
                 }
                 break;
-            case DBR_LONG:{
-                int32_t inputL[channels[i].inNelm];
-                for (j=0;j<channels[i].inNelm; ++j){
-                    if (sscanf(&channels[i].writeStr[j*MAX_STRING_SIZE],"%"SCNd32,&inputL[j]) <= 0) {
-                        fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
+
+            case DBR_LONG:
+                for (j=0; j<channels[i].inNelm; ++j) {
+                    ((dbr_long_t *)input)[j] = (dbr_long_t)strtoll(channels[i].writeStr[j], &endptr, base);
+                    if (endptr == channels[i].writeStr[j] || *endptr != '\0') {
+                        fprintf(stderr, "Impossible to convert input %s to format %s\n",channels[i].writeStr[j], dbr_type_to_text(baseType));
+                        return; // TODO error code
                     }
                 }
-                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputL);
-                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputL, caWriteCallback, &channels[i]);
-                }
                 break;
-            case DBR_DOUBLE:{
-                double inputD[channels[i].inNelm];
-                for (j=0;j<channels[i].inNelm; ++j){
-                    if (sscanf(&channels[i].writeStr[j*MAX_STRING_SIZE],"%lf",&inputD[j]) <= 0) {
-                        fprintf(stderr, "Impossible to convert input %s to format %s\n",&channels[i].writeStr[j*MAX_STRING_SIZE], dbr_type_to_text(nakedType));
+
+            case DBR_DOUBLE:
+                for (j=0; j<channels[i].inNelm; ++j) {
+                    ((dbr_double_t *)input)[j] = (dbr_double_t)strtod(channels[i].writeStr[j], &endptr);
+                    if (endptr == channels[i].writeStr[j] || *endptr != '\0') {
+                        fprintf(stderr, "Impossible to convert input %s to format %s\n",channels[i].writeStr[j], dbr_type_to_text(baseType));
+                        return; // TODO error code
                     }
                 }
-                if(arguments.tool == caputq) status = ca_array_put(nakedType, channels[i].inNelm, channels[i].id, inputD);
-                else status = ca_array_put_callback(nakedType, channels[i].inNelm, channels[i].id, inputD, caWriteCallback, &channels[i]);
-                }
                 break;
+
+            default:
+                fprintf(stderr, "Unknown DBR type!");   // TODO there is already similar message somewhere. copy it over here
+                return; // TODO this function should return status.....
             }
+
+            if(arguments.tool == caputq) status = ca_array_put(baseType, channels[i].inNelm, channels[i].id, input);
+            else status = ca_array_put_callback(baseType, channels[i].inNelm, channels[i].id, input, caWriteCallback, &channels[i]);
+
+            free(input);
         }
         else if(arguments.tool == cagets) {
-            int inputI=1;
-            status = ca_array_put_callback(DBF_CHAR, 1, channels[i].procId, &inputI, caWriteCallback, &channels[i]);
+            dbr_char_t input=1;
+            status = ca_array_put_callback(DBF_CHAR, 1, channels[i].procId, &input, caWriteCallback, &channels[i]);
         }
         else if(arguments.tool == cado) {
-            int inputI = 1;
-            status = ca_array_put(DBF_CHAR, 1, channels[i].id, &inputI); // old PSI tools behaved this way. Is it better to use ca_array_put?
+            dbr_char_t input = 1;
+            status = ca_array_put(DBF_CHAR, 1, channels[i].id, &input); // old PSI tools behaved this way. Is it better to fill entire array?
         }
-        if (status != ECA_NORMAL) fprintf(stderr, "Problem creating request for process variable %s: %s.\n", channels[i].name,ca_message(status));
+        if (status != ECA_NORMAL) fprintf(stderr, "Problem creating request for process variable %s: %s.\n", channels[i].name, ca_message(status));
     }
 
     if(arguments.tool == cado || arguments.tool == caputq) return;  // we do not wait if cado or caputq
@@ -1330,9 +1359,7 @@ void caRequest(struct channel *channels, int nChannels) {
         }
 
         waitForCompletition(channels, nChannels, false);
-
     }
-
 }
 
 void cainfoRequest(struct channel *channels, int nChannels){
@@ -1710,9 +1737,9 @@ void channelStatusCallback(struct connection_handler_args args){
                             int reqType = dbf_type_to_DBR_GR(baseType);
 
                             status = ca_array_get_callback(reqType, ch->count, ch->id, getStaticUnitsCallback, ch);
-                            if (status != ECA_NORMAL) fprintf(stderr, "Problem creating ca_get request for process value %s: %s\n",ch->name, ca_message(status));
+                            if (status != ECA_NORMAL) fprintf(stderr, "Problem creating ca_get request for process variable %s: %s\n",ch->name, ca_message(status));
                             status = ca_flush_io();//flush this so it gets processed before everything else
-                            if (status != ECA_NORMAL) fprintf(stderr, "Problem flushing process value %s: %s.\n", ch->name, ca_message(status));
+                            if (status != ECA_NORMAL) fprintf(stderr, "Problem flushing process variable %s: %s.\n", ch->name, ca_message(status));
                         }
 
                     }
@@ -1726,7 +1753,7 @@ void channelStatusCallback(struct connection_handler_args args){
             if (arguments.tool == camon || arguments.tool == cawait){
                 //create subscription
                 status = ca_create_subscription(ch->type, ch->outNelm, ch->id, DBE_VALUE | DBE_ALARM | DBE_LOG, caReadCallback, ch, NULL);
-                if (status != ECA_NORMAL) fprintf(stderr, "Problem creating subscription for process value %s: %s.\n",ch->name, ca_message(status));
+                if (status != ECA_NORMAL) fprintf(stderr, "Problem creating subscription for process variable %s: %s.\n",ch->name, ca_message(status));
                 if (arguments.tool == cawait && arguments.timeout!=-1){
                     //set first
                     epicsTimeGetCurrent(&timeoutTime);
@@ -1741,9 +1768,9 @@ void channelStatusCallback(struct connection_handler_args args){
             if (!arguments.nounit && (arguments.time || arguments.date || arguments.timestamp)){
                 int reqType = dbf_type_to_DBR_GR(ca_field_type(ch->id));
                 status = ca_array_get_callback(reqType, ch->count, ch->id, getStaticUnitsCallback, ch);
-                if (status != ECA_NORMAL) fprintf(stderr, "Problem creating ca_get request for process value %s: %s\n",ch->name, ca_message(status));
+                if (status != ECA_NORMAL) fprintf(stderr, "Problem creating ca_get request for process variable %s: %s\n",ch->name, ca_message(status));
                 status = ca_flush_io();
-                if (status != ECA_NORMAL) fprintf(stderr, "Problem flushing process value %s: %s.\n", ch->name, ca_message(status));
+                if (status != ECA_NORMAL) fprintf(stderr, "Problem flushing process variable %s: %s.\n", ch->name, ca_message(status));
             }
         }
 
@@ -1933,6 +1960,17 @@ void getBaseChannelName(char *name) {
     }
 }
 
+size_t truncate(char *argument) {
+    size_t length = strlen(argument);
+    if (length > MAX_STRING_SIZE) {
+        fprintf(stderr,"Input %s is longer than the allowed size %u. Truncating to ", argument, MAX_STRING_SIZE);
+        length = MAX_STRING_SIZE;
+        argument[length] = '\0';
+        fprintf(stderr,"%s\n", argument);   // end of upper fprintf
+    }
+    return length;
+}
+
 int main ( int argc, char ** argv )
 {//main function: reads arguments, allocates memory, calls ca* functions, frees memory and exits.
 
@@ -1986,7 +2024,7 @@ int main ( int argc, char ** argv )
     };
     putenv("POSIXLY_CORRECT="); //Behave correctly on GNU getopt systems = stop parsing after 1st non option is encountered
 
-    while ((opt = getopt_long_only(argc, argv, ":w:e:f:g:n:sthd", long_options, &opt_long)) != -1) {
+    while ((opt = getopt_long_only(argc, argv, ":w:e:f:g:n:sthda", long_options, &opt_long)) != -1) {
         switch (opt) {
         case 'w':
             if (sscanf(optarg, "%f", &arguments.caTimeout) != 1){    // type was not given as float
@@ -2037,6 +2075,9 @@ int main ( int argc, char ** argv )
                     arguments.numUpdates = -1;
                 }
             }
+            break;
+        case 'a':
+            arguments.parseArray = true;
             break;
         case 0:   // long options
             switch (opt_long) {
@@ -2139,17 +2180,17 @@ int main ( int argc, char ** argv )
                 arguments.date = true;
                 break;
             case 17:   // inNelm - number of elements - write
-                if (sscanf(optarg, "%d", &arguments.inNelm) != 1){
+                /*if (sscanf(optarg, "%d", &arguments.inNelm) != 1){
                     fprintf(stderr, "Invalid count argument '%s' "
                             "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                 }
                 else {
-                    if (arguments.inNelm < 1) {
+                    if (arguments.inNelm < 0) {
                         fprintf(stderr, "Count number for option '%s' "
-                                "must be positive integer - ignored.\n", long_options[opt_long].name);
-                        arguments.inNelm = 1;
+                                "must be positive integer or 0 - ignored.\n", long_options[opt_long].name);
+                        arguments.inNelm = -1;
                     }
-                }
+                }*/
                 break;
             case 18:   // outNelm - number of elements - read
                 if (sscanf(optarg, "%d", &arguments.outNelm) != 1){
@@ -2174,6 +2215,9 @@ int main ( int argc, char ** argv )
                 if (sscanf(optarg, "%c", &arguments.inputSeparator) != 1){
                     fprintf(stderr, "Invalid argument '%s' "
                             "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
+                }
+                else {
+                    arguments.parseArray = true;
                 }
                 break;
             case 21:   // nord
@@ -2266,7 +2310,7 @@ int main ( int argc, char ** argv )
              || arguments.dblFormatType != '\0' || arguments.stat || arguments.nostat || arguments.noname || arguments.nounit \
              || arguments.timestamp != '\0' || arguments.timeout != -1 || arguments.date || arguments.time || arguments.localdate \
              || arguments.localtime || arguments.fieldSeparator != ' ' || arguments.inputSeparator != ' ' || arguments.numUpdates != -1\
-             || arguments.inNelm != 1 || arguments.outNelm != -1 || arguments.nord)){
+             || arguments.parseArray || arguments.outNelm != -1 || arguments.nord)){
          fprintf(stderr, "The only option allowed for cainfo is -w. Ignoring the rest.\n");
      }
      else if (arguments.tool != camon){
@@ -2277,8 +2321,8 @@ int main ( int argc, char ** argv )
              fprintf(stderr, "Option -n can only be specified with camon.\n");
          }
      }
-     else if (arguments.inNelm != 1 && (arguments.tool != caput && arguments.tool != caputq)){
-         fprintf(stderr, "Option -inNelm can only be specified with caput or caputq.\n");
+     else if ((arguments.parseArray || arguments.inputSeparator !=' ') && (arguments.tool != caput && arguments.tool != caputq)){
+         fprintf(stderr, "Option -a and -inSep can only be specified with caput or caputq.\n");
      }
      if ((arguments.outNelm != -1 || arguments.num !=false || arguments.hex !=false || arguments.bin !=false || arguments.oct !=false)\
              && (arguments.tool == cado || arguments.tool == caputq)){
@@ -2315,20 +2359,13 @@ int main ( int argc, char ** argv )
     if (arguments.tool == caget || arguments.tool == camon || arguments.tool == cagets || arguments.tool == cado || arguments.tool == cainfo){
         nChannels = argc - optind;       // All remaining args are PV names
     }
-    else if (arguments.tool == caput || arguments.tool == caputq){
-        //It takes (inNelm+pv name) elements to define each channel
-        if ((argc - optind) % (arguments.inNelm +1)){
-            fprintf(stderr, "One of the PVs is missing the value to be written ('%s -h' for help).\n", argv[0]);
+    else {
+        if ((argc - optind) % 2) {
+            if (arguments.tool == caput || arguments.tool == caputq) fprintf(stderr, "One of the PVs is missing the value to be written ('%s -h' for help).\n", argv[0]);
+            if (arguments.tool == cawait)                            fprintf(stderr, "One of the PVs is missing the condition ('%s -h' for help).\n", argv[0]);
             return EXIT_FAILURE;
         }
-        nChannels = (argc - optind)/(arguments.inNelm +1);
-    }
-    else if (arguments.tool == cawait){
-        if ((argc - optind) % 2){
-            fprintf(stderr, "One of the PVs is missing the condition ('%s -h' for help).\n", argv[0]);
-            return EXIT_FAILURE;
-        }
-        nChannels = (argc - optind)/2;	// half of the args are PV names, rest conditions
+        nChannels = (argc - optind) / 2;	// half of the args are PV names, rest conditions/values
     }
 
 
@@ -2387,46 +2424,46 @@ int main ( int argc, char ** argv )
         channels[i].i = i;	// channel number, serves to synchronise pvs and output.
 
         if (arguments.tool == caput || arguments.tool == caputq){
-            if (arguments.inNelm > 1){ //treat next nelm arguments as values
-                channels[i].writeStr = callocMustSucceed (arguments.inNelm*MAX_STRING_SIZE, sizeof(char), "main");
+            channels[i].inNelm = 1;
 
-                for (j=0; j<arguments.inNelm; ++j){
-                    int charsToWrite = snprintf(&channels[i].writeStr[j*MAX_STRING_SIZE], MAX_STRING_SIZE, "%s", argv[optind+1]);
-                    if (charsToWrite >= MAX_STRING_SIZE) fprintf(stderr,"Input %s is longer than the allowed size %d - truncating.\n", argv[optind+1], MAX_STRING_SIZE);
-                    optind++;
-                }
-                channels[i].inNelm = arguments.inNelm;
-            }
-            else{ //next argument is a string of values separated by inputSeparator
-                //count the number of values in it (= number of separators +1)
-                int count;
-                for (j=0, count=0; argv[optind+1][j]; j++) {
-                    count += (argv[optind+1][j] == arguments.inputSeparator);
-                }
-                count+=1;
-                //and use it to allocate the string
-                channels[i].writeStr = callocMustSucceed (count*MAX_STRING_SIZE, sizeof(char), "main");
+            if (!arguments.parseArray) {  //the argument to write consists of just a single element.
+                truncate(argv[optind+1]);
 
-                if (count == 1){//the argument to write consists of just a single element.
-                    int charsToWrite = snprintf(&channels[i].writeStr[0], MAX_STRING_SIZE, "%s", argv[optind+1]);
-                    if (charsToWrite >= MAX_STRING_SIZE) fprintf(stderr,"Input %s is longer than the allowed size %d - truncating.\n", argv[optind+1], MAX_STRING_SIZE);
-                    channels[i].inNelm = 1;
-                }
-                else{//parse the string assuming each element is delimited by the inputSeparator char
-                    char inSep[2] = {arguments.inputSeparator, 0};
-                    j=0;
-                    char *token = strtok(argv[optind+1], inSep);
-                    while(token) {
-                        int charsToWrite = snprintf(&channels[i].writeStr[j*MAX_STRING_SIZE] , MAX_STRING_SIZE, "%s", token);
-                        if (charsToWrite >= MAX_STRING_SIZE) fprintf(stderr,"Input %s is longer than the allowed size %d - truncating.\n", token, MAX_STRING_SIZE);
-                        j++;
-                        token = strtok(NULL, inSep);
-                    }
-                    channels[i].inNelm = j;
-                }
-                //finally advance to the next argument
-                optind++;
+                // allocate resources and set pointer to the argument
+                channels[i].writeStr = callocMustSucceed (channels[i].inNelm, sizeof(char*), "main");
+                channels[i].writeStr[0] = argv[optind+1];
             }
+            else{//parse the string assuming each element is delimited by the inputSeparator char
+                char inSep[2] = {arguments.inputSeparator, 0};
+
+                // first count the number of arguments.
+                char* tempstr = callocMustSucceed(strlen(argv[optind+1])+1, sizeof(char), "main");
+                strcpy(tempstr, argv[optind+1]);
+                j=0;
+                char *token = strtok(tempstr, inSep);
+                while(token) {
+                    j++;
+                    token = strtok(NULL, inSep);
+                }
+                free(tempstr);
+                channels[i].inNelm = j;
+
+                // allocate resources
+                channels[i].writeStr = callocMustSucceed (channels[i].inNelm, sizeof(char*), "main");
+
+                // extract arguments
+                j=0;
+                token = strtok(argv[optind+1], inSep);
+                while(token) {
+                    truncate(token);
+                    channels[i].writeStr[j] = token;
+                    j++;
+                    token = strtok(NULL, inSep);
+                }
+            }
+            //finally advance to the next argument
+            optind++;
+
         }
         else if (arguments.tool == cawait) {
             //next argument is the condition string
@@ -2440,7 +2477,6 @@ int main ( int argc, char ** argv )
             //append .PROC
             getBaseChannelName(channels[i].procName);
             strcat(channels[i].procName,".PROC");
-            printf("chan: %s\tproc: %s\n", channels[i].name, channels[i].procName);
         }
         else if (arguments.tool == cainfo) {
             //set sibling channels for getting desc and severity data
