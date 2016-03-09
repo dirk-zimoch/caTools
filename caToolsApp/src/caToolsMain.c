@@ -546,15 +546,15 @@ int printValue(evargs args, int precision){
 
         switch (baseType) {
         case DBR_STRING:
-            printf("%.*s", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);
+            printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);
             break;
         case DBR_FLOAT:
         case DBR_DOUBLE:{
             if (baseType == DBR_FLOAT) valueDbl = ((dbr_float_t*)value)[j];
             else valueDbl = ((dbr_double_t*)value)[j];
 
-            //round if desired or will be writen as hex oct or bin
-            if (arguments.round == roundType_round || arguments.hex || arguments.oct || arguments.bin) {
+            //round if desired or will be writen as hex oct, bin or string
+            if (arguments.round == roundType_round || arguments.hex || arguments.oct || arguments.bin || arguments.s) {
                 valueDbl = round(valueDbl);
             }
             else if(arguments.round == roundType_ceil) {
@@ -647,7 +647,7 @@ int printValue(evargs args, int precision){
                         printf("Enum index value %d greater than the number of strings", v);
                     }
                     else{
-                        printf("%.*s", MAX_ENUM_STRING_SIZE, ((struct dbr_gr_enum *)args.dbr)->strs[v]);
+                        printf("\"%.*s\"", MAX_ENUM_STRING_SIZE, ((struct dbr_gr_enum *)args.dbr)->strs[v]);
                     }
                     break;
                 }
@@ -656,7 +656,7 @@ int printValue(evargs args, int precision){
                         printf("Enum index value %d greater than the number of strings", v);
                     }
                     else{
-                        printf("%.*s", MAX_ENUM_STRING_SIZE, ((struct dbr_ctrl_enum *)args.dbr)->strs[v]);
+                        printf("\"%.*s\"", MAX_ENUM_STRING_SIZE, ((struct dbr_ctrl_enum *)args.dbr)->strs[v]);
                     }
                     break;
                 }
