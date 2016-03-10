@@ -105,7 +105,7 @@ struct arguments arguments = {
         .nord = false
 };
 
-enum operator{	//possible conditions for cawait
+enum operator {	//possible conditions for cawait
     operator_gt = 1,
     operator_gte,
     operator_lt,
@@ -117,57 +117,72 @@ enum operator{	//possible conditions for cawait
 };
 
 
-struct channel{
+struct field {
+    char *name;             // the name of the channel.field
+    chid id;                // the id of the channel.field
+    long connectionState;   // channel connected/disconnected
+};
+
+const char * fields[] = {
+    ".DESC",
+    ".HHSV",
+    ".HSV",
+    ".LSV",
+    ".LLSV",
+    ".UNSV",
+    ".COSV",
+    ".ZRSV",
+    ".ONSV",
+    ".TWSV",
+    ".THSV",
+    ".FRSV",
+    ".FVSV",
+    ".SXSV",
+    ".SVSV",
+    ".EISV",
+    ".NISV",
+    ".TESV",
+    ".ELSV",
+    ".TVSV",
+    ".TTSV",
+    ".FTSV",
+    ".FFSV"
+};
+#define noFields (sizeof (fields) / sizeof (const char *))
+
+enum channelField {
+    field_desc = 0,
+    field_hhsv,
+    field_hsv,
+    field_lsv,
+    field_llsv,
+    field_unsv,
+    field_cosv,
+    field_zrsv,
+    field_onsv,
+    field_twsv,
+    field_thsv,
+    field_frsv,
+    field_fvsv,
+    field_sxsv,
+    field_svsv,
+    field_eisv,
+    field_nisv,
+    field_tesv,
+    field_elsv,
+    field_tvsv,
+    field_ttsv,
+    field_ftsv,
+    field_ffsv
+};
+
+struct channel {
     char            *name;  	// the name of the channel
     chid            id;     	// channel id
     char			*procName;	// sibling channel for writing to proc field
     chid			procId;		// sibling channel for writing to proc field
-    char			*descName;	// sibling channel for reading desc field
-    chid			descId;		// sibling channel for reading desc field
-    char			*hhsvName;	// sibling channel for reading hhsv field
-    chid			hhsvId;		// sibling channel for reading hhsv field
-    char			*hsvName;	// sibling channel for reading hsv field
-    chid			hsvId;		// sibling channel for reading hsv field
-    char			*lsvName;	// sibling channel for reading lsv field
-    chid			lsvId;		// sibling channel for reading lsv field
-    char			*llsvName;	// sibling channel for reading llsv field
-    chid			llsvId;		// sibling channel for reading llsv field
-    char 			*unsvName;  // sibling channel for reading unsv field
-    chid 			unsvId; 	// sibling channel for reading unsv field
-    char 			*cosvName;  // ..
-    chid 			cosvId;		// ..
-    char 			*zrsvName;	// ..
-    chid 			zrsvId;		// ..
-    char 			*onsvName;	// ..
-    chid 			onsvId;		// ..
-    char 			*twsvName;	// ..
-    chid 			twsvId;		// ..
-    char 			*thsvName;	// ..
-    chid 			thsvId;		// ..
-    char 			*frsvName;	// ..
-    chid 			frsvId;		// ..
-    char 			*fvsvName;	// ..
-    chid 			fvsvId;		// ..
-    char 			*sxsvName;	// ..
-    chid 			sxsvId;		// ..
-    char 			*svsvName;	// ..
-    chid 			svsvId;		// ..
-    char 			*eisvName;	// ..
-    chid 			eisvId;		// ..
-    char 			*nisvName;	// ..
-    chid 			nisvId;		// ..
-    char 			*tesvName;	// ..
-    chid 			tesvId;		// ..
-    char 			*elsvName;	// ..
-    chid 			elsvId;		// ..
-    char 			*tvsvName;	// ..
-    chid 			tvsvId;		// ..
-    char 			*ttsvName;	// ..
-    chid 			ttsvId;		// ..
-    char 			*ftsvName;	// ..
-    chid 			ftsvId;		// ..
-    char 			*ffsvName;	// ..
-    chid 			ffsvId;		// ..
+    struct field    fields[noFields];    // sibling channels for fields (description, severities, ...)
+
     long            type;   	// dbr type
     long            count;  	// element count
     long            inNelm;  	// requested number of elements for writing
@@ -1117,6 +1132,7 @@ static void caWriteCallback (evargs args) {
     ch->done = true;
 }
 
+
 static void getStaticUnitsCallback (evargs args) {
 //reads channel units and saves them to global strings. Is called every time a channel
 //connects (if needed).
@@ -1251,7 +1267,6 @@ bool caRequest(struct channel *channels, int nChannels) {
                     break;
                 }
 
-
             case DBR_STRING:
                 for (j=0; j<channels[i].inNelm; ++j) {
                     strcpy(((dbr_string_t *)input)[j], channels[i].writeStr[j]);
@@ -1366,336 +1381,206 @@ bool caRequest(struct channel *channels, int nChannels) {
     return success;
 }
 
-void cainfoRequest(struct channel *channels, int nChannels){
+bool cainfoRequest(struct channel *channels, int nChannels){
 //this function does all the work for caInfo tool. Reads channel data using ca_get and then prints.
     int i,j, status;
 
     bool readAccess, writeAccess;
+    size_t nFields = noFields;
+    const char *delimeter = "-------------------------------";
 
     for(i=0; i < nChannels; i++){
 
-        if (!channels[i].firstConnection) continue; //channel doesn't exist
+        if (channels[i].connectionState != CA_OP_CONN_UP) continue; // skip unconnected channels
 
         channels[i].count = ca_element_count ( channels[i].id );
 
         channels[i].type = dbf_type_to_DBR_CTRL(ca_field_type(channels[i].id));
 
         //allocate data for all caget returns
-        void *data, *dataDesc, *dataHhsv, *dataHsv, *dataLsv, *dataLlsv, *dataUnsv, *dataCosv, *dataZrsv, *dataOnsv, *dataTwsv, *dataThsv;
-        void *dataFrsv, *dataFvsv, *dataSxsv, *dataSvsv, *dataEisv,*dataNisv, *dataTesv,*dataElsv,*dataTvsv,*dataTtsv,*dataFtsv,*dataFfsv;
+        void *data;
+        struct dbr_sts_string *fieldData[nFields];
+
         data = callocMustSucceed(1, dbr_size_n(channels[i].type, channels[i].count), "caInfoRequest");
-        dataDesc = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataHhsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataHsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataLsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataLlsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataUnsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataCosv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataZrsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataOnsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataTwsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataThsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataFrsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataFvsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataSxsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataSvsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataEisv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataNisv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataTesv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataElsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataTvsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataTtsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataFtsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
-        dataFfsv = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest");
 
 
         //general ctrl data
         status = ca_array_get(channels[i].type, channels[i].count, channels[i].id, data);
-        if (status != ECA_NORMAL) fprintf(stderr, "CA error %s occurred while trying to create ca_get request for record %s.\n", ca_message(status), channels[i].name);
+        if (status != ECA_NORMAL) {
+            fprintf(stderr, "CA error %s occurred while trying to create ca_get request for record %s.\n", ca_message(status), channels[i].name);
+            return false;
+        }
 
-        //desc
-        status = ca_array_get(DBR_STS_STRING, 1, channels[i].descId, dataDesc);
-        if (status != ECA_NORMAL) fprintf(stderr, "Problem reading DESC field of record %s: %s.\n", channels[i].name, ca_message(status));
-
-        //standard severity fields
-        if (!isStrEmpty(channels[i].hhsvName) && channels[i].hhsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].hhsvId, dataHhsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].hsvName) && channels[i].hsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].hsvId, dataHsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].lsvName) && channels[i].lsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].lsvId, dataLsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].llsvName) && channels[i].llsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].llsvId, dataLlsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        //multi-bit severity fields
-        if (!isStrEmpty(channels[i].unsvName) && channels[i].unsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].unsvId, dataUnsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].cosvName) && channels[i].cosvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].cosvId, dataCosv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].zrsvName) && channels[i].zrsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].zrsvId, dataZrsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].onsvName) && channels[i].onsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].onsvId, dataOnsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].twsvName) && channels[i].twsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].twsvId, dataTwsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].thsvName) && channels[i].thsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].thsvId, dataThsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].frsvName) && channels[i].frsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].frsvId, dataFrsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].fvsvName) && channels[i].fvsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].fvsvId, dataFvsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].sxsvName) && channels[i].sxsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].sxsvId, dataSxsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].svsvName) && channels[i].svsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].svsvId, dataSvsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].eisvName) && channels[i].eisvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].eisvId, dataEisv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].nisvName) && channels[i].nisvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].nisvId, dataNisv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].tesvName) && channels[i].tesvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].tesvId, dataTesv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].elsvName) && channels[i].elsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].elsvId, dataElsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].tvsvName) && channels[i].tvsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].tvsvId, dataTvsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].ttsvName) && channels[i].ttsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].ttsvId, dataTtsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].ftsvName) && channels[i].ftsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].ftsvId, dataFtsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
-        }
-        if (!isStrEmpty(channels[i].ffsvName) && channels[i].ffsvId){
-            status = ca_array_get(DBR_STS_STRING, 1, channels[i].ffsvId, dataFfsv);
-            if (status != ECA_NORMAL) fprintf(stderr, "Problem reading severity field of record %s: %s.\n", channels[i].name, ca_message(status));
+        for(j=0; j < nFields; j++) {
+            if(channels[i].fields[j].connectionState == CA_OP_CONN_UP) {
+                fieldData[j] = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest: field");
+                status = ca_array_get(DBR_STS_STRING, 1, channels[i].fields[j].id, fieldData[j]);
+                if (status != ECA_NORMAL) fprintf(stderr, "Problem reading %s field of record %s: %s.\n", fields[j], channels[i].name, ca_message(status));
+            }
+            else {
+                fieldData[j] = NULL;
+            }
         }
 
 
         status = ca_pend_io(arguments.caTimeout);
-        if (status != ECA_TIMEOUT) fprintf (stderr,"All issued requests for record fields did not complete.\n");
+        if (status != ECA_NORMAL) {
+            if (status == ECA_TIMEOUT) fprintf (stderr,"All issued requests for record fields did not complete.\n");
+            else {
+                fprintf (stderr,"All issued requests for record fields did not complete.\n");
+                return false;
+            }
+        }
+
+        else if (status )
 
         //start printing
         fputc('\n',stdout);
         fputc('\n',stdout);
-        printf("%s\n", channels[i].name);														//name
-        printf("%s\n", ((struct dbr_sts_string *)dataDesc)->value);								//description
-        printf("\n");
-        printf("    Native DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].id)));	//field type
-        printf("    Number of elements: %ld\n", channels[i].count);								//number of elements
+        printf("%s\n%s\n", delimeter, channels[i].name);														//name
+        if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);          //description
+        printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].id)));                     //field type
+        printf("\tNumber of elements: %ld\n", channels[i].count);                                               //number of elements
 
+
+        evargs args;
+        args.chid = channels[i].id;
+        args.count = ca_element_count ( channels[i].id );
+        args.dbr = data;
+        args.status = ECA_NORMAL;
+        args.type = channels[i].type; //ca_field_type(channels[i].id);
+        args.usr = &channels[i];
+        printf("\tValue: ");
+        printValue(args, -1);
+        fputc('\n',stdout);
 
         switch (channels[i].type){
         case DBR_CTRL_STRING:
-            printf("    Value: %s", ((struct dbr_sts_string *)data)->value);					//value
             fputc('\n',stdout);
-            printf("    Alarm status: %s, severity: %s\n", \
+            printf("\tAlarm status: %s, severity: %s\n", \
                     epicsAlarmConditionStrings[((struct dbr_sts_string *)data)->status], \
                     epicsAlarmSeverityStrings[((struct dbr_sts_string *)data)->severity]);		//status and severity
             break;
         case DBR_CTRL_INT://and short
-            printf("    Value: %" PRId16"\n", ((struct dbr_ctrl_int *)data)->value);					//value
-            printf("    Units: %s\n", ((struct dbr_ctrl_int *)data)->units);					//units
+            printf("\tUnits: %s\n", ((struct dbr_ctrl_int *)data)->units);					//units
             fputc('\n',stdout);
-            printf("    Alarm status: %s, severity: %s\n", \
+            printf("\tAlarm status: %s, severity: %s\n", \
                     epicsAlarmConditionStrings[((struct dbr_ctrl_int *)data)->status], \
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_int *)data)->severity]);		//status and severity
             fputc('\n',stdout);
-            printf("	Warning upper limit: %" PRId16", lower limit: %"PRId16"\n", \
+            printf("\tWarning\tupper limit: %" PRId16"\n\t\tlower limit: %"PRId16"\n",
                     ((struct dbr_ctrl_int *)data)->upper_warning_limit, ((struct dbr_ctrl_int *)data)->lower_warning_limit); //warning limits
-            printf("	Alarm upper limit: %" PRId16", lower limit: %" PRId16"\n", \
+            printf("\tAlarm\tupper limit: %" PRId16"\n\t\tlower limit: %" PRId16"\n", \
                     ((struct dbr_ctrl_int *)data)->upper_alarm_limit, ((struct dbr_ctrl_int *)data)->lower_alarm_limit); //alarm limits
-            printf("	Control upper limit: %"PRId16", lower limit: %"PRId16"\n", ((struct dbr_ctrl_int *)data)->upper_ctrl_limit,\
+            printf("\tControl\tupper limit: %"PRId16"\n\t\tlower limit: %"PRId16"\n", ((struct dbr_ctrl_int *)data)->upper_ctrl_limit,\
                     ((struct dbr_ctrl_int *)data)->lower_ctrl_limit);							//control limits
-            printf("	Display upper limit: %"PRId16", lower limit: %"PRId16"\n", ((struct dbr_ctrl_int *)data)->upper_disp_limit,\
+            printf("\tDisplay\tupper limit: %"PRId16"\n\t\tower limit: %"PRId16"\n", ((struct dbr_ctrl_int *)data)->upper_disp_limit,\
                     ((struct dbr_ctrl_int *)data)->lower_disp_limit);							//display limits
             break;
         case DBR_CTRL_FLOAT:
-            printf("    Value: %f\n", ((struct dbr_ctrl_float *)data)->value);
-            printf("    Units: %s\n", ((struct dbr_ctrl_float *)data)->units);
+            printf("\tUnits: %s\n", ((struct dbr_ctrl_float *)data)->units);
             fputc('\n',stdout);
-            printf("    Alarm status: %s, severity: %s\n", \
+            printf("\tAlarm status: %s, severity: %s\n", \
                     epicsAlarmConditionStrings[((struct dbr_ctrl_float *)data)->status], \
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_float *)data)->severity]);
             printf("\n");
-            printf("	Warning upper limit: %f, lower limit: %f\n", \
+            printf("\tWarning\tupper limit: %f\n\t\tlower limit: %f\n", \
                     ((struct dbr_ctrl_float *)data)->upper_warning_limit, ((struct dbr_ctrl_float *)data)->lower_warning_limit);
-            printf("	Alarm upper limit: %f, lower limit: %f\n", \
+            printf("\tAlarm\tupper limit: %f\n\t\tlower limit: %f\n", \
                     ((struct dbr_ctrl_float *)data)->upper_alarm_limit, ((struct dbr_ctrl_float *)data)->lower_alarm_limit);
-            printf("	Control upper limit: %f, lower limit: %f\n", ((struct dbr_ctrl_float *)data)->upper_ctrl_limit,\
+            printf("\tControl\tupper limit: %f\n\t\tlower limit: %f\n", ((struct dbr_ctrl_float *)data)->upper_ctrl_limit,\
                     ((struct dbr_ctrl_float *)data)->lower_ctrl_limit);
-            printf("	Display upper limit: %f, lower limit: %f\n", ((struct dbr_ctrl_float *)data)->upper_disp_limit,\
+            printf("\tDisplay\tupper limit: %f\n\t\tlower limit: %f\n", ((struct dbr_ctrl_float *)data)->upper_disp_limit,\
                     ((struct dbr_ctrl_float *)data)->lower_disp_limit);
             fputc('\n',stdout);
-            printf("	Precision: %"PRId16"\n",((struct dbr_ctrl_float *)data)->precision);
-            printf("	RISC alignment: %"PRId16"\n",((struct dbr_ctrl_float *)data)->RISC_pad);
+            printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_float *)data)->precision);
+            printf("\tRISC alignment: %"PRId16"\n",((struct dbr_ctrl_float *)data)->RISC_pad);
             break;
         case DBR_CTRL_ENUM:
-            printf("    Value: %"PRId16"\n", ((struct dbr_ctrl_enum *)data)->value);
             fputc('\n',stdout);
-            printf("    Alarm status: %s, severity: %s\n", \
+            printf("\tAlarm status: %s, severity: %s\n", \
                     epicsAlarmConditionStrings[((struct dbr_ctrl_enum *)data)->status], \
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_enum *)data)->severity]);
 
-            printf("	Number of enum strings: %"PRId16"\n", ((struct dbr_ctrl_enum *)data)->no_str);
+            printf("\tNumber of enum strings: %"PRId16"\n", ((struct dbr_ctrl_enum *)data)->no_str);
             for (j=0; j<((struct dbr_ctrl_enum *)data)->no_str; ++j){
-                printf("	string %d: %s\n", j, ((struct dbr_ctrl_enum *)data)->strs[j]);
+                printf("\tstring %d: %s\n", j, ((struct dbr_ctrl_enum *)data)->strs[j]);
             }
             break;
         case DBR_CTRL_CHAR:
-            printf("    Value: %c\n", ((struct dbr_ctrl_char *)data)->value);
-            printf("    Units: %s\n", ((struct dbr_ctrl_char *)data)->units);
+            printf("\tUnits: %s\n", ((struct dbr_ctrl_char *)data)->units);
             fputc('\n',stdout);
-            printf("    Alarm status: %s, severity: %s\n", \
+            printf("\tAlarm status: %s, severity: %s\n", \
                     epicsAlarmConditionStrings[((struct dbr_ctrl_char *)data)->status], \
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_char *)data)->severity]);
             printf("\n");
-            printf("	Warning upper limit: %c, lower limit: %c\n", \
+            printf("\tWarning\tupper limit: %c\n\t\tlower limit: %c\n", \
                     ((struct dbr_ctrl_char *)data)->upper_warning_limit, ((struct dbr_ctrl_char *)data)->lower_warning_limit);
-            printf("	Alarm upper limit: %c, lower limit: %c\n", \
+            printf("\tAlarm\tupper limit: %c\n\t\tlower limit: %c\n", \
                     ((struct dbr_ctrl_char *)data)->upper_alarm_limit, ((struct dbr_ctrl_char *)data)->lower_alarm_limit);
-            printf("	Control upper limit: %c, lower limit: %c\n", ((struct dbr_ctrl_char *)data)->upper_ctrl_limit,\
+            printf("\tControl\tupper limit: %c\n\t\tlower limit: %c\n", ((struct dbr_ctrl_char *)data)->upper_ctrl_limit,\
                     ((struct dbr_ctrl_char *)data)->lower_ctrl_limit);
-            printf("	Display upper limit: %c, lower limit: %c\n", ((struct dbr_ctrl_char *)data)->upper_disp_limit,\
+            printf("\tDisplay\tupper limit: %c\n\t\tlower limit: %c\n", ((struct dbr_ctrl_char *)data)->upper_disp_limit,\
                     ((struct dbr_ctrl_char *)data)->lower_disp_limit);
             break;
         case DBR_CTRL_LONG:
-            printf("    Value: %"PRId32"\n", ((struct dbr_ctrl_long *)data)->value);
-            printf("    Units: %s\n", ((struct dbr_ctrl_long *)data)->units);
+            printf("\tUnits: %s\n", ((struct dbr_ctrl_long *)data)->units);
             fputc('\n',stdout);
-            printf("    Alarm status: %s, severity: %s\n", \
+            printf("\tAlarm status: %s, severity: %s\n", \
                     epicsAlarmConditionStrings[((struct dbr_ctrl_long *)data)->status], \
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_long *)data)->severity]);
             fputc('\n',stdout);
-            printf("	Warning upper limit: %"PRId32", lower limit: %"PRId32"\n", \
+            printf("\tWarning\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n", \
                     ((struct dbr_ctrl_long *)data)->upper_warning_limit, ((struct dbr_ctrl_long *)data)->lower_warning_limit);
-            printf("	Alarm upper limit: %"PRId32", lower limit: %"PRId32"\n", \
+            printf("\tAlarm\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n", \
                     ((struct dbr_ctrl_long *)data)->upper_alarm_limit, ((struct dbr_ctrl_long *)data)->lower_alarm_limit);
-            printf("	Control upper limit: %"PRId32", lower limit: %"PRId32"\n", ((struct dbr_ctrl_long *)data)->upper_ctrl_limit,\
+            printf("\tControl\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n", ((struct dbr_ctrl_long *)data)->upper_ctrl_limit,\
                     ((struct dbr_ctrl_long *)data)->lower_ctrl_limit);
-            printf("	Display upper limit: %"PRId32", lower limit: %"PRId32"\n", ((struct dbr_ctrl_long *)data)->upper_disp_limit,\
+            printf("\tDisplay\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n", ((struct dbr_ctrl_long *)data)->upper_disp_limit,\
                     ((struct dbr_ctrl_long *)data)->lower_disp_limit);
             break;
         case DBR_CTRL_DOUBLE:
-            printf("    Value: %f\n", ((struct dbr_ctrl_double *)data)->value);
-            printf("    Units: %s\n", ((struct dbr_ctrl_double *)data)->units);
+            printf("\tUnits: %s\n", ((struct dbr_ctrl_double *)data)->units);
             fputc('\n',stdout);
-            printf("    Alarm status: %s, severity: %s\n", \
+            printf("\tAlarm status: %s, severity: %s\n", \
                     epicsAlarmConditionStrings[((struct dbr_ctrl_double *)data)->status], \
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_double *)data)->severity]);
             fputc('\n',stdout);
-            printf("	Warning upper limit: %f, lower limit: %f\n", \
+            printf("\tWarning\tupper limit: %f\n\t\tlower limit: %f\n", \
                     ((struct dbr_ctrl_double *)data)->upper_warning_limit, ((struct dbr_ctrl_double *)data)->lower_warning_limit);
-            printf("	Alarm upper limit: %f, lower limit: %f\n", \
+            printf("\tAlarm\tupper limit: %f\n\t\tlower limit: %f\n", \
                     ((struct dbr_ctrl_double *)data)->upper_alarm_limit, ((struct dbr_ctrl_double *)data)->lower_alarm_limit);
-            printf("	Control upper limit: %f, lower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_ctrl_limit,\
+            printf("\tControl\tupper limit: %f\n\t\tlower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_ctrl_limit,\
                     ((struct dbr_ctrl_double *)data)->lower_ctrl_limit);
-            printf("	Display upper limit: %f, lower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_disp_limit,\
+            printf("\tDisplay\tupper limit: %f\n\t\tlower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_disp_limit,\
                     ((struct dbr_ctrl_double *)data)->lower_disp_limit);
             fputc('\n',stdout);
-            printf("	Precision: %"PRId16"\n",((struct dbr_ctrl_double *)data)->precision);
-            printf("	RISC alignment: %"PRId16"\n",((struct dbr_ctrl_double *)data)->RISC_pad0);
+            printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_double *)data)->precision);
+            printf("\tRISC alignment: %"PRId16"\n",((struct dbr_ctrl_double *)data)->RISC_pad0);
             break;
         }
 
         fputc('\n',stdout);
-        if (!isStrEmpty(channels[i].hhsvName)) printf("	HIHI alarm severity: %s\n", ((struct dbr_sts_string *)dataHhsv)->value);		//severities
-        if (!isStrEmpty(channels[i].hsvName)) printf("	HIGH alarm severity: %s\n", ((struct dbr_sts_string *)dataHsv)->value);
-        if (!isStrEmpty(channels[i].lsvName)) printf("	LOW alarm severity: %s\n", ((struct dbr_sts_string *)dataLsv)->value);
-        if (!isStrEmpty(channels[i].llsvName)) printf("	LOLO alarm severity: %s\n", ((struct dbr_sts_string *)dataLlsv)->value);
-        if (!isStrEmpty(channels[i].unsvName)) printf("	UNSV alarm severity: %s\n", ((struct dbr_sts_string *)dataUnsv)->value);
-        if (!isStrEmpty(channels[i].cosvName)) printf("	COSV alarm severity: %s\n", ((struct dbr_sts_string *)dataCosv)->value);
-        if (!isStrEmpty(channels[i].zrsvName)) printf("	ZRSV alarm severity: %s\n", ((struct dbr_sts_string *)dataZrsv)->value);
-        if (!isStrEmpty(channels[i].onsvName)) printf("	ONSV alarm severity: %s\n", ((struct dbr_sts_string *)dataOnsv)->value);
-        if (!isStrEmpty(channels[i].twsvName)) printf("	TWSV alarm severity: %s\n", ((struct dbr_sts_string *)dataTwsv)->value);
-        if (!isStrEmpty(channels[i].thsvName)) printf("	THSV alarm severity: %s\n", ((struct dbr_sts_string *)dataThsv)->value);
-        if (!isStrEmpty(channels[i].frsvName)) printf("	FRSV alarm severity: %s\n", ((struct dbr_sts_string *)dataFrsv)->value);
-        if (!isStrEmpty(channels[i].fvsvName)) printf("	FVSV alarm severity: %s\n", ((struct dbr_sts_string *)dataFvsv)->value);
-        if (!isStrEmpty(channels[i].sxsvName)) printf("	SXSV alarm severity: %s\n", ((struct dbr_sts_string *)dataSxsv)->value);
-        if (!isStrEmpty(channels[i].svsvName)) printf("	SVSV alarm severity: %s\n", ((struct dbr_sts_string *)dataSvsv)->value);
-        if (!isStrEmpty(channels[i].eisvName)) printf("	EISV alarm severity: %s\n", ((struct dbr_sts_string *)dataEisv)->value);
-        if (!isStrEmpty(channels[i].nisvName)) printf("	NISV alarm severity: %s\n", ((struct dbr_sts_string *)dataNisv)->value);
-        if (!isStrEmpty(channels[i].tesvName)) printf("	TESV alarm severity: %s\n", ((struct dbr_sts_string *)dataTesv)->value);
-        if (!isStrEmpty(channels[i].elsvName)) printf("	ELSV alarm severity: %s\n", ((struct dbr_sts_string *)dataElsv)->value);
-        if (!isStrEmpty(channels[i].tvsvName)) printf("	TVSV alarm severity: %s\n", ((struct dbr_sts_string *)dataTvsv)->value);
-        if (!isStrEmpty(channels[i].ttsvName)) printf("	TTSV alarm severity: %s\n", ((struct dbr_sts_string *)dataTtsv)->value);
-        if (!isStrEmpty(channels[i].ftsvName)) printf("	FTSV alarm severity: %s\n", ((struct dbr_sts_string *)dataFtsv)->value);
-        if (!isStrEmpty(channels[i].ffsvName)) printf("	FFSV alarm severity: %s\n", ((struct dbr_sts_string *)dataFfsv)->value);
+        for(j=field_hhsv; j < nFields; j++) {
+            if (fieldData[j] != NULL) {
+                printf("\t%s alarm severity: %s\n", fields[j], fieldData[j]->value);
+                free(fieldData[j]);
+                ca_clear_channel(channels[i].fields[j].id);
+            }
+        }
         fputc('\n',stdout);
 
         readAccess = ca_read_access(channels[i].id);
         writeAccess = ca_write_access(channels[i].id);
 
-        printf("	IOC name: %s\n", ca_host_name(channels[i].id));									//host name
-        printf("	Read access: "); if(readAccess) printf("yes\n"); else printf("no\n");			//read and write access
-        printf("	Write access: "); if(writeAccess) printf("yes\n"); else printf("no\n");
-
+        printf("\tIOC name: %s\n", ca_host_name(channels[i].id));                           //host name
+        printf("\tRead access: "); if(readAccess) printf("yes\n"); else printf("no\n");     //read and write access
+        printf("\tWrite access: "); if(writeAccess) printf("yes\n"); else printf("no\n");
+        printf("%s\n", delimeter);
 
         free(data);
-        free(dataDesc);
-        free(dataHhsv);
-        free(dataHsv);
-        free(dataLsv);
-        free(dataLlsv);
-        free(dataUnsv);
-        free(dataCosv);
-        free(dataZrsv);
-        free(dataOnsv);
-        free(dataTwsv);
-        free(dataThsv);
-        free(dataFrsv);
-        free(dataFvsv);
-        free(dataSxsv);
-        free(dataSvsv);
-        free(dataEisv);
-        free(dataNisv);
-        free(dataTesv);
-        free(dataElsv);
-        free(dataTvsv);
-        free(dataElsv);
-        free(dataTtsv);
-        free(dataFtsv);
-        free(dataFfsv);
-
     }
-
+    return true;
 }
 
 void channelStatusCallback(struct connection_handler_args args){
@@ -1762,11 +1647,24 @@ void channelStatusCallback(struct connection_handler_args args){
     }
 }
 
+void channelFieldStatusCallback(struct connection_handler_args args){
+//callback for ca_create_channel. Is executed whenever a channel connects or
+//disconnects. It is used for field channels in caInfo tool.
+//When a field for a channel that exist cannot be created, we clear the channel for the field.
+
+    struct field *field = ( struct field * ) ca_puser ( args.chid );
+
+    field->connectionState = args.op;
+
+    if ( args.op != CA_OP_CONN_UP ) {
+        ca_clear_channel(args.chid);
+    }
+}
+
 bool checkStatus(int status){
 //checks status of channel create_ and clear_
     if (status != ECA_NORMAL){
-        fprintf(stderr, "CA error %s occurred while trying "
-                "to start channel access.\n", ca_message(status));
+        fprintf(stderr, "CA error %s occurred\n", ca_message(status));
         SEVCHK(status, "CA error");
         return false;
     }
@@ -1789,7 +1687,6 @@ bool caInit(struct channel *channels, int nChannels){
     if (!checkStatus(status)) return false;
 
     for(i=0; i < nChannels; i++){
-
         if(!createChannelMustSucceed(channels[i].name, channelStatusCallback, &channels[i], CA_PRIORITY, &channels[i].id)) return false;
 
         //if tool = cagets, each channel has a sibling connecting to the proc field
@@ -1825,112 +1722,39 @@ bool caInit(struct channel *channels, int nChannels){
     if (arguments.tool == cainfo){
         //if tool = cainfo, each channel has siblings connecting to the desc and *sv fields
         for (i=0; i<nChannels; ++i){
-            if (channels[i].connectionState != CA_OP_CONN_UP) continue; //skip if not connected
+            if (channels[i].connectionState != CA_OP_CONN_UP) { // if not connected skip
+                continue;
+            }
 
-
-            if (createChannelMustSucceed(channels[i].descName, 0 , 0, CA_PRIORITY, &channels[i].descId)) return EXIT_FAILURE;
-            if (createChannelMustSucceed(channels[i].hhsvName, 0 , 0, CA_PRIORITY, &channels[i].hhsvId)) return EXIT_FAILURE;
-            if (createChannelMustSucceed(channels[i].hsvName, 0 , 0, CA_PRIORITY, &channels[i].hsvId)) return EXIT_FAILURE;
-            if (createChannelMustSucceed(channels[i].lsvName, 0 , 0, CA_PRIORITY, &channels[i].lsvId)) return EXIT_FAILURE;
-            if (createChannelMustSucceed(channels[i].llsvName, 0 , 0, CA_PRIORITY, &channels[i].llsvId)) return EXIT_FAILURE;
-
-            //we flush the channels now in order to detect what types of severities the record specifies.
-            status = ca_pend_io ( arguments.caTimeout );
-
-            if(status == ECA_TIMEOUT) {
-                //channel doesn't have usual sev fields
-                clearStr(channels[i].hhsvName);
-                clearStr(channels[i].hsvName);
-                clearStr(channels[i].lsvName);
-                clearStr(channels[i].llsvName);
-
-                //try multi-bit record severities
-                if (createChannelMustSucceed(channels[i].unsvName, 0 , 0, CA_PRIORITY, &channels[i].unsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].cosvName, 0 , 0, CA_PRIORITY, &channels[i].cosvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].zrsvName, 0 , 0, CA_PRIORITY, &channels[i].zrsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].onsvName, 0 , 0, CA_PRIORITY, &channels[i].onsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].twsvName, 0 , 0, CA_PRIORITY, &channels[i].twsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].thsvName, 0 , 0, CA_PRIORITY, &channels[i].thsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].frsvName, 0 , 0, CA_PRIORITY, &channels[i].frsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].fvsvName, 0 , 0, CA_PRIORITY, &channels[i].fvsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].sxsvName, 0 , 0, CA_PRIORITY, &channels[i].sxsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].svsvName, 0 , 0, CA_PRIORITY, &channels[i].svsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].eisvName, 0 , 0, CA_PRIORITY, &channels[i].eisvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].nisvName, 0 , 0, CA_PRIORITY, &channels[i].nisvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].tesvName, 0 , 0, CA_PRIORITY, &channels[i].tesvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].elsvName, 0 , 0, CA_PRIORITY, &channels[i].elsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].tvsvName, 0 , 0, CA_PRIORITY, &channels[i].tvsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].ttsvName, 0 , 0, CA_PRIORITY, &channels[i].ttsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].ftsvName, 0 , 0, CA_PRIORITY, &channels[i].ftsvId)) return EXIT_FAILURE;
-                if (createChannelMustSucceed(channels[i].ffsvName, 0 , 0, CA_PRIORITY, &channels[i].ffsvId)) return EXIT_FAILURE;
-
-                status = ca_pend_io ( arguments.caTimeout );
-
-                if(status == ECA_TIMEOUT) {
-                    //channel doesn't have multi-bit severity fields
-                    clearStr(channels[i].unsvName);
-                    clearStr(channels[i].cosvName);
-                    clearStr(channels[i].zrsvName);
-                    clearStr(channels[i].onsvName);
-                    clearStr(channels[i].twsvName);
-                    clearStr(channels[i].thsvName);
-                    clearStr(channels[i].frsvName);
-                    clearStr(channels[i].fvsvName);
-                    clearStr(channels[i].sxsvName);
-                    clearStr(channels[i].svsvName);
-                    clearStr(channels[i].eisvName);
-                    clearStr(channels[i].nisvName);
-                    clearStr(channels[i].tesvName);
-                    clearStr(channels[i].elsvName);
-                    clearStr(channels[i].tvsvName);
-                    clearStr(channels[i].ttsvName);
-                    clearStr(channels[i].ftsvName);
-                    clearStr(channels[i].ffsvName);
+            size_t nFields = noFields;  // so we don't calculate in each loop
+            size_t j;
+            for (j=0; j < nFields; j++) {
+                if (!createChannelMustSucceed(channels[i].fields[j].name, channelFieldStatusCallback, &channels[i].fields[j], CA_PRIORITY, &channels[i].fields[j].id)) {
+                    printf("Problem creating subscription for process variable %s: %s.\n",channels[i].fields[j].name, ca_message(status));
                 }
             }
-            else{
-                //channel doesn't have multi-bit severity fields
-                clearStr(channels[i].unsvName);
-                clearStr(channels[i].cosvName);
-                clearStr(channels[i].zrsvName);
-                clearStr(channels[i].onsvName);
-                clearStr(channels[i].twsvName);
-                clearStr(channels[i].thsvName);
-                clearStr(channels[i].frsvName);
-                clearStr(channels[i].fvsvName);
-                clearStr(channels[i].sxsvName);
-                clearStr(channels[i].svsvName);
-                clearStr(channels[i].eisvName);
-                clearStr(channels[i].nisvName);
-                clearStr(channels[i].tesvName);
-                clearStr(channels[i].elsvName);
-                clearStr(channels[i].tvsvName);
-                clearStr(channels[i].ttsvName);
-                clearStr(channels[i].ftsvName);
-                clearStr(channels[i].ffsvName);
-            }
-
+            ca_flush_io();
         }
+        // process channel creation for fields
+        ca_pend_event ( arguments.caTimeout );
     }
-
 
     return true;
 }
 
-int caDisconnect(struct channel * channels, int nChannels){
+bool caDisconnect(struct channel * channels, int nChannels){
     int status, i;
-    int exitStatus = EXIT_SUCCESS;
+    bool success = true;
 
-    for(i=0; i < nChannels; i++){
+    for (i=0; i < nChannels; i++) {
         status = ca_clear_channel(channels[i].id);
-        if( status != ECA_NORMAL) {
-            fprintf(stderr, "CA error %s occurred while trying to stop channel access.\n", ca_message(status));
-            SEVCHK(status, "CA error");
-            exitStatus = EXIT_FAILURE;
-            break;
+        success &= checkStatus(status);
+        if (arguments.tool == cagets) {
+            status = ca_clear_channel(channels[i].procId);
+            success &= checkStatus(status);
         }
     }
-    return exitStatus;
+    return success;
 }
 
 
@@ -2327,8 +2151,8 @@ int main ( int argc, char ** argv )
      if (arguments.num && arguments.s){
          fprintf(stderr, "Options -num and -s are mutually exclusive.\n");
      }
-     if (arguments.plain) {
-         printf("Warning: -plain option overrides all formatting switches.\n"); // TODO warning was not printed on PSI catools
+     if (arguments.plain || arguments.tool == cainfo) {
+         if (arguments.tool != cainfo) printf("Warning: -plain option overrides all formatting switches.\n"); // TODO warning was not printed on PSI catools
          arguments.num =false; arguments.hex =false; arguments.bin = false; arguments.oct =false; arguments.s =false;
          arguments.prec = -1;   // prec is also handled in printValue()
          arguments.round = roundType_no_rounding;
@@ -2364,47 +2188,30 @@ int main ( int argc, char ** argv )
     //allocate memory for channel structures
     channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "main");
     for (i=0;i<nChannels;++i){
-        if (arguments.tool == cagets || arguments.tool == cado){
+        channels[i].connectionState = CA_OP_CONN_DOWN;
+        if (arguments.tool == cagets) {
             channels[i].procName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");//2 spaces for .(field name) + null termination
         }
-        if(arguments.tool == cainfo){
-            channels[i].descName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].hhsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].hsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].lsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].llsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].unsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].cosvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].zrsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].onsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].twsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].thsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].frsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].fvsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].sxsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].svsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].eisvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].nisvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].tesvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].elsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].tvsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].ttsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].ftsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
-            channels[i].ffsvName = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");
+        if(arguments.tool == cainfo) {
+            size_t nFields = noFields;  // so we don't calculate in each loop
+            for (j=0; j < nFields; j++) {
+                channels[i].fields[j].name = callocMustSucceed(LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), fields[j]);
+                channels[i].fields[j].connectionState = CA_OP_CONN_DOWN;
+            }
         }
     }
 
 
-
+    bool success = true;
     // Copy PV names from command line
     for (i = 0; optind < argc; i++, optind++){
         //printf("PV %d: %s\n", i, argv[optind]);
         channels[i].name = argv[optind];
 
         if(strlen(channels[i].name) > LEN_RECORD_NAME + LEN_RECORD_FIELD + 1) { //worst case scenario: longest name + longest field + '.' that separates name and field
-            fprintf(stderr, "Record name over %d characters: %s\n", LEN_RECORD_NAME + LEN_RECORD_FIELD + 1, channels[i].name);
-            return EXIT_FAILURE;
+            fprintf(stderr, "Record name over %d characters: %s - skipping\n", LEN_RECORD_NAME + LEN_RECORD_FIELD + 1, channels[i].name);
+            success = false;
+            break;
         }
 
         channels[i].i = i;	// channel number, serves to synchronise pvs and output.
@@ -2453,7 +2260,10 @@ int main ( int argc, char ** argv )
         }
         else if (arguments.tool == cawait) {
             //next argument is the condition string
-            if (!cawaitParseCondition(&channels[i], argv[optind+1])) return EXIT_FAILURE;
+            if (!cawaitParseCondition(&channels[i], argv[optind+1])) {
+                success = false;
+                break;
+            }
             optind++;
         }
         else if (arguments.tool == cagets) {
@@ -2462,85 +2272,17 @@ int main ( int argc, char ** argv )
 
             //append .PROC
             getBaseChannelName(channels[i].procName);
-            strcat(channels[i].procName,".PROC");
+            strcat(channels[i].procName, ".PROC");
         }
         else if (arguments.tool == cainfo) {
             //set sibling channels for getting desc and severity data
+            getBaseChannelName(channels[i].name);
 
-            strcpy(channels[i].descName, channels[i].name);
-            strcpy(channels[i].hhsvName, channels[i].name);
-            strcpy(channels[i].hsvName, channels[i].name);
-            strcpy(channels[i].lsvName, channels[i].name);
-            strcpy(channels[i].llsvName, channels[i].name);
-            strcpy(channels[i].unsvName, channels[i].name);
-            strcpy(channels[i].cosvName, channels[i].name);
-            strcpy(channels[i].zrsvName, channels[i].name);
-            strcpy(channels[i].onsvName, channels[i].name);
-            strcpy(channels[i].twsvName, channels[i].name);
-            strcpy(channels[i].thsvName, channels[i].name);
-            strcpy(channels[i].frsvName, channels[i].name);
-            strcpy(channels[i].fvsvName, channels[i].name);
-            strcpy(channels[i].sxsvName, channels[i].name);
-            strcpy(channels[i].svsvName, channels[i].name);
-            strcpy(channels[i].eisvName, channels[i].name);
-            strcpy(channels[i].nisvName, channels[i].name);
-            strcpy(channels[i].tesvName, channels[i].name);
-            strcpy(channels[i].elsvName, channels[i].name);
-            strcpy(channels[i].tvsvName, channels[i].name);
-            strcpy(channels[i].ttsvName, channels[i].name);
-            strcpy(channels[i].ftsvName, channels[i].name);
-            strcpy(channels[i].ffsvName, channels[i].name);
-
-            //append .DESC, .HHSV, .HSV, .LSV, .LLSV, etc
-            getBaseChannelName(channels[i].descName);
-            getBaseChannelName(channels[i].hhsvName);
-            getBaseChannelName(channels[i].hsvName);
-            getBaseChannelName(channels[i].lsvName);
-            getBaseChannelName(channels[i].llsvName);
-            getBaseChannelName(channels[i].unsvName);
-            getBaseChannelName(channels[i].cosvName);
-            getBaseChannelName(channels[i].zrsvName);
-            getBaseChannelName(channels[i].onsvName);
-            getBaseChannelName(channels[i].twsvName);
-            getBaseChannelName(channels[i].thsvName);
-            getBaseChannelName(channels[i].frsvName);
-            getBaseChannelName(channels[i].fvsvName);
-            getBaseChannelName(channels[i].sxsvName);
-            getBaseChannelName(channels[i].svsvName);
-            getBaseChannelName(channels[i].eisvName);
-            getBaseChannelName(channels[i].nisvName);
-            getBaseChannelName(channels[i].tesvName);
-            getBaseChannelName(channels[i].elsvName);
-            getBaseChannelName(channels[i].tvsvName);
-            getBaseChannelName(channels[i].ttsvName);
-            getBaseChannelName(channels[i].ftsvName);
-            getBaseChannelName(channels[i].ffsvName);
-
-            // append
-            strcat(channels[i].descName,".DESC");
-            strcat(channels[i].hhsvName,".HHSV");
-            strcat(channels[i].hsvName,".HSV");
-            strcat(channels[i].lsvName,".LSV");
-            strcat(channels[i].llsvName,".LLSV");
-            strcat(channels[i].unsvName,".UNSV");
-            strcat(channels[i].cosvName,".COSV");
-            strcat(channels[i].zrsvName,".ZRSV");
-            strcat(channels[i].onsvName,".ONSV");
-            strcat(channels[i].twsvName,".TWSV");
-            strcat(channels[i].thsvName,".THSV");
-            strcat(channels[i].frsvName,".FRSV");
-            strcat(channels[i].fvsvName,".FVSV");
-            strcat(channels[i].sxsvName,".SXSV");
-            strcat(channels[i].svsvName,".SVSV");
-            strcat(channels[i].eisvName,".EISV");
-            strcat(channels[i].nisvName,".NISV");
-            strcat(channels[i].tesvName,".TESV");
-            strcat(channels[i].elsvName,".ELSV");
-            strcat(channels[i].tvsvName,".TVSV");
-            strcat(channels[i].ttsvName,".TTSV");
-            strcat(channels[i].ftsvName,".FTSV");
-            strcat(channels[i].ffsvName,".FFSV");
-
+            size_t nFields = noFields;  // so we don't calculate in each loop
+            for (j=0; j < nFields; j++) {
+                strcpy(channels[i].fields[j].name, channels[i].name);
+                strcat(channels[i].fields[j].name, fields[j]);
+            }
         }
     }
 
@@ -2573,47 +2315,31 @@ int main ( int argc, char ** argv )
     }
 
     //start channel access
-    if(!caInit(channels, nChannels)) return EXIT_FAILURE;
+    if(success) success = caInit(channels, nChannels);
 
-    if (arguments.tool == cainfo){
-        cainfoRequest(channels, nChannels);
+    if (success && arguments.tool == cainfo) {
+        success = cainfoRequest(channels, nChannels);
     }
-    else if(arguments.tool == camon || arguments.tool == cawait){
+    else if(success && (arguments.tool == camon || arguments.tool == cawait)) {
         monitorLoop(channels, nChannels);
     }
-    else{
-        if (!caRequest(channels, nChannels)) return EXIT_FAILURE;
+    else {
+        if (success) success = caRequest(channels, nChannels);
     }
 
-    if (caDisconnect(channels, nChannels) != EXIT_SUCCESS) return EXIT_FAILURE;
+    success = caDisconnect(channels, nChannels);
 
     //free channels
     for (i=0;i<nChannels;++i){
         free(channels[i].writeStr);
-        free(channels[i].procName);
-        free(channels[i].descName);
-        free(channels[i].hhsvName);
-        free(channels[i].hsvName);
-        free(channels[i].lsvName);
-        free(channels[i].llsvName);
-        free(channels[i].unsvName);
-        free(channels[i].cosvName);
-        free(channels[i].zrsvName);
-        free(channels[i].onsvName);
-        free(channels[i].twsvName);
-        free(channels[i].thsvName);
-        free(channels[i].frsvName);
-        free(channels[i].fvsvName);
-        free(channels[i].sxsvName);
-        free(channels[i].svsvName);
-        free(channels[i].eisvName);
-        free(channels[i].nisvName);
-        free(channels[i].tesvName);
-        free(channels[i].elsvName);
-        free(channels[i].tvsvName);
-        free(channels[i].ttsvName);
-        free(channels[i].ftsvName);
-        free(channels[i].ffsvName);
+        if (arguments.tool == cagets) free(channels[i].procName);
+
+        if (arguments.tool == cainfo) {
+            size_t nFields = noFields;  // so we don't calculate in each loop
+            for (j=0; j < nFields; j++) {
+                free(channels[i].fields[j].name);
+            }
+        }
     }
     free(channels);
 
@@ -2642,6 +2368,6 @@ int main ( int argc, char ** argv )
     free(lastUpdate);
     free(firstUpdate);
 
-
-    return EXIT_SUCCESS;
+    if (success) return EXIT_SUCCESS;
+    else return EXIT_FAILURE;
 }
