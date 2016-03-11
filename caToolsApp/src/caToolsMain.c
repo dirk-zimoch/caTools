@@ -120,6 +120,7 @@ struct field {
     chid id;                // the id of the channel.field
     long connectionState;   // channel connected/disconnected
     bool created;           // channel creation for the field was successfull
+    bool done;              // indicates if callback has finished processing this channel
 };
 
 const char * fields[] = {
@@ -179,16 +180,13 @@ struct channel {
     struct field    base;       // the name of the channel
     struct field    proc;       // sibling channel for writing to proc field
     char            *name;  	// the name of the channel
-    evid            monitorId;  // id for monitor subscription
     struct field    fields[noFields];    // sibling channels for fields (description, severities, ...)
 
     long            type;   	// dbr type
     long            count;  	// element count
     long            inNelm;  	// requested number of elements for writing
     long            outNelm;  	// requested number of elements for reading
-    bool			firstConnection; // indicates if channel has connected at least once
-    bool            done;   	// indicates if callback has finished processing this channel
-    int 			i;			// process variable id
+    u_int32_t       i;			// process variable id
     char			**writeStr;	// value(s) to be written
     enum operator	conditionOperator; //cawait operator
     double 			conditionOperands[2]; //cawait operands
@@ -206,6 +204,7 @@ static uint32_t const LEN_RECORD_NAME = 60;
 static uint32_t const LEN_SEVSTAT = 30;
 static uint32_t const LEN_UNITS = 20+MAX_UNITS_SIZE;
 static uint32_t const LEN_RECORD_FIELD = 4;
+char *errorTimestamp;   // timestamp used in caCustomExceptionHandler
 char **outDate,**outTime, **outSev, **outStat, **outUnits, **outLocalDate, **outLocalTime;
 char **outTimestamp; //relative timestamps for camon
 
@@ -218,7 +217,7 @@ bool *firstUpdate;					//indicates that lastUpdate has not been initialized
 epicsTimeStamp timeoutTime;			//when to stop monitoring (-timeout)
 
 bool runMonitor;                //indicates when to stop monitoring according to -timeout, -n or cawait condition is true
-uint32_t numMonitorUpdates;		//counts updates needed by -n
+u_int32_t numMonitorUpdates;    //counts updates needed by -n
 
 epicsEventId unitsLock; // semaphore for locking access to outUnits (from caReadCallback and getStaticUnitsCallback)
 
@@ -316,8 +315,10 @@ void usage(FILE *stream, enum tool tool, char *programName){
     //flags associated with writing
     if (tool == caput || tool == caputq) {
         fputs("Formating input : Array format options\n", stream);
-        fputs("  -inNelm <number>     Number of array elements to write, or 0 to use -inSep to get the number of elements. Must match the number of provided values.\n", stream);
-        fputs("  -inSep <separator>   Separator used between array elements in <value>. If not specified, space is used. Overrides -inNelm.\n", stream);
+        fputs("  -a                   Input separator (-inSep argument) is used to parse elements in an array.\n", stream);
+        fputs("  -inSep <separator>   Separator used between array elements in <value>.\n", stream);
+        fputs("                       If not specified, space is used.\n", stream);
+        fputs("                       If specified, '-a' option is automatically used. \n", stream);
     }
 
     // flags associated with monitoring
@@ -1064,7 +1065,7 @@ static void caReadCallback (evargs args){
         //time_t localTime = time(0);
         epicsTimeStamp localTime;
         epicsTimeGetCurrent(&localTime);
-        validateTimestamp(&localTime, "localTime");
+        //validateTimestamp(&localTime, "localTime");
 
         if (arguments.localdate) epicsTimeToStrftime(outLocalDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &localTime);
         if (arguments.localtime) epicsTimeToStrftime(outLocalTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &localTime);
@@ -1109,7 +1110,7 @@ static void caReadCallback (evargs args){
 
     //finish
     if(shouldPrint) printOutput(ch->i, args, precision);
-    ch->done = true;
+    ch->base.done = true;
 }
 
 static void caWriteCallback (evargs args) {
@@ -1123,7 +1124,7 @@ static void caWriteCallback (evargs args) {
 
     struct channel *ch = (struct channel *)args.usr;
 
-    ch->done = true;
+    ch->base.done = true;
 }
 
 
@@ -1169,10 +1170,9 @@ void monitorLoop (struct channel *channels, int nChannels){
     }
 }
 
-// Wait for request completition, or for caTimeout to occur
-// bool checkFirstConnection: check chanel[].firstConnection when checking for callback completition
-void waitForCompletition(struct channel *channels, int nChannels, bool checkFirstConnection) {
-    int i;
+// Wait for request completition for all channels, or for caTimeout to occur
+/*void waitForCompletition(struct channel *channels, u_int32_t nChannels) {
+    u_int32_t i;
     bool elapsed = false, allDone = false;
     epicsTimeStamp timeoutNow, timeout;
 
@@ -1190,18 +1190,58 @@ void waitForCompletition(struct channel *channels, int nChannels, bool checkFirs
 
         // check for callback completition
         allDone=true;
-        for (i=0; i<nChannels; ++i) allDone &= (channels[i].done || channels[i].firstConnection == checkFirstConnection);
+        for (i=0; i<nChannels; ++i) allDone &= channels[i].base.done || channels[i].base.connectionState != CA_OP_CONN_UP;   // ignore disconnected channels
+    }
+    for (i=0; i < nChannels; ++i) channels[i].base.done = false;
+}*/
+
+// Wait for request completition of a channel and it's fields, or for caTimeout to occur
+
+/**
+ * @brief waitForCompletition Wait for request completition of channels (or it's fields), or for caTimeout to occur
+ * @param nChannels number of existing channels
+ * @param checkChannels will check for channel completition if true, or for chanel fields completition of false
+ */
+void waitForCompletition(struct channel *channels, u_int32_t nChannels, bool checkChannels) {
+    u_int32_t i, j;
+    bool elapsed = false, allDone = false;
+    epicsTimeStamp timeoutNow, timeout;
+    size_t nFields = noFields;
+
+    epicsTimeGetCurrent(&timeout);
+    epicsTimeAddSeconds(&timeout, arguments.caTimeout);
+
+    while(!allDone && !elapsed) {
+        ca_pend_event(0.1);
+        // check for timeout
+        epicsTimeGetCurrent(&timeoutNow);
+        if (epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
+            printf("Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
+            elapsed = true;
+        }
+
+        // check for callback completition
+        allDone=true;
+        for (i=0; i < nChannels; ++i) {
+            if (checkChannels) allDone &= channels[i].base.done || channels[i].base.connectionState != CA_OP_CONN_UP;   // ignore disconnected channels
+            else for (j=0; j < nFields; ++j) allDone &= channels[i].fields[j].done || channels[i].fields[j].connectionState != CA_OP_CONN_UP;   // ignore disconnected field channels
+        }
+    }
+    // reset completition flags
+    for (i=0; i < nChannels; ++i) {
+        if (checkChannels) channels[i].base.done = false;
+        else for (j=0; j < nFields; ++j) channels[i].fields[j].done = false;
     }
 }
 
-bool caRequest(struct channel *channels, int nChannels) {
+bool caRequest(struct channel *channels, u_int32_t nChannels) {
 //sends get or put requests. ca_get or ca_put are called multiple times, depending on the tool. The reading,
 //parsing and printing of returned data is performed in callbacks.
-    int status=-1, i, j;
+    int status=-1;
+    u_int32_t i, j;
 
     for(i=0; i < nChannels; i++) {
         if (channels[i].base.connectionState != CA_OP_CONN_UP) {//skip disconnected channels
-            channels[i].done = true;
             continue;
         }
 
@@ -1215,7 +1255,7 @@ bool caRequest(struct channel *channels, int nChannels) {
             char *endptr;   // used in strto* functions
             bool success = true;
 
-            if(arguments.bin) base = 2;
+            //if(arguments.bin) base = 2; TODO can be used to select binary input for numbers
 
             //convert input string to the baseType
             status = ECA_BADTYPE;
@@ -1328,7 +1368,7 @@ bool caRequest(struct channel *channels, int nChannels) {
                 return false;
             }
         }
-        else if(arguments.tool == cagets) {
+        else if(arguments.tool == cagets && channels[i].proc.created) {
             dbr_char_t input=1;
             status = ca_array_put_callback(DBF_CHAR, 1, channels[i].proc.id, &input, caWriteCallback, &channels[i]);
         }
@@ -1345,7 +1385,7 @@ bool caRequest(struct channel *channels, int nChannels) {
     if(arguments.tool == cado || arguments.tool == caputq) return true;  // we do not wait if cado or caputq
 
      // wait for callbacks
-    waitForCompletition(channels, nChannels, false);
+    waitForCompletition(channels, nChannels, true);
 
     bool success = true;
     //if caput or cagets issue a new read request.
@@ -1353,31 +1393,26 @@ bool caRequest(struct channel *channels, int nChannels) {
 
         for (i=0; i<nChannels; ++i) {
             if (channels[i].base.connectionState != CA_OP_CONN_UP) {//skip disconnected channels
-                channels[i].done = true;
                 continue;
             }
-            if (channels[i].done) {
-                status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].base.id, caReadCallback, &channels[i]);
-                if (status != ECA_NORMAL) {
-                    fprintf(stderr, "Problem creating get request for channel %s: %s.\n", channels[i].base.name,ca_message(status));
-                    return false;
-                }
+            status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].base.id, caReadCallback, &channels[i]);
+            if (status != ECA_NORMAL) {
+                fprintf(stderr, "Problem creating get request for channel %s: %s.\n", channels[i].base.name,ca_message(status));
+                return false;
             }
-            else{
-                success = false;
-                fprintf(stderr, "Put callback for channel %s did not complete.\n", channels[i].base.name);
-            }
+
         }
 
-        waitForCompletition(channels, nChannels, false);
+        waitForCompletition(channels, nChannels, true);
     }
 
     return success;
 }
 
-bool cainfoRequest(struct channel *channels, int nChannels){
+bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
 //this function does all the work for caInfo tool. Reads channel data using ca_get and then prints.
-    int i,j, status;
+    int status;
+    u_int32_t i,j;
 
     bool readAccess, writeAccess;
     size_t nFields = noFields;
@@ -1588,7 +1623,7 @@ void channelStatusCallback(struct connection_handler_args args){
     ch->base.connectionState = args.op;
 
     if ( args.op == CA_OP_CONN_UP ) {
-        if (!ch->firstConnection){
+        if (!ch->base.done){
             //determine channel properties
 
             //how many array elements to request
@@ -1618,7 +1653,7 @@ void channelStatusCallback(struct connection_handler_args args){
             }
             else ch->type = arguments.dbrRequestType;
 
-            ch->firstConnection = true;
+            ch->base.done = true;
         }
 
         //if units, issue get request for metadata. String and enum records don't have units, so skip.
@@ -1637,6 +1672,9 @@ void channelStatusCallback(struct connection_handler_args args){
             }
         }
     }
+    else {
+        printf(" %s disconnected\n", ch->base.name);
+    }
 }
 
 void channelFieldStatusCallback(struct connection_handler_args args){
@@ -1651,6 +1689,8 @@ void channelFieldStatusCallback(struct connection_handler_args args){
     if ( args.op != CA_OP_CONN_UP ) {
         ca_clear_channel(args.chid);
     }
+
+    field->done = true;
 }
 
 bool checkStatus(int status){
@@ -1669,29 +1709,49 @@ bool createChannelMustSucceed(const char *pChanName, caCh *pConnStateCallback, v
     return checkStatus(status);    // error if the channels are not created
 }
 
+void caCustomExceptionHandler( struct exception_handler_args args) {
+    char buf[512];
+    const char *pName;
+    epicsTimeStamp timestamp;	//timestamp indicating program start
 
-bool caInit(struct channel *channels, int nChannels){
+    if ( args.chid ) {
+        pName = ca_name ( args.chid );
+    }
+    else {
+        pName = "?";
+    }
+
+    epicsTimeGetCurrent(&timestamp);
+    epicsTimeToStrftime(errorTimestamp, LEN_TIMESTAMP, "%Y-%m-%d %H:%M:%S.%06f", &timestamp);
+
+    if (args.stat == ECA_DISCONN || args.stat == ECA_DISCONNCHID) {
+        printf("%s ", errorTimestamp);
+    }
+    else {
+        sprintf ( buf,
+                "%s in %s - with request chan=%s op=%ld data type=%s count=%ld",
+                errorTimestamp, args.ctx, pName, args.op, dbr_type_to_text ( args.type ), args.count );
+        ca_signal ( args.stat, buf );
+    }
+}
+
+bool caInit(struct channel *channels, u_int32_t nChannels){
 //creates contexts and channels.
-    int status, i;
+    int status;
+    u_int32_t i;
 
     status = ca_context_create(ca_disable_preemptive_callback);
 
     if (!checkStatus(status)) return false;
 
-    for(i=0; i < nChannels; i++) {
-        // if chanel name could not be parsed, or condition in case of caWait could not be parsed, do not create the channels
-        if (channels[i].base.created) {
-            channels[i].base.created = false;
-        }
-        else {
-            continue;
-        }
+    ca_add_exception_event ( caCustomExceptionHandler , 0 );
 
+    for(i=0; i < nChannels; i++) {
         channels[i].base.created = createChannelMustSucceed(channels[i].base.name, channelStatusCallback, &channels[i], CA_PRIORITY, &channels[i].base.id);
         if (!channels[i].base.created) return false;
 
         //if tool = cagets, each channel has a sibling connecting to the proc field
-        if (arguments.tool == cagets){
+        if (arguments.tool == cagets) {
             channels[i].proc.created = createChannelMustSucceed(channels[i].proc.name, 0 , 0, CA_PRIORITY, &channels[i].proc.id);
             if (!channels[i].proc.created) return false;
         }
@@ -1718,7 +1778,7 @@ bool caInit(struct channel *channels, int nChannels){
         epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
     }
     if (arguments.tool == camon || arguments.tool == cawait) {
-        waitForCompletition(channels, nChannels, false);
+        waitForCompletition(channels, nChannels, true);
     }
 
     if (arguments.tool == cainfo){
@@ -1740,7 +1800,7 @@ bool caInit(struct channel *channels, int nChannels){
             ca_flush_io();
         }
         // process channel creation for fields
-        ca_pend_event ( arguments.caTimeout );
+        waitForCompletition(channels, nChannels, false);
     }
 
     return true;
@@ -1818,8 +1878,8 @@ int main ( int argc, char ** argv )
 
     int opt;                    // getopt() current option
     int opt_long;               // getopt_long() current long option
-    int nChannels=0;              // Number of channels
-    int i,j;                      // counter
+    u_int32_t nChannels=0;              // Number of channels
+    u_int32_t i,j;                      // counter
     struct channel *channels;
 
     runMonitor = true;
@@ -2205,9 +2265,10 @@ int main ( int argc, char ** argv )
 
     //allocate memory for channel structures
     channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "main");
-    for (i=0;i<nChannels;++i){
+    for (i=0; i < nChannels; ++i) {
         channels[i].base.connectionState = CA_OP_OTHER;
-        channels[i].base.created = true;
+        channels[i].base.created = false;
+        channels[i].base.done = false;
 
         if (arguments.tool == cagets) {
             channels[i].proc.name = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");//2 spaces for .(field name) + null termination
@@ -2219,6 +2280,7 @@ int main ( int argc, char ** argv )
                 channels[i].fields[j].name = callocMustSucceed(LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), fields[j]);
                 channels[i].fields[j].connectionState = CA_OP_OTHER;
                 channels[i].fields[j].created = false;
+                channels[i].fields[j].done = false;
             }
         }
     }
@@ -2231,9 +2293,8 @@ int main ( int argc, char ** argv )
         channels[i].base.name = argv[optind];
 
         if(strlen(channels[i].base.name) > LEN_RECORD_NAME + LEN_RECORD_FIELD + 1) { //worst case scenario: longest name + longest field + '.' that separates name and field
-            fprintf(stderr, "Record name over %d characters: %s - skipping\n", LEN_RECORD_NAME + LEN_RECORD_FIELD + 1, channels[i].base.name);
+            fprintf(stderr, "Record name over %d characters: %s - aborting", LEN_RECORD_NAME + LEN_RECORD_FIELD + 1, channels[i].base.name);
             success = false;
-            channels[i].base.created = false;
             break;
         }
 
@@ -2285,7 +2346,6 @@ int main ( int argc, char ** argv )
             //next argument is the condition string
             if (!cawaitParseCondition(&channels[i], argv[optind+1])) {
                 success = false;
-                channels[i].base.created = false;
                 break;
             }
             optind++;
@@ -2312,6 +2372,7 @@ int main ( int argc, char ** argv )
 
 
     //allocate memory for output strings
+    errorTimestamp = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"errorTimestamp");
     outDate = callocMustSucceed(nChannels, sizeof(char *),"main");
     outTime = callocMustSucceed(nChannels, sizeof(char *),"main");
     outSev = callocMustSucceed(nChannels, sizeof(char *),"main");
@@ -2356,7 +2417,7 @@ int main ( int argc, char ** argv )
     ca_context_destroy();
 
     //free channels
-    for (i=0;i<nChannels;++i){
+    for (i=0 ;i < nChannels; ++i) {
         free(channels[i].writeStr);
         if (arguments.tool == cagets) free(channels[i].proc.name);
 
@@ -2370,7 +2431,7 @@ int main ( int argc, char ** argv )
     free(channels);
 
     //free output strings
-    for(i = 0; i < nChannels; i++){
+    for(i = 0; i < nChannels; i++) {
         free(outDate[i]);
         free(outTime[i]);
         free(outSev[i]);
@@ -2393,6 +2454,8 @@ int main ( int argc, char ** argv )
     free(timestampRead);
     free(lastUpdate);
     free(firstUpdate);
+
+    free(errorTimestamp);
 
     if (success) return EXIT_SUCCESS;
     else return EXIT_FAILURE;
