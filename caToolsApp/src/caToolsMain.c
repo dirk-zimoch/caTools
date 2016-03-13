@@ -46,25 +46,25 @@ struct arguments {
    bool num;                //same as -int
    enum roundType round;	//type of rounding: round(), ceil(), floor()
    int32_t prec;            //precision
-   bool hex;				//display as hex
-   bool bin;				//display as bin
-   bool oct;				//display as oct
-   bool plain;				//ignore formatting switches
+   bool hex;                //display as hex
+   bool bin;                //display as bin
+   bool oct;                //display as oct
+   bool plain;              //ignore formatting switches
    char dblFormatType;     	//format type for decimal numbers (see -e -f -g option)
    bool str;                //try to interpret values as strings
-   bool stat;				//status and severity on
-   bool nostat;				//status and severity off
-   bool noname;				//hide name
-   bool nounit;				//hide units
-   char timestamp;			//timestamp type ('r', 'u' or 'c')
-   double timeout;			//cawait timeout
-   bool date;				//server date
-   bool localdate;			//client date
-   bool time;				//server time
-   bool localtime;			//client time
-   char fieldSeparator;		//array field separator for output
-   char inputSeparator;		//array field separator for input
-   enum tool tool;			//tool type
+   bool stat;               //status and severity on
+   bool nostat;             //status and severity off
+   bool noname;             //hide name
+   bool nounit;             //hide units
+   char timestamp;      	//timestamp type ('r', 'u' or 'c')
+   double timeout;      	//cawait timeout
+   bool date;               //server date
+   bool localdate;      	//client date
+   bool time;               //server time
+   bool localtime;      	//client time
+   char fieldSeparator;     //array field separator for output
+   char inputSeparator;     //array field separator for input
+   enum tool tool;      	//tool type
    int64_t numUpdates;      //number of monitor updates after which to quit
    bool parseArray;         //use inputSeparator to parse array
    int64_t outNelm;         //number of array elements to read
@@ -179,17 +179,17 @@ enum channelField {
 struct channel {
     struct field    base;       // the name of the channel
     struct field    proc;       // sibling channel for writing to proc field
-    char            *name;  	// the name of the channel
+    char           *name;       // the name of the channel
     struct field    fields[noFields];    // sibling channels for fields (description, severities, ...)
 
-    long            type;   	// dbr type
-    long            count;  	// element count
-    long            inNelm;  	// requested number of elements for writing
-    long            outNelm;  	// requested number of elements for reading
-    u_int32_t       i;			// process variable id
-    char			**writeStr;	// value(s) to be written
+    long            type;       // dbr type
+    unsigned long   count;      // element count
+    unsigned long   inNelm;     // requested number of elements for writing
+    unsigned long   outNelm;    // requested number of elements for reading
+    u_int32_t       i;          // process variable id
+    char      	  **writeStr;   // value(s) to be written
     enum operator	conditionOperator; //cawait operator
-    double 			conditionOperands[2]; //cawait operands
+    double       	conditionOperands[2]; //cawait operands
 };
 
 
@@ -199,22 +199,22 @@ u_int16_t verbosity = 0;
 #define infoPrintf(level,M, ...) if(verbosity >= level && mrfioc2_flashDebug > 0) fprintf(stderr, "Warning: " M,##__VA_ARGS__)
 
 //output strings
-static uint32_t const LEN_TIMESTAMP = 50;
-static uint32_t const LEN_RECORD_NAME = 60;
-static uint32_t const LEN_SEVSTAT = 30;
-static uint32_t const LEN_UNITS = 20+MAX_UNITS_SIZE;
-static uint32_t const LEN_RECORD_FIELD = 4;
+static u_int32_t const LEN_TIMESTAMP = 50;
+static u_int32_t const LEN_RECORD_NAME = 60;
+static u_int32_t const LEN_SEVSTAT = 30;
+static u_int32_t const LEN_UNITS = 20+MAX_UNITS_SIZE;
+static u_int32_t const LEN_RECORD_FIELD = 4;
 char *errorTimestamp;   // timestamp used in caCustomExceptionHandler
 char **outDate,**outTime, **outSev, **outStat, **outUnits, **outLocalDate, **outLocalTime;
 char **outTimestamp; //relative timestamps for camon
 
 
 //timestamps needed by -timestamp
-epicsTimeStamp *timestampRead;		//timestamps of received data (per channel)
+epicsTimeStamp *timestampRead;      //timestamps of received data (per channel)
 epicsTimeStamp programStartTime;	//timestamp indicating program start
-epicsTimeStamp *lastUpdate;			//timestamp indicating last update per channel
-bool *firstUpdate;					//indicates that lastUpdate has not been initialized
-epicsTimeStamp timeoutTime;			//when to stop monitoring (-timeout)
+epicsTimeStamp *lastUpdate;      	//timestamp indicating last update per channel
+bool *firstUpdate;            	//indicates that lastUpdate has not been initialized
+epicsTimeStamp timeoutTime;      	//when to stop monitoring (-timeout)
 
 bool runMonitor;                //indicates when to stop monitoring according to -timeout, -n or cawait condition is true
 u_int32_t numMonitorUpdates;    //counts updates needed by -n
@@ -275,10 +275,10 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Monitors the PV(s).\n", stream);
     }
     if (tool == cawait) {
-         fputs("Monitors the PV(s), but only displays the values when they match the provided conditions. The conditions are specified as a"\
-                " string containing the operator together with the values.\n", stream);
-        fputs("Following operators are supported:  >,<,<=,>=,==,!=, ==A...B(in interval), !=A...B(out of interval). For example, "\
-                "cawait pv '==1...5' ignores all pv values except those inside the interval [1,5].\n", stream);
+         fputs("Monitors the PV(s), but only displays the values when they match the provided conditions. When at least one of the conditions is true, the program exits." \
+               "The conditions are specified as a string containing the operator together with the values.\n", stream);
+        fputs("Following operators are supported:  >, <, <=, >=, ==, !=, !, ==A...B(in interval), !=A...B or !A...B (out of interval). For example, "\
+                "cawait pv '==1...5' exits after pv value is inside the interval [1,5].\n", stream);
     }
     if (tool == cainfo) {
         fputs("Displays detailed information about the provided records.\n", stream);
@@ -404,7 +404,7 @@ bool removePrefix (char **data, char const *prefix)
 
 //parses input string and extracts operators and numerals,
 //then saves them to the channel structure.
-//Supported operators: >,<,<=,>=,==,!=, ==A...B(in interval), !=A...B(out of interval).
+//Supported operators: >,<,<=,>=,==,!=,!, ==A...B(in interval), !=A...B(out of interval), !A...B (out of interval).
 bool cawaitParseCondition(struct channel *channel, char *str)
 {
     enum operator operator;
@@ -446,7 +446,7 @@ bool cawaitParseCondition(struct channel *channel, char *str)
     }
 
     token = strtok(NULL, "...");
-    if (operator != operator_eq && operator != operator_neq && !token) {
+    if (operator != operator_eq && operator != operator_neq && token) {
         fprintf(stderr, "Invalid syntax for interval condition.\n");
         return false;
     }
@@ -457,6 +457,8 @@ bool cawaitParseCondition(struct channel *channel, char *str)
             return false;
         }
     }
+
+    // TODO: if arg1 > arg2 when using ... syntax
 
     channel->conditionOperator = operator;
     channel->conditionOperands[0] = arg1;
@@ -478,7 +480,7 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
 
     //convert the value to double
     double dblValue;
-    unsigned int baseType = args.type % (LAST_TYPE+1);
+    int32_t baseType = args.type % (LAST_TYPE+1);
     switch (baseType){
     case DBR_DOUBLE:
         dblValue = (double) *(dbr_double_t*)nativeValue;
@@ -494,7 +496,7 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
         break;
     case DBR_CHAR:
     case DBR_STRING:
-        if (sscanf(nativeValue, "%lf", &dblValue) <= 0){    // TODO: nativeValue might not be null terminated
+        if (sscanf(nativeValue, "%lf", &dblValue) <= 0){        // TODO: is this always null-terminated?
             fprintf(stderr, "Record %s value %s cannot be converted to double.\n", channel.base.name, (char*)nativeValue);
             return -1;
         }
@@ -537,11 +539,11 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
         fputc('0' + ((x >> i) & 1), stdout); \
     }
 
-int printValue(evargs args, int precision){
+int printValue(evargs args, int32_t precision){
 //Parses the data fetched by ca_get callback according to the data type and formatting arguments.
 //The result is printed to stdout.
 
-    unsigned int baseType;
+    int32_t baseType;
     void *value;
     double valueDbl = 0;
 
@@ -550,7 +552,7 @@ int printValue(evargs args, int precision){
 
     //loop over the whole array
 
-    int j; //element counter
+    long j; //element counter
 
     for (j=0; j<args.count; ++j){
 
@@ -560,7 +562,7 @@ int printValue(evargs args, int precision){
 
         switch (baseType) {
         case DBR_STRING:
-            printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);
+            printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);    // TODO: is this always null-terminated?
             break;
         case DBR_FLOAT:
         case DBR_DOUBLE:{
@@ -591,7 +593,7 @@ int printValue(evargs args, int precision){
 
                 if (precision != -1 && !arguments.plain) { // when DBR_XXX_DOUBLE, DBR_XXX_FLOAT has precision info. Also, print raw when -plain is used.
                     char formatStr[30];
-                    sprintf(formatStr, "%%-.%d%c", precision, format);
+                    sprintf(formatStr, "%%-.%"PRId32"%c", precision, format);
                     printf(formatStr, valueDbl);
                 }
                 else { // case where no precision info is avaliable
@@ -617,7 +619,7 @@ int printValue(evargs args, int precision){
                 printBits(valueInt32);
             }
             else if (arguments.str){
-                printf("%c", (uint8_t)valueInt32);
+                printf("%c", (u_int8_t)valueInt32);
             }
             else{
                 printf("%" PRId32, valueInt32);
@@ -629,17 +631,17 @@ int printValue(evargs args, int precision){
 
             //display dec, hex, bin, oct, char if desired
             if (arguments.hex){
-                printf("0x%" PRIx16, (uint16_t)valueInt16);
+                printf("0x%" PRIx16, (u_int16_t)valueInt16);
             }
             else if (arguments.oct){
-                printf("0o%" PRIo16, (uint16_t)valueInt16);
+                printf("0o%" PRIo16, (u_int16_t)valueInt16);
             }
             else if (arguments.bin){
                 printf("0b");
-                printBits((uint16_t)valueInt16);
+                printBits((u_int16_t)valueInt16);
             }
             else if (arguments.str){
-                printf("%c", (uint8_t)valueInt16);
+                printf("%c", (u_int8_t)valueInt16);
             }
             else{
                 printf("%" PRId16, valueInt16);
@@ -693,17 +695,17 @@ int printValue(evargs args, int precision){
         }
         case DBR_CHAR:{
             if (arguments.num) {	//check if requested as a a number
-                printf("%" PRIu8, ((uint8_t*) value)[j]);
+                printf("%" PRIu8, ((u_int8_t*) value)[j]);
             }
             else if (arguments.hex){
-                printf("0x%" PRIx8, ((uint8_t*) value)[j]);
+                printf("0x%" PRIx8, ((u_int8_t*) value)[j]);
             }
             else if (arguments.oct){
-                printf("0o%" PRIo8, ((uint8_t*) value)[j]);
+                printf("0o%" PRIo8, ((u_int8_t*) value)[j]);
             }
             else if (arguments.bin){
                 printf("0b");
-                printBits(((uint8_t*) value)[j]);
+                printBits(((u_int8_t*) value)[j]);
             }
             else{
                 fputc(((char*) value)[j], stdout);
@@ -722,7 +724,7 @@ int printValue(evargs args, int precision){
 }
 
 
-int printOutput(int i, evargs args, int precision){
+int printOutput(int i, evargs args, int32_t precision){
 // prints global output strings corresponding to i-th channel.
 
     //if both local and server times are requested, clarify which is which
@@ -807,16 +809,16 @@ void validateTimestamp(epicsTimeStamp *timestamp, const char* name){
 //checks a timestamp for illegal values.
     if (timestamp->nsec >= 1000000000ul){
         fprintf(stderr,"Warning: invalid number of nanoseconds in timestamp: %s - assuming 0.\n",name);
-        timestamp->nsec=0;
+        timestamp->nsec = 0;
     }
 }
 
-int getTimeStamp(int i) {
+int getTimeStamp(u_int32_t i) {
 //calculates timestamp for monitor tool, formats it and saves it into the global string.
 
     epicsTimeStamp elapsed;
     bool negative=false;
-    int commonI = (arguments.timestamp == 'c') ? i : 0;
+    u_int32_t commonI = (arguments.timestamp == 'c') ? i : 0;
     bool showEmpty = false;
 
     if (arguments.timestamp == 'r') {
@@ -885,8 +887,8 @@ static void caReadCallback (evargs args){
     }
     struct channel *ch = (struct channel *)args.usr;
 
-    int precision=-1;
-    uint32_t status=0, severity=0;
+    int32_t precision=-1;
+    u_int32_t status=0, severity=0;
 
     //clear global output strings; the purpose of this callback is to overwrite them
     //the exception are units, which we may be getting from elsewhere; we only clear them if we can write them
@@ -1062,7 +1064,6 @@ static void caReadCallback (evargs args){
 
     //show local date or time?
     if (arguments.localdate || arguments.localtime){
-        //time_t localTime = time(0);
         epicsTimeStamp localTime;
         epicsTimeGetCurrent(&localTime);
         //validateTimestamp(&localTime, "localTime");
@@ -1161,7 +1162,7 @@ static void getStaticUnitsCallback (evargs args) {
     }
 }
 
-void monitorLoop (struct channel *channels, int nChannels){
+void monitorLoop (){
 //runs monitor loop. Stops after -n updates (camon, cawait) or
 //after -timeout is exceeded (cawait).
 
@@ -1169,31 +1170,6 @@ void monitorLoop (struct channel *channels, int nChannels){
         ca_pend_event(0.1);
     }
 }
-
-// Wait for request completition for all channels, or for caTimeout to occur
-/*void waitForCompletition(struct channel *channels, u_int32_t nChannels) {
-    u_int32_t i;
-    bool elapsed = false, allDone = false;
-    epicsTimeStamp timeoutNow, timeout;
-
-    epicsTimeGetCurrent(&timeout);
-    epicsTimeAddSeconds(&timeout, arguments.caTimeout);
-
-    while(!allDone && !elapsed) {
-        ca_pend_event(0.1);
-        // check for timeout
-        epicsTimeGetCurrent(&timeoutNow);
-        if (epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
-            printf("Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
-            elapsed = true;
-        }
-
-        // check for callback completition
-        allDone=true;
-        for (i=0; i<nChannels; ++i) allDone &= channels[i].base.done || channels[i].base.connectionState != CA_OP_CONN_UP;   // ignore disconnected channels
-    }
-    for (i=0; i < nChannels; ++i) channels[i].base.done = false;
-}*/
 
 // Wait for request completition of a channel and it's fields, or for caTimeout to occur
 
@@ -1203,7 +1179,8 @@ void monitorLoop (struct channel *channels, int nChannels){
  * @param checkChannels will check for channel completition if true, or for chanel fields completition of false
  */
 void waitForCompletition(struct channel *channels, u_int32_t nChannels, bool checkChannels) {
-    u_int32_t i, j;
+    u_int32_t i;
+    size_t j;
     bool elapsed = false, allDone = false;
     epicsTimeStamp timeoutNow, timeout;
     size_t nFields = noFields;
@@ -1223,8 +1200,8 @@ void waitForCompletition(struct channel *channels, u_int32_t nChannels, bool che
         // check for callback completition
         allDone=true;
         for (i=0; i < nChannels; ++i) {
-            if (checkChannels) allDone &= channels[i].base.done || channels[i].base.connectionState != CA_OP_CONN_UP;   // ignore disconnected channels
-            else for (j=0; j < nFields; ++j) allDone &= channels[i].fields[j].done || channels[i].fields[j].connectionState != CA_OP_CONN_UP;   // ignore disconnected field channels
+            if (checkChannels) allDone &= channels[i].base.done || channels[i].base.connectionState == CA_OP_CONN_DOWN;   // ignore disconnected channels
+            else for (j=0; j < nFields; ++j) allDone &= channels[i].fields[j].done || channels[i].fields[j].connectionState == CA_OP_CONN_DOWN;   // ignore disconnected field channels
         }
     }
     // reset completition flags
@@ -1237,8 +1214,9 @@ void waitForCompletition(struct channel *channels, u_int32_t nChannels, bool che
 bool caRequest(struct channel *channels, u_int32_t nChannels) {
 //sends get or put requests. ca_get or ca_put are called multiple times, depending on the tool. The reading,
 //parsing and printing of returned data is performed in callbacks.
-    int status=-1;
-    u_int32_t i, j;
+    int status = -1;
+    u_int32_t i;
+    unsigned long j;
 
     for(i=0; i < nChannels; i++) {
         if (channels[i].base.connectionState != CA_OP_CONN_UP) {//skip disconnected channels
@@ -1248,8 +1226,8 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
         if (arguments.tool == caget) {
             status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].base.id, caReadCallback, &channels[i]);
         }
-        else if (arguments.tool == caput || arguments.tool == caputq){
-            long baseType = channels[i].type % (LAST_TYPE+1);   // use naked dbr_xx type for put
+        else if (arguments.tool == caput || arguments.tool == caputq) {
+            int32_t baseType = channels[i].type % (LAST_TYPE+1);   // use naked dbr_xx type for put
             void *input = callocMustSucceed(channels[i].inNelm, dbr_size[baseType], "request input");
             int base = 0;   // used for number conversion in strto* functions
             char *endptr;   // used in strto* functions
@@ -1412,10 +1390,10 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
 bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
 //this function does all the work for caInfo tool. Reads channel data using ca_get and then prints.
     int status;
-    u_int32_t i,j;
+    u_int32_t i, j;
 
     bool readAccess, writeAccess;
-    size_t nFields = noFields;
+    u_int32_t nFields = noFields;
     const char *delimeter = "-------------------------------";
 
     for(i=0; i < nChannels; i++){
@@ -1465,7 +1443,7 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         //start printing
         fputc('\n',stdout);
         fputc('\n',stdout);
-        printf("%s\n%s\n", delimeter, channels[i].base.name);														//name
+        printf("%s\n%s\n", delimeter, channels[i].base.name);                                          //name
         if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);          //description
         printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].base.id)));                     //field type
         printf("\tNumber of elements: %ld\n", channels[i].count);                                               //number of elements
@@ -1485,66 +1463,66 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         switch (channels[i].type){
         case DBR_CTRL_STRING:
             fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n", \
-                    epicsAlarmConditionStrings[((struct dbr_sts_string *)data)->status], \
-                    epicsAlarmSeverityStrings[((struct dbr_sts_string *)data)->severity]);		//status and severity
+            printf("\tAlarm status: %s, severity: %s\n",
+                    epicsAlarmConditionStrings[((struct dbr_sts_string *)data)->status],
+                    epicsAlarmSeverityStrings[((struct dbr_sts_string *)data)->severity]);      //status and severity
             break;
         case DBR_CTRL_INT://and short
-            printf("\tUnits: %s\n", ((struct dbr_ctrl_int *)data)->units);					//units
+            printf("\tUnits: %s\n", ((struct dbr_ctrl_int *)data)->units);            	//units
             fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n", \
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_int *)data)->status], \
-                    epicsAlarmSeverityStrings[((struct dbr_ctrl_int *)data)->severity]);		//status and severity
+            printf("\tAlarm status: %s, severity: %s\n",
+                    epicsAlarmConditionStrings[((struct dbr_ctrl_int *)data)->status],
+                    epicsAlarmSeverityStrings[((struct dbr_ctrl_int *)data)->severity]);      //status and severity
             fputc('\n',stdout);
             printf("\tWarning\tupper limit: %" PRId16"\n\t\tlower limit: %"PRId16"\n",
                     ((struct dbr_ctrl_int *)data)->upper_warning_limit, ((struct dbr_ctrl_int *)data)->lower_warning_limit); //warning limits
-            printf("\tAlarm\tupper limit: %" PRId16"\n\t\tlower limit: %" PRId16"\n", \
+            printf("\tAlarm\tupper limit: %" PRId16"\n\t\tlower limit: %" PRId16"\n",
                     ((struct dbr_ctrl_int *)data)->upper_alarm_limit, ((struct dbr_ctrl_int *)data)->lower_alarm_limit); //alarm limits
             printf("\tControl\tupper limit: %"PRId16"\n\t\tlower limit: %"PRId16"\n", ((struct dbr_ctrl_int *)data)->upper_ctrl_limit,\
-                    ((struct dbr_ctrl_int *)data)->lower_ctrl_limit);							//control limits
-            printf("\tDisplay\tupper limit: %"PRId16"\n\t\tower limit: %"PRId16"\n", ((struct dbr_ctrl_int *)data)->upper_disp_limit,\
-                    ((struct dbr_ctrl_int *)data)->lower_disp_limit);							//display limits
+                    ((struct dbr_ctrl_int *)data)->lower_ctrl_limit);                  	//control limits
+            printf("\tDisplay\tupper limit: %"PRId16"\n\t\tower limit: %"PRId16"\n",
+                   ((struct dbr_ctrl_int *)data)->upper_disp_limit, ((struct dbr_ctrl_int *)data)->lower_disp_limit);                  	//display limits
             break;
         case DBR_CTRL_FLOAT:
             printf("\tUnits: %s\n", ((struct dbr_ctrl_float *)data)->units);
             fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n", \
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_float *)data)->status], \
+            printf("\tAlarm status: %s, severity: %s\n",
+                    epicsAlarmConditionStrings[((struct dbr_ctrl_float *)data)->status],
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_float *)data)->severity]);
             printf("\n");
-            printf("\tWarning\tupper limit: %f\n\t\tlower limit: %f\n", \
+            printf("\tWarning\tupper limit: %f\n\t\tlower limit: %f\n",
                     ((struct dbr_ctrl_float *)data)->upper_warning_limit, ((struct dbr_ctrl_float *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %f\n\t\tlower limit: %f\n", \
+            printf("\tAlarm\tupper limit: %f\n\t\tlower limit: %f\n",
                     ((struct dbr_ctrl_float *)data)->upper_alarm_limit, ((struct dbr_ctrl_float *)data)->lower_alarm_limit);
-            printf("\tControl\tupper limit: %f\n\t\tlower limit: %f\n", ((struct dbr_ctrl_float *)data)->upper_ctrl_limit,\
-                    ((struct dbr_ctrl_float *)data)->lower_ctrl_limit);
-            printf("\tDisplay\tupper limit: %f\n\t\tlower limit: %f\n", ((struct dbr_ctrl_float *)data)->upper_disp_limit,\
-                    ((struct dbr_ctrl_float *)data)->lower_disp_limit);
+            printf("\tControl\tupper limit: %f\n\t\tlower limit: %f\n",
+                    ((struct dbr_ctrl_float *)data)->upper_ctrl_limit, ((struct dbr_ctrl_float *)data)->lower_ctrl_limit);
+            printf("\tDisplay\tupper limit: %f\n\t\tlower limit: %f\n",
+                    ((struct dbr_ctrl_float *)data)->upper_disp_limit, ((struct dbr_ctrl_float *)data)->lower_disp_limit);
             fputc('\n',stdout);
             printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_float *)data)->precision);
             printf("\tRISC alignment: %"PRId16"\n",((struct dbr_ctrl_float *)data)->RISC_pad);
             break;
         case DBR_CTRL_ENUM:
             fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n", \
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_enum *)data)->status], \
+            printf("\tAlarm status: %s, severity: %s\n",
+                    epicsAlarmConditionStrings[((struct dbr_ctrl_enum *)data)->status],
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_enum *)data)->severity]);
 
             printf("\tNumber of enum strings: %"PRId16"\n", ((struct dbr_ctrl_enum *)data)->no_str);
-            for (j=0; j<((struct dbr_ctrl_enum *)data)->no_str; ++j){
-                printf("\tstring %d: %s\n", j, ((struct dbr_ctrl_enum *)data)->strs[j]);
+            for (j=0; j < (u_int32_t)(((struct dbr_ctrl_enum *)data)->no_str); ++j) {
+                printf("\tstring %"PRIu32": %s\n", j, ((struct dbr_ctrl_enum *)data)->strs[j]);
             }
             break;
         case DBR_CTRL_CHAR:
             printf("\tUnits: %s\n", ((struct dbr_ctrl_char *)data)->units);
             fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n", \
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_char *)data)->status], \
+            printf("\tAlarm status: %s, severity: %s\n",
+                    epicsAlarmConditionStrings[((struct dbr_ctrl_char *)data)->status],
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_char *)data)->severity]);
             printf("\n");
-            printf("\tWarning\tupper limit: %c\n\t\tlower limit: %c\n", \
+            printf("\tWarning\tupper limit: %c\n\t\tlower limit: %c\n",
                     ((struct dbr_ctrl_char *)data)->upper_warning_limit, ((struct dbr_ctrl_char *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %c\n\t\tlower limit: %c\n", \
+            printf("\tAlarm\tupper limit: %c\n\t\tlower limit: %c\n",
                     ((struct dbr_ctrl_char *)data)->upper_alarm_limit, ((struct dbr_ctrl_char *)data)->lower_alarm_limit);
             printf("\tControl\tupper limit: %c\n\t\tlower limit: %c\n", ((struct dbr_ctrl_char *)data)->upper_ctrl_limit,\
                     ((struct dbr_ctrl_char *)data)->lower_ctrl_limit);
@@ -1554,13 +1532,13 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         case DBR_CTRL_LONG:
             printf("\tUnits: %s\n", ((struct dbr_ctrl_long *)data)->units);
             fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n", \
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_long *)data)->status], \
+            printf("\tAlarm status: %s, severity: %s\n",
+                    epicsAlarmConditionStrings[((struct dbr_ctrl_long *)data)->status],
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_long *)data)->severity]);
             fputc('\n',stdout);
-            printf("\tWarning\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n", \
+            printf("\tWarning\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n",
                     ((struct dbr_ctrl_long *)data)->upper_warning_limit, ((struct dbr_ctrl_long *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n", \
+            printf("\tAlarm\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n",
                     ((struct dbr_ctrl_long *)data)->upper_alarm_limit, ((struct dbr_ctrl_long *)data)->lower_alarm_limit);
             printf("\tControl\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n", ((struct dbr_ctrl_long *)data)->upper_ctrl_limit,\
                     ((struct dbr_ctrl_long *)data)->lower_ctrl_limit);
@@ -1570,13 +1548,13 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         case DBR_CTRL_DOUBLE:
             printf("\tUnits: %s\n", ((struct dbr_ctrl_double *)data)->units);
             fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n", \
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_double *)data)->status], \
+            printf("\tAlarm status: %s, severity: %s\n",
+                    epicsAlarmConditionStrings[((struct dbr_ctrl_double *)data)->status],
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_double *)data)->severity]);
             fputc('\n',stdout);
-            printf("\tWarning\tupper limit: %f\n\t\tlower limit: %f\n", \
+            printf("\tWarning\tupper limit: %f\n\t\tlower limit: %f\n",
                     ((struct dbr_ctrl_double *)data)->upper_warning_limit, ((struct dbr_ctrl_double *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %f\n\t\tlower limit: %f\n", \
+            printf("\tAlarm\tupper limit: %f\n\t\tlower limit: %f\n",
                     ((struct dbr_ctrl_double *)data)->upper_alarm_limit, ((struct dbr_ctrl_double *)data)->lower_alarm_limit);
             printf("\tControl\tupper limit: %f\n\t\tlower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_ctrl_limit,\
                     ((struct dbr_ctrl_double *)data)->lower_ctrl_limit);
@@ -1620,41 +1598,40 @@ void channelStatusCallback(struct connection_handler_args args){
     struct channel *ch = ( struct channel * ) ca_puser ( args.chid );
     int status;
 
+    if (ch->base.connectionState == CA_OP_OTHER) {
+        ch->base.done = true;   // set channel to done only on first connection, not when connection goes up / down
+        if (arguments.tool == camon || arguments.tool == cawait) numMonitorUpdates++;   // connection callback does not count towards number of updates.
+    }
+
     ch->base.connectionState = args.op;
 
     if ( args.op == CA_OP_CONN_UP ) {
-        if (!ch->base.done){
-            //determine channel properties
-
-            //how many array elements to request
-            ch->count = ca_element_count ( ch->base.id );
-            if (arguments.outNelm == -1) ch->outNelm = ch->count;
-            else if(arguments.outNelm > 0 && arguments.outNelm < ch->count) ch->outNelm = arguments.outNelm;
-            else{
-                ch->outNelm = ch->count;
-                printf("Invalid number of requested elements to read (%ld) from %s - reading maximum number of elements (%ld).\n", arguments.outNelm, ch->base.name, ch->count);
-            }
-
-            //request type
-            if (arguments.dbrRequestType == -1){   //if DBR type not specified, decide based on desired details
-                if (arguments.time || arguments.date || arguments.timestamp){
-                    //time specified, use TIME_
-                    if (arguments.str && ca_field_type(ch->base.id) == DBF_ENUM){
-                        //if enum && s, use time_string
-                        ch->type = DBR_TIME_STRING;
-                    }
-                    else{ //else use time_native
-                        ch->type = dbf_type_to_DBR_TIME(ca_field_type(ch->base.id));
-                    }
-                }
-                else{// use GR_ by default
-                    ch->type = dbf_type_to_DBR_GR(ca_field_type(ch->base.id));
-                }
-            }
-            else ch->type = arguments.dbrRequestType;
-
-            ch->base.done = true;
+        //how many array elements to request
+        ch->count = ca_element_count ( ch->base.id );
+        if (arguments.outNelm == -1) ch->outNelm = ch->count;
+        else if(arguments.outNelm > 0 && (unsigned long) arguments.outNelm < ch->count) ch->outNelm = (unsigned long) arguments.outNelm;
+        else{
+            ch->outNelm = ch->count;
+            printf("Invalid number of requested elements to read (%"PRId64") from %s - reading maximum number of elements (%lu).\n", arguments.outNelm, ch->base.name, ch->count);
         }
+
+        //request type
+        if (arguments.dbrRequestType == -1){   //if DBR type not specified, decide based on desired details
+            if (arguments.time || arguments.date || arguments.timestamp){
+                //time specified, use TIME_
+                if (arguments.str && ca_field_type(ch->base.id) == DBF_ENUM){
+                    //if enum && s, use time_string
+                    ch->type = DBR_TIME_STRING;
+                }
+                else{ //else use time_native
+                    ch->type = dbf_type_to_DBR_TIME(ca_field_type(ch->base.id));
+                }
+            }
+            else{// use GR_ by default
+                ch->type = dbf_type_to_DBR_GR(ca_field_type(ch->base.id));
+            }
+        }
+        else ch->type = arguments.dbrRequestType;
 
         //if units, issue get request for metadata. String and enum records don't have units, so skip.
         int32_t baseType = ca_field_type(ch->base.id);
@@ -1729,7 +1706,7 @@ void caCustomExceptionHandler( struct exception_handler_args args) {
     }
     else {
         sprintf ( buf,
-                "%s in %s - with request chan=%s op=%ld data type=%s count=%ld",
+                "%s in %s - with request chanel=%s operation=%ld data type=%s count=%ld",
                 errorTimestamp, args.ctx, pName, args.op, dbr_type_to_text ( args.type ), args.count );
         ca_signal ( args.stat, buf );
     }
@@ -1806,8 +1783,9 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
     return true;
 }
 
-bool caDisconnect(struct channel * channels, int nChannels){
-    int status, i;
+bool caDisconnect(struct channel * channels, u_int32_t nChannels){
+    int status;
+    u_int32_t i;
     bool success = true;
     size_t nFields = noFields;
 
@@ -1905,20 +1883,20 @@ int main ( int argc, char ** argv )
         {"bin",     	no_argument,        0,  0 },	//display as bin
         {"oct",     	no_argument,        0,  0 },	//display as oct
         {"plain",   	no_argument,        0,  0 },	//ignore formatting switches
-        {"stat",    	no_argument, 		0,  0 },	//status and severity on
-        {"nostat",  	no_argument,  		0,  0 },	//status and severity off
+        {"stat",    	no_argument,       0,  0 },	//status and severity on
+        {"nostat",  	no_argument,        0,  0 },	//status and severity off
         {"noname",  	no_argument,        0,  0 },	//hide name
         {"nounit",  	no_argument,        0,  0 },	//hide units
         {"timestamp",	required_argument, 	0,  0 },	//timestamp type r,u,c
-        {"localdate",	no_argument, 		0,  0 },	//client date
-        {"time",		no_argument, 		0,  0 },	//server time
-        {"localtime",	no_argument, 		0,  0 },	//client time
-        {"date",		no_argument, 		0,  0 },	//server date
+        {"localdate",	no_argument,       0,  0 },	//client date
+        {"time",      no_argument,       0,  0 },	//server time
+        {"localtime",	no_argument,       0,  0 },	//client time
+        {"date",      no_argument,       0,  0 },	//server date
         {"outNelm", 	required_argument,	0,  0 },	//number of array elements - read
-        {"outSep",		required_argument,	0,  0 },	//array field separator - read
-        {"inSep",		required_argument,	0,  0 },	//array field separator - write
-        {"nord",		no_argument,		0,  0 },	//display number of array elements
-        {"tool",		required_argument, 	0,	0 },	//tool
+        {"outSep",      required_argument,	0,  0 },	//array field separator - read
+        {"inSep",      required_argument,	0,  0 },	//array field separator - write
+        {"nord",      no_argument,      0,  0 },	//display number of array elements
+        {"tool",      required_argument, 	0,	0 },	//tool
         {"timeout",   	required_argument, 	0,	0 },	//timeout
         {"dbrtype",   	required_argument, 	0,	0 },	//dbrtype
         {0,         	0,                 	0,  0 }
@@ -1941,7 +1919,7 @@ int main ( int argc, char ** argv )
         case 'g':
             ;//declaration must not follow label
             int32_t digits;
-            if (sscanf(optarg, "%d", &digits) != 1){
+            if (sscanf(optarg, "%"SCNd32, &digits) != 1){
                 fprintf(stderr,
                         "Invalid precision argument '%s' "
                         "for option '-%c' - ignored.\n", optarg, opt);
@@ -1966,7 +1944,7 @@ int main ( int argc, char ** argv )
             arguments.time = true;
             break;
         case 'n':	//stop monitor after numUpdates
-            if (sscanf(optarg, "%ld", &arguments.numUpdates) != 1) {
+            if (sscanf(optarg, "%"SCNd64, &arguments.numUpdates) != 1) {
                 fprintf(stderr, "Invalid argument '%s' for option '-%c' - ignored.\n", optarg, opt);
                 arguments.numUpdates = -1;
             }
@@ -2017,12 +1995,12 @@ int main ( int argc, char ** argv )
                 break;
             case 3:   // prec
                 if (arguments.dblFormatType == '\0') { // formating with -f -g -e has priority
-                    if (sscanf(optarg, "%d", &arguments.prec) != 1){
+                    if (sscanf(optarg, "%"SCNd32, &arguments.prec) != 1){
                         fprintf(stderr,
                                 "Invalid precision argument '%s' "
                                 "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                     } else if (arguments.prec < 0) {
-                       fprintf(stderr, "Precision %d for option '%s' "
+                       fprintf(stderr, "Precision %"PRId32" for option '%s' "
                                "out of range - ignored.\n", arguments.prec, long_options[opt_long].name);
                        arguments.prec = -1;
                     }
@@ -2081,7 +2059,7 @@ int main ( int argc, char ** argv )
                 arguments.date = true;
                 break;
             case 17:   // outNelm - number of elements - read
-                if (sscanf(optarg, "%ld", &arguments.outNelm) != 1){
+                if (sscanf(optarg, "%"SCNd64, &arguments.outNelm) != 1){
                     fprintf(stderr, "Invalid count argument '%s' "
                             "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                 }
@@ -2152,7 +2130,7 @@ int main ( int argc, char ** argv )
                 }
                 break;
             case 23: //dbrtype
-                if (sscanf(optarg, "%d", &arguments.dbrRequestType) != 1)     // type was not given as an integer
+                if (sscanf(optarg, "%"SCNd32, &arguments.dbrRequestType) != 1)     // type was not given as an integer
                 {
                     dbr_text_to_type(optarg, arguments.dbrRequestType);
                     if (arguments.dbrRequestType == -1)                   // Invalid? Try prefix DBR_
@@ -2406,13 +2384,13 @@ int main ( int argc, char ** argv )
         success = cainfoRequest(channels, nChannels);
     }
     else if(success && (arguments.tool == camon || arguments.tool == cawait)) {
-        monitorLoop(channels, nChannels);
+        monitorLoop();
     }
     else {
         if (success) success = caRequest(channels, nChannels);
     }
 
-    success = caDisconnect(channels, nChannels);
+    success &= caDisconnect(channels, nChannels);
 
     ca_context_destroy();
 
