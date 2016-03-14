@@ -5,18 +5,35 @@
 record(calc, "$(P):TEST_1") {
 	field(VAL,"0")
 	field(INPA,"$(P):TEST_1")
-	field(CALC,"A+1")
+	field(CALC,"A+0.1")
 	field(SCAN,".1 second")
 }
 
 record(ai, "$(P):TEST_1-AI"){
 	field(INP, "$(P):TEST_1")
 	field(SCAN,".1 second")
+	field(EGU, "ds")
+}
+
+record(calc, "$(P):CALC"){
+	field(INPA, "$(P):CALC")
+	field(CALC, "A+1")
+	field(VAL,  "1")
+}
+
+record(calcout, "$(P):CALC_BI"){
+	field(SCAN, "1 second")
+	field(INPA, "$(P):TEST_1-BI")
+	field(CALC, "!A")
+	field(OUT, "$(P):TEST_1-BI PP")
 }
 
 record(bi, "$(P):TEST_1-BI"){
-	field(INP, "$(P):TEST_1")
-	field(SCAN,".1 second")
+	field(VAL,  "1")
+	field(ONAM, "On")
+	field(ZNAM, "Off")
+	field(ZSV,  "NO_ALARM")
+	field(OSV,  "MINOR")
 }
 
 record(longin, "$(P):TEST_1-LI"){
@@ -62,9 +79,58 @@ record(waveform, "$(P):TEST_WVF-LONG")
 	field(FTVL, "LONG")	
 }
 
+record(waveform, "$(P):TEST_WVF-CHAR")
+{
+	field(SCAN, "Passive")
+	field(NELM, "10")	
+	field(FTVL, "CHAR")	
+	field(PINI, "YES")
+}
+
 record(waveform, "$(P):TEST_WVF-SHORT")
 {
 	field(SCAN, "Passive")
 	field(NELM, "10")	
 	field(FTVL, "SHORT")	
+}
+
+record(waveform, "$(P):TEST_WVF-STRING")
+{
+	field(SCAN, "Passive")
+	field(NELM, "10")	
+	field(FTVL, "STRING")	
+}
+
+record(waveform, "$(P):TEST_WVF-FLOAT")
+{
+	field(SCAN, "Passive")
+	field(NELM, "10")	
+	field(FTVL, "FLOAT")	
+}
+
+record(mbbo, "$(P):TEST_MBBO") {
+    field(DESC, "Select RF 1 event freq")
+    field(VAL,  "1")
+    field(PINI, "YES")
+    field(ZRVL, "1")
+    field(ONVL, "2")
+    field(TWVL, "3")
+    field(THVL, "4")
+    field(FRVL, "6")
+    field(FVVL, "10")
+    field(SXVL, "12")
+    field(SVVL, "20")
+    field(EIVL, "40")
+    field(NIVL, "100")
+
+    field(ZRST, "100.00 Hz")
+    field(ONST, "50.00 Hz")
+    field(TWST, "33.33 Hz")
+    field(THST, "25.00 Hz")
+    field(FRST, "16.66 Hz")
+    field(FVST, "10.00 Hz")
+    field(SXST, "8.33 Hz")
+    field(SVST, "5.00 Hz")
+    field(EIST, "2.50 Hz")
+    field(NIST, "1.00 Hz")
 }
