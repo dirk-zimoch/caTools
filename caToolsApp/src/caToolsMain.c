@@ -250,7 +250,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fprintf(stream, "\nUsage: %s [flags] <pv> <value> [<pv> <value> ...]\n", programName);
     }
     else if (tool == cainfo  ) {
-        fprintf(stream, "\nUsage: %s <pv> [<pv> ...]\n", programName);
+        fprintf(stream, "\nUsage: %s [flags] <pv> [<pv> ...]\n", programName);
     }
     else { //tool unknown
         fprintf(stream, "\nUnknown tool. Try %s -tool with any of the following arguments: caget, caput, cagets, "\
