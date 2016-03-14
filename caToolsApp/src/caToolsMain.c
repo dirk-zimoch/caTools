@@ -15,7 +15,6 @@
 #include "cadef.h"
 #include "alarmString.h"
 #include "alarm.h"
-#include <epicsEvent.h>
 
 
 #define CA_PRIORITY CA_PRIORITY_MIN
@@ -231,10 +230,13 @@ epicsTimeStamp timeoutTime;      	//when to stop monitoring (-timeout)
 bool runMonitor;                //indicates when to stop monitoring according to -timeout, -n or cawait condition is true
 u_int32_t numMonitorUpdates;    //counts updates needed by -n
 
-epicsEventId unitsLock; // semaphore for locking access to outUnits (from caReadCallback and getStaticUnitsCallback)
 
-
-
+/**
+ * @brief usage prints the usage of the tools
+ * @param stream is the output stream for printing
+ * @param tool is the selected tool
+ * @param programName is the command line name of the program
+ */
 void usage(FILE *stream, enum tool tool, char *programName){
 
     //usage:
@@ -394,20 +396,30 @@ void usage(FILE *stream, enum tool tool, char *programName){
 }
 
 
-static inline void clearStr(char *str){
-//clears input string str
+/**
+ * @brief clearStr cleares a string
+ * @param str the string to clear
+ */
+static inline void clearStr(char *str) {
     str[0] = '\0';
 }
 
-
-static bool isStrEmpty(char *str){
-//returns true is the input string is empty
+/**
+ * @brief isStrEmpty checks if provided string is empty
+ * @param str the string to check
+ * @return true if empty, false otherwise
+ */
+static bool isStrEmpty(char *str) {
     return str[0] == '\0';
 }
 
-
-bool removePrefix (char **data, char const *prefix)
-{
+/**
+ * @brief removePrefix removes prefix from data and returns true if successfull
+ * @param data is the data to remove the prefix from
+ * @param prefix is the prefix to remove from data
+ * @return true if prefix was found and removed, false otherwise
+ */
+bool removePrefix (char **data, char const *prefix) {
     size_t pos = 0;
     while (prefix[pos] != '\0') {
         if ((*data)[pos] != prefix[pos]) {
@@ -885,7 +897,7 @@ severity = ((struct T *)args.dbr)->severity;
 #define timestamp_get(T) \
     timestampRead[ch->i] = ((struct T *)args.dbr)->stamp;\
     validateTimestamp(&timestampRead[ch->i], ch->base.name);
-#define units_get_cb(T) epicsEventWait(unitsLock); clearStr(outUnits[ch->i]); sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units); epicsEventSignal(unitsLock)
+#define units_get_cb(T) clearStr(outUnits[ch->i]); sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
 #define precision_get(T) precision = (((struct T *)args.dbr)->precision);
 
 static void caReadCallback (evargs args){
@@ -1880,7 +1892,6 @@ int main ( int argc, char ** argv )
     struct channel *channels;
 
     runMonitor = true;
-    unitsLock = epicsEventMustCreate(epicsEventFull);
 
     if (endsWith(argv[0],"caget")) arguments.tool = caget;
     if (endsWith(argv[0],"caput")) arguments.tool = caput;
