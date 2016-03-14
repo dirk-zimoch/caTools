@@ -1222,7 +1222,7 @@ void waitForCompletition(struct channel *channels, u_int32_t nChannels, bool che
         // check for timeout
         epicsTimeGetCurrent(&timeoutNow);
         if (epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
-            printf("Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
+            warnPrint("Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
             elapsed = true;
         }
 
@@ -1631,7 +1631,6 @@ void channelStatusCallback(struct connection_handler_args args){
 
     if (ch->base.connectionState == CA_OP_OTHER) {
         ch->base.done = true;   // set channel to done only on first connection, not when connection goes up / down
-        if (arguments.tool == camon || arguments.tool == cawait) numMonitorUpdates++;   // connection callback does not count towards number of updates.
     }
 
     ch->base.connectionState = args.op;
@@ -1769,7 +1768,10 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
     waitForCompletition(channels, nChannels, true);
 
     for (i=0; i < nChannels; ++i) {
-        if (channels[i].base.connectionState != CA_OP_CONN_UP) printf("Process variable %s not connected.\n", channels[i].base.name);
+        if (channels[i].base.connectionState != CA_OP_CONN_UP) {
+            printf("Process variable %s not connected.\n", channels[i].base.name);
+            if ((arguments.tool == camon || arguments.tool == cawait)) numMonitorUpdates++;   // connection callback does not count towards number of updates.
+        }
 
         if (arguments.tool == camon || arguments.tool == cawait) {
             //create subscription
