@@ -15,220 +15,10 @@
 #include "cadef.h"
 #include "alarmString.h"
 #include "alarm.h"
+#include "caToolsTypes.h"
+#include "caToolsGlobals.h"
+#include "caToolsOutput.h"
 
-
-#define CA_PRIORITY CA_PRIORITY_MIN
-#define CA_DEFAULT_TIMEOUT 1
-
-// warning and error printout
-#define VERBOSITY_ERR           2
-#define VERBOSITY_WARN          3
-#define VERBOSITY_ERR_PERIODIC  4
-#define VERBOSITY_WARN_PERIODIC 5
-
-#define customPrint(level,output,M, ...) if(arguments.verbosity >= level) fprintf(output, M,##__VA_ARGS__)
-#define warnPrint(M, ...) customPrint(VERBOSITY_WARN, stdout, "Warning: "M, ##__VA_ARGS__)
-#define warnPeriodicPrint(M, ...) customPrint(VERBOSITY_WARN_PERIODIC, stdout, "Warning: "M, ##__VA_ARGS__)
-#define errPrint(M, ...) customPrint(VERBOSITY_ERR, stderr, "Error: "M, ##__VA_ARGS__)
-#define errPeriodicPrint(M, ...) customPrint(VERBOSITY_ERR_PERIODIC, stderr, "Error: "M, ##__VA_ARGS__)
-
-enum roundType {
-    roundType_no_rounding = -1,
-    roundType_round,
-    roundType_ceil,
-    roundType_floor
-};
-
-enum tool {
-    tool_unknown = 0,
-    caget,
-    camon,
-    caput,
-    caputq,
-    cagets,
-    cado,
-    cawait,
-    cainfo
-};
-
-struct arguments {
-   double caTimeout;        //ca timeout
-   int32_t  dbrRequestType; //dbr request type
-   bool num;                //same as -int
-   enum roundType round;	//type of rounding: round(), ceil(), floor()
-   int32_t prec;            //precision
-   bool hex;                //display as hex
-   bool bin;                //display as bin
-   bool oct;                //display as oct
-   bool plain;              //ignore formatting switches
-   char dblFormatType;     	//format type for decimal numbers (see -e -f -g option)
-   bool str;                //try to interpret values as strings
-   bool stat;               //status and severity on
-   bool nostat;             //status and severity off
-   bool noname;             //hide name
-   bool nounit;             //hide units
-   char timestamp;      	//timestamp type ('r', 'u' or 'c')
-   double timeout;      	//cawait timeout
-   bool date;               //server date
-   bool localdate;      	//client date
-   bool time;               //server time
-   bool localtime;      	//client time
-   char fieldSeparator;     //array field separator for output
-   char inputSeparator;     //array field separator for input
-   enum tool tool;      	//tool type
-   int64_t numUpdates;      //number of monitor updates after which to quit
-   bool parseArray;         //use inputSeparator to parse array
-   int64_t outNelm;         //number of array elements to read
-   bool nord;               //display number of array elements
-   u_int16_t verbosity;     //verbosity level: see VERBOSITY_* defines
-};
-
-//intialize arguments
-struct arguments arguments = {
-        .caTimeout = CA_DEFAULT_TIMEOUT,
-        .dbrRequestType = -1,	//decide type based on requested data
-        .num = false,
-        .round = roundType_no_rounding,
-        .prec = -1,	//use precision from the record
-        .hex = false,
-        .bin = false,
-        .oct = false,
-        .plain = false,
-        .dblFormatType = '\0',
-        .str = false,
-        .stat = false,
-        .nostat = false,
-        .noname = false,
-        .nounit = false,
-        .timestamp = '\0',
-        .timeout = -1,	//no timeout for cawait
-        .date = false,
-        .localdate = false,
-        .time = false,
-        .localtime = false,
-        .fieldSeparator = ' ' ,
-        .inputSeparator = ' ',
-        .tool = tool_unknown,
-        .numUpdates = -1,	//never exit
-        .parseArray = false,
-        .outNelm = -1,	//number of elements equal to field count
-        .nord = false,
-        .verbosity = VERBOSITY_ERR // show errors
-};
-
-enum operator {	//possible conditions for cawait
-    operator_gt = 1,
-    operator_gte,
-    operator_lt,
-    operator_lte,
-    operator_eq,
-    operator_neq,
-    operator_in,
-    operator_out
-};
-
-
-struct field {
-    char *name;             // the name of the channel.field
-    chid id;                // the id of the channel.field
-    long connectionState;   // channel connected/disconnected
-    bool created;           // channel creation for the field was successfull
-    bool done;              // indicates if callback has finished processing this channel
-};
-
-const char * fields[] = {
-    ".DESC",
-    ".HHSV",
-    ".HSV",
-    ".LSV",
-    ".LLSV",
-    ".UNSV",
-    ".COSV",
-    ".ZRSV",
-    ".ONSV",
-    ".TWSV",
-    ".THSV",
-    ".FRSV",
-    ".FVSV",
-    ".SXSV",
-    ".SVSV",
-    ".EISV",
-    ".NISV",
-    ".TESV",
-    ".ELSV",
-    ".TVSV",
-    ".TTSV",
-    ".FTSV",
-    ".FFSV"
-};
-#define noFields (sizeof (fields) / sizeof (const char *))
-
-enum channelField {
-    field_desc = 0,
-    field_hhsv,
-    field_hsv,
-    field_lsv,
-    field_llsv,
-    field_unsv,
-    field_cosv,
-    field_zrsv,
-    field_onsv,
-    field_twsv,
-    field_thsv,
-    field_frsv,
-    field_fvsv,
-    field_sxsv,
-    field_svsv,
-    field_eisv,
-    field_nisv,
-    field_tesv,
-    field_elsv,
-    field_tvsv,
-    field_ttsv,
-    field_ftsv,
-    field_ffsv
-};
-
-struct channel {
-    struct field    base;       // the name of the channel
-    struct field    proc;       // sibling channel for writing to proc field
-    char           *name;       // the name of the channel
-    struct field    fields[noFields];    // sibling channels for fields (description, severities, ...)
-
-    long            type;       // dbr type
-    unsigned long   count;      // element count
-    unsigned long   inNelm;     // requested number of elements for writing
-    unsigned long   outNelm;    // requested number of elements for reading
-    u_int32_t       i;          // process variable id
-    char      	  **writeStr;   // value(s) to be written
-    enum operator	conditionOperator; //cawait operator
-    double       	conditionOperands[2]; //cawait operands
-};
-
-
-
-
-//output strings
-// TODO: most of theese should go in struct channel
-static u_int32_t const LEN_TIMESTAMP = 50;
-static u_int32_t const LEN_RECORD_NAME = 60;
-static u_int32_t const LEN_SEVSTAT = 30;
-static u_int32_t const LEN_UNITS = 20+MAX_UNITS_SIZE;
-static u_int32_t const LEN_RECORD_FIELD = 4;
-char *errorTimestamp;   // timestamp used in caCustomExceptionHandler
-char **outDate,**outTime, **outSev, **outStat, **outUnits, **outLocalDate, **outLocalTime;
-char **outTimestamp; //relative timestamps for camon
-
-
-//timestamps needed by -timestamp
-epicsTimeStamp *timestampRead;      //timestamps of received data (per channel)
-epicsTimeStamp programStartTime;	//timestamp indicating program start
-epicsTimeStamp *lastUpdate;      	//timestamp indicating last update per channel
-bool *firstUpdate;            	//indicates that lastUpdate has not been initialized
-epicsTimeStamp timeoutTime;      	//when to stop monitoring (-timeout)
-
-bool runMonitor;                //indicates when to stop monitoring according to -timeout, -n or cawait condition is true
-u_int32_t numMonitorUpdates;    //counts updates needed by -n
 
 
 /**
@@ -563,11 +353,8 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
 }
 
 
-#define printBits(x) \
-    for (int32_t i = sizeof(x) * 8 - 1; i >= 0; i--) { \
-        fputc('0' + ((x >> i) & 1), stdout); \
-    }
 
+/*
 int printValue(evargs args, int32_t precision){
 //Parses the data fetched by ca_get callback according to the data type and formatting arguments.
 //The result is printed to stdout.
@@ -591,6 +378,24 @@ int printValue(evargs args, int32_t precision){
 
         switch (baseType) {
         case DBR_STRING:
+
+            /*
+              //  printf("%s\n", "TRUE");
+            printf("%s\n", (char*) value);
+            printf("%i\n", strlen((char*) value));
+            if(strlen((char*) value) >= MAX_STRING_SIZE -1){
+                    void * mydata;
+                    chid   mychid;
+                    char * name$ = malloc(strlen(((struct channel *)args.usr)->base.name)+2);
+                    strcpy(name$, ((struct channel *)args.usr)->base.name);
+                    strcat(name$, "$");
+                    SEVCHK(ca_create_channel(name$,NULL,NULL,10,&mychid),"ca_create_channel failure");
+
+                    SEVCHK(ca_pend_io(5.0),"ca_pend_io failure");
+                    //SEVCHK(ca_get(DBR_CHAR,mychid,mydata),"ca_get failure");
+                    //SEVCHK(ca_pend_io(5.0),"ca_pend_io failure");
+                    printf("OOOKKKK");
+            }*//*
             printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);    // TODO: is this always null-terminated?
             break;
         case DBR_FLOAT:
@@ -805,7 +610,7 @@ int printOutput(int i, evargs args, int32_t precision){
     return 0;
 }
 
-
+*/
 // the same as epicsTimeLessThan(), except it only checks if pLeft < pRight
 bool timeLessThan(const epicsTimeStamp *pLeft, const epicsTimeStamp *pRight) {
     return (pLeft->secPastEpoch < pRight->secPastEpoch || (pLeft->secPastEpoch == pRight->secPastEpoch && pLeft->nsec < pRight->nsec));
@@ -1139,7 +944,7 @@ static void caReadCallback (evargs args){
 
 
     //finish
-    if(shouldPrint) printOutput(ch->i, args, precision);
+    if(shouldPrint) printOutput(ch->i, args, precision, &arguments);
     ch->base.done = true;
 }
 
@@ -1254,6 +1059,9 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
 
         if (arguments.tool == caget) {
             status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].base.id, caReadCallback, &channels[i]);
+            // if (channels[i].type == DBR_STRING)
+                
+            //status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].base.id, caReadCallback, &channels[i]);
         }
         else if (arguments.tool == caput || arguments.tool == caputq) {
             int32_t baseType = channels[i].type % (LAST_TYPE+1);   // use naked dbr_xx type for put
@@ -1413,6 +1221,17 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
         waitForCompletition(channels, nChannels, true);
     }
 
+    chid   mychid;
+    SEVCHK(ca_create_channel("StrRecord.OUT$",NULL,NULL,10,&mychid),"ca_create_channel failure");
+    
+    SEVCHK(ca_pend_io(5.0),"ca_pend_io failure");
+    unsigned elementCount = ca_element_count ( mychid );
+    printf("%i\n", elementCount);
+    char * mydata=malloc(elementCount);
+    SEVCHK(ca_array_get(DBR_CHAR,elementCount,mychid,mydata),"ca_get failure");
+    SEVCHK(ca_pend_io(5.0),"ca_pend_io failure");
+    printf("%s\n", mydata);
+    printOut(&channels[0], &arguments);
     return success;
 }
 
@@ -1488,7 +1307,7 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         args.type = channels[i].type; //ca_field_type(channels[i].base.id);
         args.usr = &channels[i];
         printf("\tValue: ");
-        printValue(args, -1);
+        printValue(args, -1, &arguments);
         fputc('\n',stdout);
 
         switch (channels[i].type){
@@ -1883,6 +1702,7 @@ size_t truncate(char *argument) {
     }
     return length;
 }
+
 
 int main ( int argc, char ** argv )
 {//main function: reads arguments, allocates memory, calls ca* functions, frees memory and exits.
