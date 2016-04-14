@@ -4,6 +4,7 @@
 #include <math.h>
 
 #include "caToolsTypes.h"
+#include "caToolsUtils.h"
 #include "caToolsOutput.h"
 
 int printOut(struct channel *chan, arguments_T *arguments){
@@ -18,15 +19,6 @@ int printOut(struct channel *chan, arguments_T *arguments){
         fputc('0' + ((x >> i) & 1), stdout); \
     }
 
-/**
- * @brief isStrEmpty checks if provided string is empty
- * @param str the string to check
- * @return true if empty, false otherwise
- */
-static bool isStrEmpty(char *str) {
-    return str[0] == '\0';
-}
-
 int printValue(evargs args, int32_t precision, arguments_T *arguments){
 //Parses the data fetched by ca_get callback according to the data type and formatting arguments->
 //The result is printed to stdout.
@@ -37,6 +29,14 @@ int printValue(evargs args, int32_t precision, arguments_T *arguments){
 
     value = dbr_value_ptr(args.dbr, args.type);
     baseType = args.type % (LAST_TYPE+1);   // convert appropriate TIME, GR, CTRL,... type to basic one
+    struct channel *ch = (struct channel *)args.usr;
+    
+    //handle long strings
+
+    if(baseType == DBR_CHAR && (ca_field_type(ch->base.id)==DBF_STRING || arguments->str)){
+        printf("\"%.*s\"", (int) args.count, (char *) value); 
+        return 0;
+    }
 
     //loop over the whole array
 
@@ -50,7 +50,15 @@ int printValue(evargs args, int32_t precision, arguments_T *arguments){
 
         switch (baseType) {
         case DBR_STRING:
-            printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);    // TODO: is this always null-terminated?
+            // check if long string
+            if(ch->str$.created){
+                printf("\"%.*s\"", ca_element_count(ch->str$.id), (char *) ch->longStr); 
+            }else{
+                printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);    // TODO: is this always null-terminated?
+            }
+
+            
+
             break;
         case DBR_FLOAT:
         case DBR_DOUBLE:{
@@ -215,6 +223,35 @@ int printValue(evargs args, int32_t precision, arguments_T *arguments){
 int printOutput(int i, evargs args, int32_t precision, arguments_T *arguments){
 // prints global output strings corresponding to i-th channel.
 
+    struct channel *ch = (struct channel *)args.usr;
+    //do formating
+
+    //check alarm limits
+    if (arguments->stat || (!arguments->nostat && (ch->status != 0 || ch->severity != 0))) { //  display status/severity
+        if (ch->status <= lastEpicsAlarmCond) sprintf(outStat[ch->i],"STAT:%s", epicsAlarmConditionStrings[ch->status]); // strcpy(outStat[ch->i], epicsAlarmConditionStrings[ch->status]);
+        else sprintf(outStat[ch->i],"UNKNOWN: %u",ch->status);
+
+        if (ch->severity <= lastEpicsAlarmSev) sprintf(outSev[ch->i],"SEVR:%s", epicsAlarmSeverityStrings[ch->severity]);//strcpy(outSev[ch->i], epicsAlarmSeverityStrings[ch->]);
+        else sprintf(outSev[ch->i],"UNKNOWN: %u",ch->status);
+    }
+
+    if (args.type >= DBR_TIME_STRING && args.type <= DBR_TIME_DOUBLE){//otherwise we don't have it
+        //we assume that manually specifying dbr_time implies -time or -date.
+        if (arguments->date || arguments->dbrRequestType != -1) epicsTimeToStrftime(outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &timestampRead[ch->i]);
+        if (arguments->time || arguments->dbrRequestType != -1) epicsTimeToStrftime(outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &timestampRead[ch->i]);
+    }
+
+
+    //show local date or time?
+    if (arguments->localdate || arguments->localtime){
+        epicsTimeStamp localTime;
+        epicsTimeGetCurrent(&localTime);
+        //validateTimestamp(&localTime, "localTime");
+
+        if (arguments->localdate) epicsTimeToStrftime(outLocalDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &localTime);
+        if (arguments->localtime) epicsTimeToStrftime(outLocalTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &localTime);
+    }
+
     //if both local and server times are requested, clarify which is which
     bool doubleTime = (arguments->localdate || arguments->localtime) && (arguments->date || arguments->time);
     if (doubleTime){
@@ -240,7 +277,7 @@ int printOutput(int i, evargs args, int32_t precision, arguments_T *arguments){
     if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp)   printf("%s ", outTimestamp[i]);
 
     //channel name
-    if (!arguments->noname)  printf("%s ",((struct channel *)args.usr)->base.name);
+    if (!arguments->noname)  printf("%s ",ch->base.name);
 
     if (arguments->nord) printf("%lu ", args.count); // show nord if requested
 

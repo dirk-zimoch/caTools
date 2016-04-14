@@ -5,6 +5,15 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
+#define CA_DEFAULT_TIMEOUT 1
+
+// warning and error printout
+#define VERBOSITY_ERR           2
+#define VERBOSITY_WARN          3
+#define VERBOSITY_ERR_PERIODIC  4
+#define VERBOSITY_WARN_PERIODIC 5
+#define VERBOSITY_DEBUG		    10
+
 enum roundType {
     roundType_no_rounding = -1,
     roundType_round,
@@ -83,18 +92,19 @@ enum channelField {
 };
 
 #ifndef INCLcadefh
-#include "db_access.h"
-typedef struct oldChannelNotify *chid;
-typedef chid                    chanId; /* for when the structures field name is "chid" */
+	#include "db_access.h"
+	#include "alarm.h"
+	typedef struct oldChannelNotify *chid;
+	typedef chid                    chanId; /* for when the structures field name is "chid" */
 
-typedef struct event_handler_args {
-    void            *usr;   /* user argument supplied with request */
-    chanId          chid;   /* channel id */
-    long            type;   /* the type of the item returned */ 
-    long            count;  /* the element count of the item returned */
-    const void      *dbr;   /* a pointer to the item returned */
-    int             status; /* ECA_XXX status of the requested op from the server */
-} evargs;
+	typedef struct event_handler_args {
+	    void            *usr;   /* user argument supplied with request */
+	    chanId          chid;   /* channel id */
+	    long            type;   /* the type of the item returned */ 
+	    long            count;  /* the element count of the item returned */
+	    const void      *dbr;   /* a pointer to the item returned */
+	    int             status; /* ECA_XXX status of the requested op from the server */
+	} evargs;
 #endif
 
 struct field {
@@ -103,6 +113,7 @@ struct field {
     long connectionState;   // channel connected/disconnected
     bool created;           // channel creation for the field was successfull
     bool done;              // indicates if callback has finished processing this channel
+    struct channel * ch;	// reference to the channel
 };
 
 enum operator { //possible conditions for cawait
@@ -119,7 +130,9 @@ enum operator { //possible conditions for cawait
 struct channel {
     struct field    base;       // the name of the channel
     struct field    proc;       // sibling channel for writing to proc field
+    struct field    str$;       // sibling channel for reading string as an array of chars
     char           *name;       // the name of the channel
+    char           *longStr;	// long string
     struct field    fields[23]; // fields[noFields];    // sibling channels for fields (description, severities, ...)
 
     long            type;       // dbr type
@@ -128,25 +141,28 @@ struct channel {
     unsigned long   inNelm;     // requested number of elements for writing
     unsigned long   outNelm;    // requested number of elements for reading
     u_int32_t       i;          // process variable id
+    u_int32_t       nRequests;  // holds the number of requests to finish
     char          **writeStr;   // value(s) to be written
     enum operator conditionOperator; //cawait operator
     double        conditionOperands[2]; //cawait operands
+    u_int32_t       status;          // status
+    u_int32_t		severity; 		 // severity
 
 };
 
 extern char **outDate,**outTime, **outSev, **outStat, **outUnits, **outLocalDate, **outLocalTime, **outTimestamp;
+extern u_int32_t const LEN_RECORD_FIELD;
+extern u_int32_t const LEN_RECORD_NAME;
+extern u_int32_t const LEN_TIMESTAMP;
+extern epicsTimeStamp *timestampRead;
 
-// warning and error printout
-#define VERBOSITY_ERR           2
-#define VERBOSITY_WARN          3
-#define VERBOSITY_ERR_PERIODIC  4
-#define VERBOSITY_WARN_PERIODIC 5
-
-#define customPrint(level,output,M, ...) if(arguments->verbosity >= level) fprintf(output, M,##__VA_ARGS__)
+extern int verbosity;
+#define customPrint(level,output,M, ...) if(verbosity >= level) fprintf(output, M,##__VA_ARGS__)
 #define warnPrint(M, ...) customPrint(VERBOSITY_WARN, stdout, "Warning: "M, ##__VA_ARGS__)
 #define warnPeriodicPrint(M, ...) customPrint(VERBOSITY_WARN_PERIODIC, stdout, "Warning: "M, ##__VA_ARGS__)
 #define errPrint(M, ...) customPrint(VERBOSITY_ERR, stderr, "Error: "M, ##__VA_ARGS__)
 #define errPeriodicPrint(M, ...) customPrint(VERBOSITY_ERR_PERIODIC, stderr, "Error: "M, ##__VA_ARGS__)
+#define debugPrint(M, ...) customPrint(VERBOSITY_DEBUG, stderr, "Debug: "M, ##__VA_ARGS__)
 
 
 

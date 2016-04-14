@@ -1,9 +1,7 @@
 /* caToolsMain.c */
 /* Author:  Rok Vuga Date:    FEB 2016 */
-
-
 #include <stdio.h>
-#include <stdlib.h>
+#include <getopt.h>
 #include <string.h>
 #include <math.h>
 #include <inttypes.h>
@@ -18,274 +16,8 @@
 #include "caToolsTypes.h"
 #include "caToolsGlobals.h"
 #include "caToolsOutput.h"
-
-
-
-/**
- * @brief usage prints the usage of the tools
- * @param stream is the output stream for printing
- * @param tool is the selected tool
- * @param programName is the command line name of the program
- */
-void usage(FILE *stream, enum tool tool, char *programName){
-
-    //usage:
-    if (tool == caget || tool == cagets || tool == camon || tool == cado) {
-        fprintf(stream, "\nUsage: %s [flags] <pv> [<pv> ...]\n", programName);
-    }
-    else if (tool == cawait) {
-        fprintf(stream, "\nUsage: %s [flags] <pv> <condition> [<pv> <condition> ...]\n", programName);
-    }
-    else if (tool == caput || tool == caputq  ) {
-        fprintf(stream, "\nUsage: %s [flags] <pv> <value> [<pv> <value> ...]\n", programName);
-    }
-    else if (tool == cainfo  ) {
-        fprintf(stream, "\nUsage: %s [flags] <pv> [<pv> ...]\n", programName);
-    }
-    else { //tool unknown
-        fprintf(stream, "\nUnknown tool. Try %s -tool with any of the following arguments: caget, caput, cagets, "\
-                "caputq, cado, camon, cawait, cainfo.\n", programName);
-        return;
-    }
-
-    //descriptions
-    fputs("\n",stream);
-
-    if (tool == caget) {
-        fputs("Reads PV values(s).\n", stream);
-    }
-    if (tool == cagets) {
-        fputs("First processes the PV(s), then reads the value(s).\n", stream);
-    }
-    if (tool == caput || tool == caputq) {
-        if (tool == caput) {
-            fputs("Writes value(s) to the PV(s), waits until processing finishes and returns updated value(s).\n", stream);
-        }
-        else { //caputq
-            fputs("Writes value(s) to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
-        }
-        fputs("Array handling:\n", stream);
-        fputs(  "- When -a option is set, input separator (-inSep argument) is used to parse elements in an array.\n"\
-                "- When input separator (-inSep argument) is explicitly defined, -a option is automatically used."
-                " See following examples which produce the same result,"\
-                " namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
-        fputs("  caput -a pvA '1 2 3' pvB '4 5 6'\n", stream);
-        fputs("  caput -inSep ; pvA '1;2;3' pvB '4;5;6'\n", stream);
-    }
-    if (tool == cado) {
-        fputs("Writes 1 to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
-    }
-    if (tool == camon) {
-        fputs("Monitors the PV(s).\n", stream);
-    }
-    if (tool == cawait) {
-         fputs("Monitors the PV(s), but only displays the values when they match the provided conditions. When at least one of the conditions is true, the program exits." \
-               "The conditions are specified as a string containing the operator together with the values.\n", stream);
-        fputs("Following operators are supported:  >, <, <=, >=, ==, !=, !, ==A...B(in interval), !=A...B or !A...B (out of interval). For example, "\
-                "cawait pv '==1...5' exits after pv value is inside the interval [1,5].\n", stream);
-    }
-    if (tool == cainfo) {
-        fputs("Displays detailed information about the provided records.\n", stream);
-    }
-
-    //flags common for all tools
-    fputs("\n", stream);
-    fputs("Accepted flags:\n", stream);
-    fputs("\n", stream);
-    fputs("  -h                   Help: Print this message\n", stream);
-    fputs("  -v                   Verbosity. Options:\n", stream);
-    fprintf(stream,"                       Print error messages: %d (default)\n", VERBOSITY_ERR);
-    fprintf(stream,"                       Also print warning messages: %d\n", VERBOSITY_WARN);
-    fprintf(stream,"                       Also print error messages that occur periodically: %d\n", VERBOSITY_ERR_PERIODIC);
-    fprintf(stream,"                       Also print warning messages that occur periodically: %d\n\n", VERBOSITY_WARN_PERIODIC);
-
-    //flags common for most of the tools
-    if (tool != cado){
-        fputs("Channel Access options\n", stream);
-        if (tool != cainfo) {
-            fputs("  -dbrtype <type>      Type of DBR request to use for communicating with the server.\n", stream);
-            fputs("                       Use string (DBR_ prefix may be omitted, or number of one of the following types:\n", stream);
-            fputs("           DBR_STRING     0  DBR_STS_FLOAT    9  DBR_TIME_LONG   19  DBR_CTRL_SHORT    29\n"
-                  "           DBR_INT        1  DBR_STS_ENUM    10  DBR_TIME_DOUBLE 20  DBR_CTRL_INT      29\n"
-                  "           DBR_SHORT      1  DBR_STS_CHAR    11  DBR_GR_STRING   21  DBR_CTRL_FLOAT    30\n"
-                  "           DBR_FLOAT      2  DBR_STS_LONG    12  DBR_GR_SHORT    22  DBR_CTRL_ENUM     31\n"
-                  "           DBR_ENUM       3  DBR_STS_DOUBLE  13  DBR_GR_INT      22  DBR_CTRL_CHAR     32\n"
-                  "           DBR_CHAR       4  DBR_TIME_STRING 14  DBR_GR_FLOAT    23  DBR_CTRL_LONG     33\n"
-                  "           DBR_LONG       5  DBR_TIME_INT    15  DBR_GR_ENUM     24  DBR_CTRL_DOUBLE   34\n"
-                  "           DBR_DOUBLE     6  DBR_TIME_SHORT  15  DBR_GR_CHAR     25  DBR_STSACK_STRING 37\n"
-                  "           DBR_STS_STRING 7  DBR_TIME_FLOAT  16  DBR_GR_LONG     26  DBR_CLASS_NAME    38\n"
-                  "           DBR_STS_SHORT  8  DBR_TIME_ENUM   17  DBR_GR_DOUBLE   27\n"
-                  "           DBR_STS_INT    8  DBR_TIME_CHAR   18  DBR_CTRL_STRING 28\n", stream);
-
-        }
-        fprintf(stream, "  -w <time>            Wait time in seconds, specifies CA timeout. (default: %d s)\n", CA_DEFAULT_TIMEOUT);
-    }
-
-    //flags associated with writing
-    if (tool == caput || tool == caputq) {
-        fputs("Formating input : Array format options\n", stream);
-        fputs("  -a                   Input separator (-inSep argument) is used to parse elements in an array.\n", stream);
-        fputs("  -inSep <separator>   Separator used between array elements in <value>.\n", stream);
-        fputs("                       If not specified, space is used.\n", stream);
-        fputs("                       If specified, '-a' option is automatically used. \n", stream);
-    }
-
-    // flags associated with monitoring
-    if (tool == camon) {
-        fputs("Monitoring options\n", stream);
-        fputs("  -n <number>          Exit the program after <number> updates.\n", stream);
-        fputs("  -timestamp <option>  Display relative timestamps. Options:\n", stream);
-        fputs("                            r: time elapsed since start of the program,\n", stream);
-        fputs("                            u: time elapsed since last update of any PV,\n", stream);
-        fputs("                            c: time elapsed since last update separately for each PV.\n", stream);
-    }
-    if (tool == cawait) {
-        fputs("Waiting options\n", stream);
-        fputs("  -timeout <number>    Exit the program after <number> seconds without an update.\n", stream);
-    }
-
-    //Flags associated with returned values. Used by both reading and writing tools.
-    if (tool == caget || tool == cagets || tool == camon
-            || tool == cawait ||  tool == caput) {
-        fputs("Formating output : General options\n", stream);
-        fputs("  -noname              Hide PV name.\n", stream);
-        fputs("  -nostat              Never display alarm status and severity.\n", stream);
-        fputs("  -stat                Always display alarm status and severity.\n", stream);
-        fputs("  -plain               Ignore all formatting switches (displays only PV value) except date/time related.\n", stream);
-
-        fputs("Formating output : Time options\n", stream);
-        fputs("  -d -date             Display server date.\n", stream);
-        fputs("  -localdate           Display client date.\n", stream);
-        fputs("  -localtime           Display client time.\n", stream);
-        fputs("  -t, -time            Display server time.\n", stream);
-
-        fputs("Formating output : Integer format options\n", stream);
-        fputs("  -bin                 Display integer values in binary format.\n", stream);
-        fputs("  -hex                 Display integer values in hexadecimal format.\n", stream);
-        fputs("  -oct                 Display integer values in octal format.\n", stream);
-        fputs("  -s                   Interpret value(s) as char (number to ascii).\n", stream);
-
-        fputs("Formating output : Floating point format options\n", stream);
-        fputs("  -e <number>          Format doubles using scientific notation with precision <number>. Overrides -prec option.\n", stream);
-        fputs("  -f <number>          Format doubles using floating point with precision <number>. Overrides -prec option.\n", stream);
-        fputs("  -g <number>          Format doubles using shortest representation with precision <number>. Overrides -prec option.\n", stream);
-        fputs("  -prec <number>       Override PREC field with <number>. (default: PREC field).\n", stream);
-        fputs("  -round <option>      Round floating point value(s). Options:\n", stream);
-        fputs("                                 round: round to nearest (default).\n", stream);
-        fputs("                                 ceil: round up,\n", stream);
-        fputs("                                 floor: round down,\n", stream);
-
-        fputs("Formating output : Enum/char format options\n", stream);
-        fputs("  -int, -num           Display enum/char values as numbers.\n", stream);
-
-        fputs("Formating output : Array format options\n", stream);
-        fputs("  -nord                Display number of array elements before their values.\n", stream);
-        fputs("  -outNelm <number>    Number of array elements to read.\n", stream);
-        fputs("  -outSep <number>     Separator between array elements.\n", stream);
-    }
-}
-
-
-/**
- * @brief clearStr cleares a string
- * @param str the string to clear
- */
-static inline void clearStr(char *str) {
-    str[0] = '\0';
-}
-
-/**
- * @brief isStrEmpty checks if provided string is empty
- * @param str the string to check
- * @return true if empty, false otherwise
- */
-static bool isStrEmpty(char *str) {
-    return str[0] == '\0';
-}
-
-/**
- * @brief removePrefix removes prefix from data and returns true if successfull
- * @param data is the data to remove the prefix from
- * @param prefix is the prefix to remove from data
- * @return true if prefix was found and removed, false otherwise
- */
-bool removePrefix (char **data, char const *prefix) {
-    size_t pos = 0;
-    while (prefix[pos] != '\0') {
-        if ((*data)[pos] != prefix[pos]) {
-            return false;
-        }
-        pos++;
-    }
-    *data += pos;
-    return true;
-}
-
-//parses input string and extracts operators and numerals,
-//then saves them to the channel structure.
-//Supported operators: >,<,<=,>=,==,!=,!, ==A...B(in interval), !=A...B(out of interval), !A...B (out of interval).
-bool cawaitParseCondition(struct channel *channel, char *str)
-{
-    enum operator operator;
-    double arg1;
-    double arg2 = 0;
-
-
-    if (removePrefix(&str, "!")) {
-        operator = operator_neq;
-        removePrefix(&str, "=");
-    }
-    else if (removePrefix(&str, ">=")) {
-        operator = operator_gte;
-    }
-    else if (removePrefix(&str, "<=")) {
-        operator = operator_lte;
-    }
-    else if (removePrefix(&str, ">")) {
-        operator = operator_gt;
-    }
-    else if (removePrefix(&str, "<")) {
-        operator = operator_lt;
-    }
-    else if (removePrefix(&str, "==")) {
-        operator = operator_eq;
-    }
-    else {
-        operator = operator_eq;
-    }
-
-
-    char *token = strtok(str, "...");
-    char *endptr;
-
-    arg1 = strtod(str, &endptr);
-    if (endptr == token || *endptr != '\0') {
-        errPrint("Invalid operand in condition.\n");
-        return false;
-    }
-
-    token = strtok(NULL, "...");
-    if (operator != operator_eq && operator != operator_neq && token) {
-        errPrint("Invalid syntax for interval condition.\n");
-        return false;
-    }
-    else if(token) {
-        arg2 = strtod(token, &endptr);
-        if (endptr == str || *endptr) {
-            errPrint("Invalid second operand for interval condition.\n");
-            return false;
-        }
-    }
-
-    // TODO: if arg1 > arg2 when using ... syntax
-
-    channel->conditionOperator = operator;
-    channel->conditionOperands[0] = arg1;
-    channel->conditionOperands[1] = arg2;
-
-    return true;
-}
-
+#include "caToolsInput.h"
+#include "caToolsUtils.h"
 
 int cawaitEvaluateCondition(struct channel channel, evargs args){
 //evaluates output of channel i against the corresponding condition.
@@ -353,264 +85,6 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
 }
 
 
-
-/*
-int printValue(evargs args, int32_t precision){
-//Parses the data fetched by ca_get callback according to the data type and formatting arguments.
-//The result is printed to stdout.
-
-    int32_t baseType;
-    void *value;
-    double valueDbl = 0;
-
-    value = dbr_value_ptr(args.dbr, args.type);
-    baseType = args.type % (LAST_TYPE+1);   // convert appropriate TIME, GR, CTRL,... type to basic one
-
-    //loop over the whole array
-
-    long j; //element counter
-
-    for (j=0; j<args.count; ++j){
-
-        if (j){
-            printf ("%c", arguments.fieldSeparator); //insert element separator
-        }
-
-        switch (baseType) {
-        case DBR_STRING:
-
-            /*
-              //  printf("%s\n", "TRUE");
-            printf("%s\n", (char*) value);
-            printf("%i\n", strlen((char*) value));
-            if(strlen((char*) value) >= MAX_STRING_SIZE -1){
-                    void * mydata;
-                    chid   mychid;
-                    char * name$ = malloc(strlen(((struct channel *)args.usr)->base.name)+2);
-                    strcpy(name$, ((struct channel *)args.usr)->base.name);
-                    strcat(name$, "$");
-                    SEVCHK(ca_create_channel(name$,NULL,NULL,10,&mychid),"ca_create_channel failure");
-
-                    SEVCHK(ca_pend_io(5.0),"ca_pend_io failure");
-                    //SEVCHK(ca_get(DBR_CHAR,mychid,mydata),"ca_get failure");
-                    //SEVCHK(ca_pend_io(5.0),"ca_pend_io failure");
-                    printf("OOOKKKK");
-            }*//*
-            printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);    // TODO: is this always null-terminated?
-            break;
-        case DBR_FLOAT:
-        case DBR_DOUBLE:{
-            if (baseType == DBR_FLOAT) valueDbl = ((dbr_float_t*)value)[j];
-            else valueDbl = ((dbr_double_t*)value)[j];
-
-            //round if desired or will be writen as hex oct, bin or string
-            if (arguments.round == roundType_round || arguments.hex || arguments.oct || arguments.bin || arguments.str) {
-                valueDbl = round(valueDbl);
-            }
-            else if(arguments.round == roundType_ceil) {
-                    valueDbl = ceil(valueDbl);
-            }
-            else if (arguments.round == roundType_floor) {
-                valueDbl = floor(valueDbl);
-            }
-
-            if (!(arguments.hex || arguments.oct || arguments.bin)) { // if hex, oct or bin, do not brake but use DBR_LONG code to print out the value
-                char format = 'f'; // default write as float
-                if (arguments.dblFormatType != '\0') {
-                    //override records default prec
-                    format = arguments.dblFormatType;
-                }
-                if (arguments.prec >= 0) {
-                    //use precision and format as specified by -efg or -prec arguments
-                    precision = arguments.prec;
-                }
-
-                if (precision != -1 && !arguments.plain) { // when DBR_XXX_DOUBLE, DBR_XXX_FLOAT has precision info. Also, print raw when -plain is used.
-                    char formatStr[30];
-                    sprintf(formatStr, "%%-.%"PRId32"%c", precision, format);
-                    printf(formatStr, valueDbl);
-                }
-                else { // case where no precision info is avaliable
-                    printf("%-f", valueDbl);
-                }
-                break;
-            }
-        }
-        case DBR_LONG:{
-            int32_t valueInt32;
-            if (baseType == DBR_FLOAT || baseType == DBR_DOUBLE) valueInt32 = (int32_t)valueDbl;
-            else valueInt32 = ((dbr_long_t*)value)[j];
-
-            //display dec, hex, bin, oct if desired
-            if (arguments.hex){
-                printf("0x%" PRIx32, valueInt32);
-            }
-            else if (arguments.oct){
-                printf("0o%" PRIo32, valueInt32);
-            }
-            else if (arguments.bin){
-                printf("0b");
-                printBits(valueInt32);
-            }
-            else if (arguments.str){
-                printf("%c", (u_int8_t)valueInt32);
-            }
-            else{
-                printf("%" PRId32, valueInt32);
-            }
-            break;
-        }
-        case DBR_INT:{
-            int16_t valueInt16 = ((dbr_int_t*)value)[j];
-
-            //display dec, hex, bin, oct, char if desired
-            if (arguments.hex){
-                printf("0x%" PRIx16, (u_int16_t)valueInt16);
-            }
-            else if (arguments.oct){
-                printf("0o%" PRIo16, (u_int16_t)valueInt16);
-            }
-            else if (arguments.bin){
-                printf("0b");
-                printBits((u_int16_t)valueInt16);
-            }
-            else if (arguments.str){
-                printf("%c", (u_int8_t)valueInt16);
-            }
-            else{
-                printf("%" PRId16, valueInt16);
-            }
-            break;
-        }
-        case DBR_ENUM: {
-            dbr_enum_t v = ((dbr_enum_t *)value)[j];
-            if (v >= MAX_ENUM_STATES){
-                printf("Illegal enum index: %d", v);
-                break;
-            }
-
-            if (!arguments.num && !arguments.bin && !arguments.hex && !arguments.oct) { // if not requested as a number check if we can get string
-
-
-                if (dbr_type_is_GR(args.type)) {
-                    if (v >= ((struct dbr_gr_enum *)args.dbr)->no_str) {
-                        printf("Enum index value %d greater than the number of strings", v);
-                    }
-                    else{
-                        printf("\"%.*s\"", MAX_ENUM_STRING_SIZE, ((struct dbr_gr_enum *)args.dbr)->strs[v]);
-                    }
-                    break;
-                }
-                else if (dbr_type_is_CTRL(args.type)) {
-                    if (v >= ((struct dbr_ctrl_enum *)args.dbr)->no_str) {
-                        printf("Enum index value %d greater than the number of strings", v);
-                    }
-                    else{
-                        printf("\"%.*s\"", MAX_ENUM_STRING_SIZE, ((struct dbr_ctrl_enum *)args.dbr)->strs[v]);
-                    }
-                    break;
-                }
-            }
-            // else write value as number.
-            if (arguments.hex){
-                printf("0x%" PRIx16, v);
-            }
-            else if (arguments.oct){
-                printf("0o%" PRIo16, v);
-            }
-            else if (arguments.bin){
-                printf("0b");
-                printBits(v);
-            }
-            else{
-                printf("%" PRId16, v);
-            }
-            break;
-        }
-        case DBR_CHAR:{
-            if (arguments.num) {	//check if requested as a a number
-                printf("%" PRIu8, ((u_int8_t*) value)[j]);
-            }
-            else if (arguments.hex){
-                printf("0x%" PRIx8, ((u_int8_t*) value)[j]);
-            }
-            else if (arguments.oct){
-                printf("0o%" PRIo8, ((u_int8_t*) value)[j]);
-            }
-            else if (arguments.bin){
-                printf("0b");
-                printBits(((u_int8_t*) value)[j]);
-            }
-            else{
-                fputc(((char*) value)[j], stdout);
-            }
-            break;
-        }
-
-        default:
-            errPeriodicPrint("Unrecognized DBR type.\n");
-            break;
-        }
-
-    }
-
-    return 0;
-}
-
-
-int printOutput(int i, evargs args, int32_t precision){
-// prints global output strings corresponding to i-th channel.
-
-    //if both local and server times are requested, clarify which is which
-    bool doubleTime = (arguments.localdate || arguments.localtime) && (arguments.date || arguments.time);
-    if (doubleTime){
-        fputs("server time: ",stdout);
-    }
-
-    //server date
-    if (!isStrEmpty(outDate[i]))	printf("%s ",outDate[i]);
-    //server time
-    if (!isStrEmpty(outTime[i]))	printf("%s ",outTime[i]);
-
-    if (doubleTime){
-        fputs("local time: ",stdout);
-    }
-
-    //local date
-    if (!isStrEmpty(outLocalDate[i]))	printf("%s ",outLocalDate[i]);
-    //local time
-    if (!isStrEmpty(outLocalTime[i]))	printf("%s ",outLocalTime[i]);
-
-
-    //timestamp if monitor and if requested
-    if ((arguments.tool == camon || arguments.tool == cainfo) && arguments.timestamp)	printf("%s ", outTimestamp[i]);
-
-    //channel name
-    if (!arguments.noname)	printf("%s ",((struct channel *)args.usr)->base.name);
-
-    if (arguments.nord)	printf("%lu ", args.count); // show nord if requested
-
-    //value(s)
-    printValue(args, precision);
-
-
-    fputc(' ',stdout);
-
-    //egu
-    if (!isStrEmpty(outUnits[i]) && !arguments.nounit) printf("%s ",outUnits[i]);
-
-    //severity
-    if (!isStrEmpty(outSev[i])) printf("(%s",outSev[i]);
-
-    //status
-    if (!isStrEmpty(outStat[i])) printf(" %s)",outStat[i]);
-    else if (!isStrEmpty(outSev[i])) putc(')', stdout);
-
-    putc('\n', stdout);
-    return 0;
-}
-
-*/
 // the same as epicsTimeLessThan(), except it only checks if pLeft < pRight
 bool timeLessThan(const epicsTimeStamp *pLeft, const epicsTimeStamp *pRight) {
     return (pLeft->secPastEpoch < pRight->secPastEpoch || (pLeft->secPastEpoch == pRight->secPastEpoch && pLeft->nsec < pRight->nsec));
@@ -720,7 +194,8 @@ static void caReadCallback (evargs args){
         return;
     }
     struct channel *ch = (struct channel *)args.usr;
-
+    debugPrint("ReadCallback() callbacks to process: %i\n", ch->nRequests);
+    ch->nRequests=ch->nRequests-1;
     int32_t precision=-1;
     u_int32_t status=0, severity=0;
 
@@ -853,6 +328,11 @@ static void caReadCallback (evargs args){
         case DBR_CTRL_CHAR:
             severity_status_get(dbr_ctrl_char);
             units_get_cb(dbr_ctrl_char);
+            //handle long strings - remember long string
+            if(ca_field_type(ch->base.id)==DBF_STRING) {
+                ch->longStr = mallocMustSucceed(args.count, "caReadCallback");
+                strcpy(ch->longStr, (char*) dbr_value_ptr(args.dbr, args.type)); //TOOD check if this is valid later
+            }
             break;
 
         case DBR_CTRL_LONG:
@@ -865,11 +345,12 @@ static void caReadCallback (evargs args){
             units_get_cb(dbr_ctrl_double);
             precision_get(dbr_ctrl_double);
             break;
+
+        case DBR_CHAR:   
         case DBR_STRING://dont print the warning if any of these
         case DBR_SHORT:
         case DBR_FLOAT:
-        case DBR_ENUM:
-        case DBR_CHAR:
+        case DBR_ENUM:            
         case DBR_LONG:
         case DBR_DOUBLE: break;
         default :
@@ -877,37 +358,14 @@ static void caReadCallback (evargs args){
             return;
     }
 
+    // remember status and severity
+    ch->status = status;
+    ch->severity = severity;
 
-    //do formating
-
-    //check alarm limits
-    if (arguments.stat || (!arguments.nostat && (status != 0 || severity != 0))) { //  display status/severity
-        if (status <= lastEpicsAlarmCond) sprintf(outStat[ch->i],"STAT:%s", epicsAlarmConditionStrings[status]); // strcpy(outStat[ch->i], epicsAlarmConditionStrings[status]);
-        else sprintf(outStat[ch->i],"UNKNOWN: %u",status);
-
-        if (severity <= lastEpicsAlarmSev) sprintf(outSev[ch->i],"SEVR:%s", epicsAlarmSeverityStrings[severity]);//strcpy(outSev[ch->i], epicsAlarmSeverityStrings[severity]);
-        else sprintf(outSev[ch->i],"UNKNOWN: %u",status);
-    }
-
-    if (args.type >= DBR_TIME_STRING && args.type <= DBR_TIME_DOUBLE){//otherwise we don't have it
-        //we assume that manually specifying dbr_time implies -time or -date.
-        if (arguments.date || arguments.dbrRequestType != -1) epicsTimeToStrftime(outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &timestampRead[ch->i]);
-        if (arguments.time || arguments.dbrRequestType != -1) epicsTimeToStrftime(outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &timestampRead[ch->i]);
-    }
-
-
-    //show local date or time?
-    if (arguments.localdate || arguments.localtime){
-        epicsTimeStamp localTime;
-        epicsTimeGetCurrent(&localTime);
-        //validateTimestamp(&localTime, "localTime");
-
-        if (arguments.localdate) epicsTimeToStrftime(outLocalDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &localTime);
-        if (arguments.localtime) epicsTimeToStrftime(outLocalTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &localTime);
-    }
 
     //if monitor, there is extra stuff to do before printing data out.
     bool shouldPrint = true;
+
     if (arguments.tool == cawait || arguments.tool == camon) {
         if (arguments.timestamp) getTimeStamp(ch->i);	//calculate relative timestamps.
 
@@ -940,7 +398,11 @@ static void caReadCallback (evargs args){
                 shouldPrint = false;
             }
         }
+    }else if(ch->nRequests > 0){
+        // wait for all requests
+        shouldPrint = false;
     }
+
 
 
     //finish
@@ -960,40 +422,6 @@ static void caWriteCallback (evargs args) {
     struct channel *ch = (struct channel *)args.usr;
 
     ch->base.done = true;
-}
-
-
-static void getStaticUnitsCallback (evargs args) {
-//reads channel units and saves them to global strings. Is called every time a channel
-//connects (if needed).
-
-    //check if data was returned
-    if (args.status != ECA_NORMAL) {
-        return;
-    }
-    struct channel *ch = (struct channel *)args.usr;
-
-    //get units
-    switch(args.type) {
-    case DBR_GR_INT:    // and SHORT
-        units_get_cb(dbr_gr_short);
-        break;
-    case DBR_GR_FLOAT:
-        units_get_cb(dbr_gr_float);
-        break;
-    case DBR_GR_CHAR:
-        units_get_cb(dbr_gr_float);
-        break;
-    case DBR_GR_LONG:
-        units_get_cb(dbr_gr_long);
-        break;
-    case DBR_GR_DOUBLE:
-        units_get_cb(dbr_gr_double);
-        break;
-    default:
-        errPeriodicPrint("Units for record %s cannot be displayed.\n", ch->base.name);
-        break;
-    }
 }
 
 void monitorLoop (){
@@ -1045,13 +473,155 @@ void waitForCompletition(struct channel *channels, u_int32_t nChannels, bool che
     }
 }
 
+void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
+    u_int32_t i;
+    size_t j;
+    bool elapsed = false, allDone = false;
+    epicsTimeStamp timeoutNow, timeout;
+    size_t nFields = noFields;
+
+    epicsTimeGetCurrent(&timeout);
+    epicsTimeAddSeconds(&timeout, arguments.caTimeout);
+
+    while(!allDone && !elapsed) {
+        ca_pend_event(0.1);
+        // check for timeout
+        epicsTimeGetCurrent(&timeoutNow);
+        if (epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
+            warnPrint("Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
+            elapsed = true;
+        }
+
+        // check for callback completition
+        allDone = true;
+        for (i=0; i < nChannels; ++i) {
+            if (channels[i].nRequests > 0){
+                allDone = false;
+                break;
+            }
+        }
+    }
+    debugPrint("waitForCallbacks - done.");
+    // reset completition flags
+    for (i=0; i < nChannels; ++i) {
+        channels[i].nRequests = 0;
+    }
+}
+
+bool castStrToDBR(void * data, char **str, unsigned long nelm, int32_t baseType){
+    //convert input string to the baseType
+    data = callocMustSucceed(nelm, dbr_size[baseType], "castStrToDBR");
+    int base = 0;   // used for number conversion in strto* functions
+    char *endptr;   // used in strto* functions
+    bool success = true;
+    unsigned long j;
+    switch (baseType){
+    case DBR_INT://and short
+        for (j=0; j<nelm; ++j) {
+            ((dbr_int_t *)data)[j] = (dbr_int_t)strtoll(str[j], &endptr, base);
+            if (endptr == str[j] || *endptr != '\0') {
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                success = false;
+            }
+        }
+        break;
+
+    case DBR_FLOAT:
+        for (j=0; j<nelm; ++j) {
+            ((dbr_float_t *)data)[j] = (dbr_float_t)strtof(str[j], &endptr);
+            if (endptr == str[j] || *endptr != '\0') {
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                success = false;
+            }
+        }
+        break;
+
+    case DBR_ENUM:
+        ;//check if put data is provided as a number
+        bool isNumber = true;
+        for (j=0; j<nelm; ++j) {
+            ((dbr_enum_t *)data)[j] = (dbr_enum_t)strtoull(str[j], &endptr, base);
+            if (endptr == str[j] || *endptr != '\0') {
+                isNumber = false;
+            }
+        }
+
+        // if enum is entered as a string, reallocate memory and go to case DBR_STRING
+        if (!isNumber) {
+            baseType = DBR_STRING;
+
+            free(data);
+            data = callocMustSucceed(nelm, dbr_size[baseType], "castStrToDBR");
+        }
+        else {
+            break;
+        }
+
+    case DBR_STRING:
+        for (j=0; j<nelm; ++j) {
+            strcpy(((dbr_string_t *)data)[j], str[j]);
+        }
+        break;
+
+    case DBR_CHAR:{
+            // count number of characters to write
+            size_t charsInStr = 0;
+            size_t charsPerStr[nelm];
+            for (j=0; j < nelm; ++j) {
+                charsPerStr[j] = strlen(str[j]);
+                charsInStr += charsPerStr[j];
+            }
+
+            if (charsInStr != nelm) { // don't fiddle with memory if we don't have to
+                free(data);
+                data = callocMustSucceed(charsInStr, dbr_size[baseType], "castStrToDBR");
+            }
+
+            // store all the chars to write
+            charsInStr = 0;
+            for (j=0; j < nelm; ++j) {
+                for (size_t k = 0; k < charsPerStr[j]; k++) {
+                    ((dbr_char_t *)data)[charsInStr] = (dbr_char_t)str[j][k];
+                    charsInStr++;
+                }
+            }
+            nelm = charsInStr;
+        }
+        break;
+
+    case DBR_LONG:
+        for (j=0; j<nelm; ++j) {
+            ((dbr_long_t *)data)[j] = (dbr_long_t)strtoll(str[j], &endptr, base);
+            if (endptr == str[j] || *endptr != '\0') {
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                success = false;
+            }
+        }
+        break;
+
+    case DBR_DOUBLE:
+        for (j=0; j<nelm; ++j) {
+            ((dbr_double_t *)data)[j] = (dbr_double_t)strtod(str[j], &endptr);
+            if (endptr == str[j] || *endptr != '\0') {
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                success = false;
+            }
+        }
+        break;
+
+    default:
+        errPrint("Can not print %s DBR type (DBR numeric type code: %"PRId32"). \n", dbr_type_to_text(baseType), baseType);
+        success = false;
+    }
+    return success;
+}
+
 bool caRequest(struct channel *channels, u_int32_t nChannels) {
 //sends get or put requests. ca_get or ca_put are called multiple times, depending on the tool. The reading,
 //parsing and printing of returned data is performed in callbacks.
     int status = -1;
     u_int32_t i;
-    unsigned long j;
-
+    
     for(i=0; i < nChannels; i++) {
         if (channels[i].base.connectionState != CA_OP_CONN_UP) {//skip disconnected channels
             continue;
@@ -1065,120 +635,18 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
         }
         else if (arguments.tool == caput || arguments.tool == caputq) {
             int32_t baseType = channels[i].type % (LAST_TYPE+1);   // use naked dbr_xx type for put
-            void *input = callocMustSucceed(channels[i].inNelm, dbr_size[baseType], "request input");
-            int base = 0;   // used for number conversion in strto* functions
-            char *endptr;   // used in strto* functions
-            bool success = true;
+            
 
             //if(arguments.bin) base = 2; TODO can be used to select binary input for numbers
-
-            //convert input string to the baseType
-            status = ECA_BADTYPE;
-            switch (baseType){
-            case DBR_INT://and short
-                for (j=0; j<channels[i].inNelm; ++j) {
-                    ((dbr_int_t *)input)[j] = (dbr_int_t)strtoll(channels[i].writeStr[j], &endptr, base);
-                    if (endptr == channels[i].writeStr[j] || *endptr != '\0') {
-                        errPrint("Impossible to convert input %s to format %s\n",channels[i].writeStr[j], dbr_type_to_text(baseType));
-                        success = false;
-                    }
-                }
-                break;
-
-            case DBR_FLOAT:
-                for (j=0; j<channels[i].inNelm; ++j) {
-                    ((dbr_float_t *)input)[j] = (dbr_float_t)strtof(channels[i].writeStr[j], &endptr);
-                    if (endptr == channels[i].writeStr[j] || *endptr != '\0') {
-                        errPrint("Impossible to convert input %s to format %s\n",channels[i].writeStr[j], dbr_type_to_text(baseType));
-                        success = false;
-                    }
-                }
-                break;
-
-            case DBR_ENUM:
-                ;//check if put data is provided as a number
-                bool isNumber = true;
-                for (j=0; j<channels[i].inNelm; ++j) {
-                    ((dbr_enum_t *)input)[j] = (dbr_enum_t)strtoull(channels[i].writeStr[j], &endptr, base);
-                    if (endptr == channels[i].writeStr[j] || *endptr != '\0') {
-                        isNumber = false;
-                    }
-                }
-
-                // if enum is entered as a string, reallocate memory and go to case DBR_STRING
-                if (!isNumber) {
-                    baseType = DBR_STRING;
-
-                    free(input);
-                    input = callocMustSucceed(channels[i].inNelm, dbr_size[baseType], "request input");
-                }
-                else {
-                    break;
-                }
-
-            case DBR_STRING:
-                for (j=0; j<channels[i].inNelm; ++j) {
-                    strcpy(((dbr_string_t *)input)[j], channels[i].writeStr[j]);
-                }
-                break;
-
-            case DBR_CHAR:{
-                    // count number of characters to write
-                    size_t charsInStr = 0;
-                    size_t charsPerStr[channels[i].inNelm];
-                    for (j=0; j < channels[i].inNelm; ++j) {
-                        charsPerStr[j] = strlen(channels[i].writeStr[j]);
-                        charsInStr += charsPerStr[j];
-                    }
-
-                    if (charsInStr != channels[i].inNelm) { // don't fiddle with memory if we don't have to
-                        free(input);
-                        input = callocMustSucceed(charsInStr, dbr_size[baseType], "request input");
-                    }
-
-                    // store all the chars to write
-                    charsInStr = 0;
-                    for (j=0; j < channels[i].inNelm; ++j) {
-                        for (size_t k = 0; k < charsPerStr[j]; k++) {
-                            ((dbr_char_t *)input)[charsInStr] = (dbr_char_t)channels[i].writeStr[j][k];
-                            charsInStr++;
-                        }
-                    }
-                    channels[i].inNelm = charsInStr;
-                }
-                break;
-
-            case DBR_LONG:
-                for (j=0; j<channels[i].inNelm; ++j) {
-                    ((dbr_long_t *)input)[j] = (dbr_long_t)strtoll(channels[i].writeStr[j], &endptr, base);
-                    if (endptr == channels[i].writeStr[j] || *endptr != '\0') {
-                        errPrint("Impossible to convert input %s to format %s\n",channels[i].writeStr[j], dbr_type_to_text(baseType));
-                        success = false;
-                    }
-                }
-                break;
-
-            case DBR_DOUBLE:
-                for (j=0; j<channels[i].inNelm; ++j) {
-                    ((dbr_double_t *)input)[j] = (dbr_double_t)strtod(channels[i].writeStr[j], &endptr);
-                    if (endptr == channels[i].writeStr[j] || *endptr != '\0') {
-                        errPrint("Impossible to convert input %s to format %s\n",channels[i].writeStr[j], dbr_type_to_text(baseType));
-                        success = false;
-                    }
-                }
-                break;
-
-            default:
-                errPrint("Can not print %s DBR type (DBR numeric type code: %"PRId32"). \n", dbr_type_to_text(baseType), baseType);
-                success = false;
-            }
-
-            if (success) {
+            void * input;
+            
+            if (castStrToDBR(input, channels[i].writeStr, channels[i].inNelm, baseType)) {
                 if(arguments.tool == caputq) status = ca_array_put(baseType, channels[i].inNelm, channels[i].base.id, input);
                 else status = ca_array_put_callback(baseType, channels[i].inNelm, channels[i].base.id, input, caWriteCallback, &channels[i]);
                 free(input);
             }
             else {
+                status = ECA_BADTYPE;
                 free(input);
                 return false;
             }
@@ -1220,7 +688,7 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
 
         waitForCompletition(channels, nChannels, true);
     }
-
+    /*
     chid   mychid;
     SEVCHK(ca_create_channel("StrRecord.OUT$",NULL,NULL,10,&mychid),"ca_create_channel failure");
     
@@ -1233,6 +701,7 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
     printf("%s\n", mydata);
     printOut(&channels[0], &arguments);
     return success;
+    */
 }
 
 bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
@@ -1438,86 +907,138 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
     return true;
 }
 
-void channelStatusCallback(struct connection_handler_args args){
-//callback for ca_create_channel. Is executed whenever a channel connects or
-//disconnects. When the channel connects for the first time, several properties
-//are set, such as number of elements and request types.
-//Upon (every) connection, a separate request to obtain units is issued if
-//needed. On channel disconnect, the data is cleared.
+bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
+    debugPrint("caGenerateWriteRequests() - %s\n", ch->base.name);
+    int status;    
 
-    struct channel *ch = ( struct channel * ) ca_puser ( args.chid );
-    int status;
+    //request ctrl type
+    int32_t baseType = ca_field_type(ch->base.id);
 
-    if (ch->base.connectionState == CA_OP_OTHER) {
-        ch->base.done = true;   // set channel to done only on first connection, not when connection goes up / down
-    }
+    ch->nRequests=0;
+   
+   if (arguments->tool == caput || arguments->tool == caputq) {        
 
-    ch->base.connectionState = args.op;
-
-    if ( args.op == CA_OP_CONN_UP ) {
-        //how many array elements to request
-        ch->count = ca_element_count ( ch->base.id );
-        if (arguments.outNelm == -1) ch->outNelm = ch->count;
-        else if(arguments.outNelm > 0 && (unsigned long) arguments.outNelm < ch->count) ch->outNelm = (unsigned long) arguments.outNelm;
-        else{
-            ch->outNelm = ch->count;
-            warnPeriodicPrint("Invalid number of requested elements to read (%"PRId64") from %s - reading maximum number of elements (%lu).\n", arguments.outNelm, ch->base.name, ch->count);
+        //if(arguments.bin) base = 2; TODO can be used to select binary input for numbers
+        void * input;
+        
+        if (castStrToDBR(input, ch->writeStr, ch->inNelm, baseType)) {
+            if(arguments->tool == caputq) status = ca_array_put(baseType, ch->inNelm, ch->base.id, input);
+            else status = ca_array_put_callback(baseType, ch->inNelm, ch->base.id, input, caWriteCallback, ch);
+            free(input);
         }
-
-        //request type
-        if (arguments.dbrRequestType == -1){   //if DBR type not specified, decide based on desired details
-            if (arguments.time || arguments.date || arguments.timestamp){
-                //time specified, use TIME_
-                if (arguments.str && ca_field_type(ch->base.id) == DBF_ENUM){
-                    //if enum && s, use time_string
-                    ch->type = DBR_TIME_STRING;
-                }
-                else{ //else use time_native
-                    ch->type = dbf_type_to_DBR_TIME(ca_field_type(ch->base.id));
-                }
-            }
-            else{// use GR_ by default
-                ch->type = dbf_type_to_DBR_GR(ca_field_type(ch->base.id));
-            }
-        }
-        else ch->type = arguments.dbrRequestType;
-
-        //if units, issue get request for metadata. String and enum records don't have units, so skip.
-        int32_t baseType = ca_field_type(ch->base.id);
-        if (!arguments.nounit && baseType != DBF_STRING && baseType != DBF_ENUM){
-            int32_t reqType = dbf_type_to_DBR_GR(baseType);
-
-            status = ca_array_get_callback(reqType, ch->count, ch->base.id, getStaticUnitsCallback, ch);
-            if (status != ECA_NORMAL) {
-                errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->base.name, ca_message(status));
-                return;
-            }
-            status = ca_flush_io();//flush this so it gets processed before everything else.
-            if (status != ECA_NORMAL) {
-                errPeriodicPrint("Problem flushing process variable %s: %s.\n", ch->base.name, ca_message(status));
-            }
+        else {
+            status = ECA_BADTYPE;
+            free(input);
+            return false;
         }
     }
-    else {
-        printf(" %s disconnected\n", ch->base.name);
+    else if(arguments->tool == cagets && ch->proc.created) {
+        dbr_char_t input=1;
+        status = ca_array_put_callback(DBF_CHAR, 1, ch->proc.id, &input, caWriteCallback, ch);
     }
+    else if(arguments->tool == cado) {
+        dbr_char_t input = 1;
+        status = ca_array_put(DBF_CHAR, 1, ch->base.id, &input); // old PSI tools behaved this way. Is it better to fill entire array?
+    }
+    if (status != ECA_NORMAL) {
+        errPrint("Problem creating request for process variable %s: %s.\n", ch->base.name, ca_message(status));
+        return false;
+    }
+
+
+    return true;
 }
 
-void channelFieldStatusCallback(struct connection_handler_args args){
+bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
+    debugPrint("caGenerateRequests() - %s\n", ch->base.name);
+    int status;    
+
+
+    //request ctrl type
+    int32_t baseType = ca_field_type(ch->base.id);
+    int32_t reqType = dbf_type_to_DBR_CTRL(baseType);
+
+    // check number of elements
+    ch->count = ca_element_count ( ch->base.id );
+    if (arguments->outNelm == -1) ch->outNelm = ch->count;
+    else if(arguments->outNelm > 0 && (unsigned long) arguments->outNelm < ch->count) ch->outNelm = (unsigned long) arguments->outNelm;
+    else{
+        ch->outNelm = ch->count;
+        warnPeriodicPrint("Invalid number of requested elements to read (%"PRId64") from %s - reading maximum number of elements (%lu).\n", arguments->outNelm, ch->base.name, ch->count);
+    }
+   
+    // long strings
+    if (baseType==DBF_STRING && ch->str$.connectionState==CA_OP_CONN_UP && ca_element_count(ch->str$.id) > MAX_STRING_SIZE)
+    {
+        ch->nRequests=ch->nRequests+1;
+        status = ca_array_get_callback(DBR_CTRL_CHAR, ca_element_count(ch->str$.id), ch->str$.id, caReadCallback, ch);
+        if (status != ECA_NORMAL) {
+            errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->str$.name, ca_message(status));
+            return;
+        }
+    }else{
+        //default
+        ch->nRequests=ch->nRequests+1;
+        status = ca_array_get_callback(reqType, ch->outNelm, ch->base.id, caReadCallback, ch);
+        if (status != ECA_NORMAL) {
+            errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->base.name, ca_message(status));
+            return;
+        }
+    }
+    // get timestamp if needed
+    if (arguments->time || arguments->date || arguments->timestamp){
+        if (arguments->str && ca_field_type(ch->base.id) == DBF_ENUM){
+            //if enum && s, use time_string
+            reqType = DBR_TIME_STRING;
+        }
+        else{ //else use time_native
+            reqType = dbf_type_to_DBR_TIME(ca_field_type(ch->base.id));
+        }
+        ch->nRequests=ch->nRequests+1;
+        status = ca_array_get_callback(reqType, ch->outNelm, ch->base.id, caReadCallback, ch);
+        if (status != ECA_NORMAL) {
+            errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->base.name, ca_message(status));
+            return;
+        }
+    }
+    if (status != ECA_NORMAL) {
+        errPrint("Problem creating request for process variable %s: %s.\n", ch->base.name, ca_message(status));
+        return false;
+    }
+
+    return true;
+}
+
+void channelInitCallback(struct connection_handler_args args){
 //callback for ca_create_channel. Is executed whenever a channel connects or
 //disconnects. It is used for field channels in caInfo tool.
 //When a field for a channel that exist cannot be created, we clear the channel for the field.
+    debugPrint("channelFieldStatusCallback()\n");
 
-    struct field *field = ( struct field * ) ca_puser ( args.chid );
+    struct field   *field = ( struct field * ) ca_puser ( args.chid );
+    struct channel *ch = field->ch;
+    debugPrint("channelFieldStatusCallback() callbacks to process: %i\n", ch->nRequests);
+    ch->nRequests=ch->nRequests-1;
+
+    if (field->connectionState == CA_OP_OTHER) {
+        field->done = true;   // set field to done only on first connection, not when connection goes up / down
+    }
 
     field->connectionState = args.op;
 
-    if ( args.op != CA_OP_CONN_UP ) {
-        ca_clear_channel(args.chid);
+    debugPrint("channelFieldStatusCallback() - %s\n", field->name);
+    if(args.op == CA_OP_CONN_UP){ // connected
+        debugPrint("channelFieldStatusCallback() - connected\n");
     }
-
-    field->done = true;
+    else{ // disconected
+        debugPrint("channelFieldStatusCallback() - not connected\n");
+        if (&ch->base == field){
+            // base channel
+            printf(" %s disconnected\n", ch->base.name);
+        }
+    }
 }
+
 
 bool checkStatus(int status){
 //checks status of channel create_ and clear_
@@ -1527,12 +1048,6 @@ bool checkStatus(int status){
         return false;
     }
     return true;
-}
-
-bool createChannelMustSucceed(const char *pChanName, caCh *pConnStateCallback, void *pUserPrivate, capri priority, chid *pChanID){
-//creates CA connection
-    int status = ca_create_channel(pChanName, pConnStateCallback, pUserPrivate, priority, pChanID);
-    return checkStatus(status);    // error if the channels are not created
 }
 
 void caCustomExceptionHandler( struct exception_handler_args args) {
@@ -1561,79 +1076,116 @@ void caCustomExceptionHandler( struct exception_handler_args args) {
     }
 }
 
+// init field and crreate ca_channel
+bool initField(struct channel *ch, struct field * field)
+{
+    debugPrint("initField() - %s\n", field->name);
+    field->connectionState = CA_OP_OTHER;
+    field->done = false;
+    field->ch = ch;
+    ch->nRequests=ch->nRequests+1;
+    int status = ca_create_channel(field->name, channelInitCallback, field, CA_PRIORITY, &field->id);
+    field->created = checkStatus(status);    // error if the channels are not created
+    return field->created;
+}
+
+bool initSiblings(struct channel *ch, arguments_T *arguments){
+    debugPrint("caInitSiblings()\n");
+    bool hasSiblings = false;
+
+    //if tool = cagets, each channel has a sibling connecting to the proc field
+    if (arguments->tool == cagets) {
+        ch->proc.name = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");//2 spaces for .(field name) + null termination
+        strcpy(ch->proc.name, ch->base.name);
+        getBaseChannelName(ch->proc.name); //append .PROC
+        strcat(ch->proc.name, ".PROC");
+        hasSiblings = initField(ch, &ch->proc);  
+    }
+    // open sibling channel for long strings
+    if(ca_field_type(ch->base.id)==DBF_STRING && 
+        !isValField(ch->base.name) &&
+            (arguments->tool == caget ||
+            arguments->tool == cagets ||
+            arguments->tool == cainfo ||
+            arguments->tool == camon )){
+        debugPrint("caInitSiblings() - string chanel\n");
+        debugPrint("caInitSiblings() - dbftype: %s\n", dbf_type_to_text(ca_field_type(ch->base.id)));
+        ch->str$.name = callocMustSucceed (strlen(ch->base.name) + 2, sizeof(char), "main"); //2 spaces for $ + null termination
+        strcpy(ch->str$.name, ch->base.name);
+        strcat(ch->str$.name, "$");
+        hasSiblings = initField(ch, &ch->str$);
+    }
+    if (arguments->tool == cainfo) {
+        size_t nFields = noFields;  // so we don't calculate in each loop
+        size_t j;
+        for (j=0; j < nFields; j++) {
+            debugPrint("caInit() - If caInfo for j=%i\n", j);
+            ch->fields[j].created = true;
+            ch->fields[j].name = callocMustSucceed(LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), fields[j]);
+            strcpy(ch->fields[j].name, ch->base.name);
+            getBaseChannelName(ch->fields[j].name); 
+            strcat(ch->fields[j].name, fields[j]);
+            hasSiblings = initField(ch, &ch->fields[j]);            
+        }
+    }
+    return hasSiblings;
+}
+
 bool caInit(struct channel *channels, u_int32_t nChannels){
 //creates contexts and channels.
     int status;
     u_int32_t i;
-
+    debugPrint("caInit()\n");
     status = ca_context_create(ca_disable_preemptive_callback);
 
     if (!checkStatus(status)) return false;
 
     ca_add_exception_event ( caCustomExceptionHandler , 0 );
 
+    // open base channels
     for(i=0; i < nChannels; i++) {
-        channels[i].base.created = createChannelMustSucceed(channels[i].base.name, channelStatusCallback, &channels[i], CA_PRIORITY, &channels[i].base.id);
-        if (!channels[i].base.created) return false;
-
-        //if tool = cagets, each channel has a sibling connecting to the proc field
-        if (arguments.tool == cagets) {
-            channels[i].proc.created = createChannelMustSucceed(channels[i].proc.name, 0 , 0, CA_PRIORITY, &channels[i].proc.id);
-            if (!channels[i].proc.created) return false;
-        }
+        channels[i].nRequests = 0;
+        initField(&channels[i], &channels[i].base);
     }
 
-    //wait for connection callbacks to complete
-    waitForCompletition(channels, nChannels, true);
+    waitForCallbacks(channels, nChannels);
+    debugPrint("caInit() - First Connections completed\n");
 
+    // open silbling channels if needed
+    bool siblings = false;
     for (i=0; i < nChannels; ++i) {
-        if (channels[i].base.connectionState != CA_OP_CONN_UP) {
+        if (channels[i].base.connectionState == CA_OP_CONN_UP)
+            siblings = initSiblings(&channels[i], &arguments);
+        else
             printf("Process variable %s not connected.\n", channels[i].base.name);
-            if ((arguments.tool == camon || arguments.tool == cawait)) numMonitorUpdates++;   // connection callback does not count towards number of updates.
-        }
-
-        if (arguments.tool == camon || arguments.tool == cawait) {
-            //create subscription
-            status = ca_create_subscription(channels[i].type, channels[i].outNelm, channels[i].base.id, DBE_VALUE | DBE_ALARM | DBE_LOG, caReadCallback, &channels[i], 0);
-            if (status != ECA_NORMAL) {
-                errPrint("Problem creating subscription for process variable %s: %s.\n",channels[i].base.name, ca_message(status));
-            }
-        }
     }
-
-    if (arguments.tool == cawait && arguments.timeout!=-1){
-        //set first
-        epicsTimeGetCurrent(&timeoutTime);
-        epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
+    if (siblings){
+        //ca_flush_io();
+        waitForCallbacks(channels, nChannels);
+        debugPrint("caInit() - Siblings connected\n");
     }
-    if (arguments.tool == camon || arguments.tool == cawait) {
-        waitForCompletition(channels, nChannels, true);
-    }
+    
 
-    if (arguments.tool == cainfo){
-        //if tool = cainfo, each channel has siblings connecting to the desc and *sv fields
-        for (i=0; i<nChannels; ++i){
-            if (channels[i].base.connectionState != CA_OP_CONN_UP) { // if not connected skip
-                continue;
-            }
-
-            size_t nFields = noFields;  // so we don't calculate in each loop
-            size_t j;
-            for (j=0; j < nFields; j++) {
-                channels[i].fields[j].created = true;
-                if (!createChannelMustSucceed(channels[i].fields[j].name, channelFieldStatusCallback, &channels[i].fields[j], CA_PRIORITY, &channels[i].fields[j].id)) {
-                    errPrint("Problem creating subscription for process variable %s: %s.\n", channels[i].fields[j].name, ca_message(status));
-                    channels[i].fields[j].created = false;
+    //create subscriptions if camon or cawait
+    if (arguments.tool == camon || arguments.tool == cawait){
+        for (i=0; i < nChannels; ++i) {
+            if (channels[i].base.connectionState != CA_OP_CONN_UP) {
+                //create subscription
+                status = ca_create_subscription(channels[i].type, channels[i].outNelm, channels[i].base.id, DBE_VALUE | DBE_ALARM | DBE_LOG, caReadCallback, &channels[i], 0);
+                if (status != ECA_NORMAL) {
+                    errPrint("Problem creating subscription for process variable %s: %s.\n",channels[i].base.name, ca_message(status));
                 }
+                
             }
-            ca_flush_io();
         }
-        // process channel creation for fields
-        waitForCompletition(channels, nChannels, false);
+        ca_flush_io();
+        waitForCompletition(channels, nChannels, true);
     }
 
     return true;
 }
+
+
 
 bool caDisconnect(struct channel * channels, u_int32_t nChannels){
     int status;
@@ -1666,541 +1218,7 @@ bool caDisconnect(struct channel * channels, u_int32_t nChannels){
     return success;
 }
 
-
-bool endsWith(char * src, char * match) {
-//checks whether end of src matches the string match.
-    if (strlen(src) >= strlen(match)) {
-        return !strcmp(src + (strlen(src)-strlen(match)), match) ;
-    }
-    else return false;
-}
-
-/**
- * @brief getBaseChannelName will strip chanel name to base channel name. Base channel name is chanel name, without field names (without .VAL, .PREC, ...)
- * @param name channel name to strip (null terminated string)
- */
-void getBaseChannelName(char *name) {
-    size_t len = strlen(name);
-    size_t i = 0;
-
-    while(i <= len) {  // field name + '.'
-        if(name[len-i] == '.') {    // found '.' which separates base record name and field name
-            name[len-i] = '\0';     // just terminate the string here.
-            break;
-        }
-        i++;
-    }
-}
-
-size_t truncate(char *argument) {
-    size_t length = strlen(argument);
-    if (length > MAX_STRING_SIZE) {
-        warnPrint("Input %s is longer than the allowed size %u. Truncating to ", argument, MAX_STRING_SIZE);
-        length = MAX_STRING_SIZE;
-        argument[length] = '\0';
-        warnPrint("%s\n", argument);   // end of upper fprintf
-    }
-    return length;
-}
-
-
-int main ( int argc, char ** argv )
-{//main function: reads arguments, allocates memory, calls ca* functions, frees memory and exits.
-
-    int opt;                    // getopt() current option
-    int opt_long;               // getopt_long() current long option
-    u_int32_t nChannels=0;              // Number of channels
-    u_int32_t i,j;                      // counter
-    struct channel *channels;
-
-    runMonitor = true;
-
-    if (endsWith(argv[0],"caget")) arguments.tool = caget;
-    if (endsWith(argv[0],"caput")) arguments.tool = caput;
-    if (endsWith(argv[0],"cagets")) arguments.tool = cagets;
-    if (endsWith(argv[0],"caputq")) arguments.tool = caputq;
-    if (endsWith(argv[0],"camon")) arguments.tool = camon;
-    if (endsWith(argv[0],"cawait")) arguments.tool = cawait;
-    if (endsWith(argv[0],"cado")) arguments.tool = cado;
-    if (endsWith(argv[0],"cainfo")) arguments.tool = cainfo;
-
-    epicsTimeGetCurrent(&programStartTime);
-
-    static struct option long_options[] = {
-        {"num",     	no_argument,        0,  0 },
-        {"int",     	no_argument,        0,  0 },    //same as num
-        {"round",   	required_argument,  0,  0 },	//type of rounding:round, ceil, floor
-        {"prec",    	required_argument,  0,  0 },	//precision
-        {"hex",     	no_argument,        0,  0 },	//display as hex
-        {"bin",     	no_argument,        0,  0 },	//display as bin
-        {"oct",     	no_argument,        0,  0 },	//display as oct
-        {"plain",   	no_argument,        0,  0 },	//ignore formatting switches
-        {"stat",    	no_argument,       0,  0 },	//status and severity on
-        {"nostat",  	no_argument,        0,  0 },	//status and severity off
-        {"noname",  	no_argument,        0,  0 },	//hide name
-        {"nounit",  	no_argument,        0,  0 },	//hide units
-        {"timestamp",	required_argument, 	0,  0 },	//timestamp type r,u,c
-        {"localdate",	no_argument,       0,  0 },	//client date
-        {"time",      no_argument,       0,  0 },	//server time
-        {"localtime",	no_argument,       0,  0 },	//client time
-        {"date",      no_argument,       0,  0 },	//server date
-        {"outNelm", 	required_argument,	0,  0 },	//number of array elements - read
-        {"outSep",      required_argument,	0,  0 },	//array field separator - read
-        {"inSep",      required_argument,	0,  0 },	//array field separator - write
-        {"nord",      no_argument,      0,  0 },	//display number of array elements
-        {"tool",      required_argument, 	0,	0 },	//tool
-        {"timeout",   	required_argument, 	0,	0 },	//timeout
-        {"dbrtype",   	required_argument, 	0,	0 },	//dbrtype
-        {0,         	0,                 	0,  0 }
-    };
-    putenv("POSIXLY_CORRECT="); //Behave correctly on GNU getopt systems = stop parsing after 1st non option is encountered
-
-    while ((opt = getopt_long_only(argc, argv, ":w:e:f:g:n:sthdav:", long_options, &opt_long)) != -1) {
-        switch (opt) {
-        case 'w':
-            if (sscanf(optarg, "%lf", &arguments.caTimeout) != 1){    // type was not given as float
-                arguments.caTimeout = CA_DEFAULT_TIMEOUT;
-                warnPrint("Requested timeout invalid - ignored. ('%s -h' for help.)\n", argv[0]);
-            }
-            break;
-        case 'd': // same as date
-            arguments.date = true;
-            break;
-        case 'e':	//how to format doubles in strings
-        case 'f':
-        case 'g':
-            ;//declaration must not follow label
-            int32_t digits;
-            if (sscanf(optarg, "%"SCNd32, &digits) != 1){
-                warnPrint("Invalid precision argument '%s' "
-                        "for option '-%c' - ignored.\n", optarg, opt);
-            } else {
-                if (digits>=0){
-                    if (arguments.dblFormatType == '\0' && arguments.prec >= 0) { // in case of overiding -prec
-                        warnPrint("Option '-%c' overrides precision set with '-prec'.\n", opt);
-                    }
-                    arguments.dblFormatType = opt; // set 'e' 'f' or 'g'
-                    arguments.prec = digits;
-                }
-                else{
-                    warnPrint("Precision %d for option '-%c' "
-                            "out of range - ignored.\n", digits, opt);
-                }
-            }
-            break;
-        case 's':	//try to interpret values as strings
-            arguments.str = true;
-            break;
-        case 't':	//same as time
-            arguments.time = true;
-            break;
-        case 'n':	//stop monitor after numUpdates
-            if (sscanf(optarg, "%"SCNd64, &arguments.numUpdates) != 1) {
-                warnPrint("Invalid argument '%s' for option '-%c' - ignored.\n", optarg, opt);
-                arguments.numUpdates = -1;
-            }
-            else {
-                if (arguments.numUpdates < 0) {
-                    warnPrint("Number of updates for option '-%c' must be greater or equal to zero - ignored.\n", opt);
-                    arguments.numUpdates = -1;
-                }
-            }
-            break;
-        case 'a':
-            arguments.parseArray = true;
-            break;
-        case 'v':
-            if (sscanf(optarg, "%"SCNu16, &arguments.verbosity) != 1) {
-                warnPrint("Invalid argument '%s' for option '-%c' - ignored.\n", optarg, opt);
-            }
-            break;
-        case 0:   // long options
-            switch (opt_long) {
-            case 0:   // num
-                arguments.num = true;
-                break;
-            case 1:   // int
-                arguments.num = true;
-                break;
-            case 2:   // round
-                ;//declaration must not follow label
-                int type;
-                if (sscanf(optarg, "%d", &type) != 1) {   // type was not given as a number [0, 1, 2]
-                    if(!strcmp("round", optarg)) {
-                        arguments.round = roundType_round;
-                    } else if(!strcmp("ceil", optarg)) {
-                        arguments.round = roundType_ceil;
-                    } else if(!strcmp("floor", optarg)) {
-                        arguments.round = roundType_floor;
-                    } else {
-                        arguments.round = roundType_round;
-                        warnPrint("Invalid round type '%s' "
-                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
-                    }
-                } else { // type was given as a number
-                    if( type < roundType_round || roundType_floor < type) {   // out of range check
-                        arguments.round = roundType_no_rounding;
-                        warnPrint("Invalid round type '%s' "
-                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
-                    } else{
-                        arguments.round = type;
-                    }
-                }
-                break;
-            case 3:   // prec
-                if (arguments.dblFormatType == '\0') { // formating with -f -g -e has priority
-                    if (sscanf(optarg, "%"SCNd32, &arguments.prec) != 1){
-                        warnPrint("Invalid precision argument '%s' "
-                                "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
-                    } else if (arguments.prec < 0) {
-                       warnPrint("Precision %"PRId32" for option '%s' "
-                               "out of range - ignored.\n", arguments.prec, long_options[opt_long].name);
-                       arguments.prec = -1;
-                    }
-                }
-                else {
-                    warnPrint("Option '-prec' ignored because of '-f', '-e' or '-g'.\n");
-                }
-                break;
-            case 4:   //hex
-                arguments.hex = true;
-                break;
-            case 5:   // bin
-                arguments.bin = true;
-                break;
-            case 6:   // oct
-                arguments.oct = true;
-                break;
-            case 7:   // plain
-                arguments.plain = true;
-                break;
-            case 8:   // stat
-                arguments.stat = true;
-                break;
-            case 9:	  // nostat
-                arguments.nostat = true;
-                break;
-            case 10:   // noname
-                arguments.noname = true;
-                break;
-            case 11:   // nounit
-                arguments.nounit = true;
-                break;
-            case 12:   // timestamp
-                if (sscanf(optarg, "%c", &arguments.timestamp) != 1){
-                   warnPrint("Invalid argument '%s' "
-                            "for option '%s' - ignored. Allowed arguments: r,u,c.\n", optarg, long_options[opt_long].name);
-                    arguments.timestamp = 0;
-                } else {
-                    if (arguments.timestamp != 'r' && arguments.timestamp != 'u' && arguments.timestamp != 'c') {
-                        warnPrint("Invalid argument '%s' "
-                            "for option '%s' - ignored. Allowed arguments: r,u,c.\n", optarg, long_options[opt_long].name);
-                        arguments.timestamp = 0;
-                    }
-                }
-                break;
-            case 13:   // localdate
-                arguments.localdate = true;
-                break;
-            case 14:   // time
-                arguments.time = true;
-                break;
-            case 15:   // localtime
-                arguments.localtime = true;
-                break;
-            case 16:   // date
-                arguments.date = true;
-                break;
-            case 17:   // outNelm - number of elements - read
-                if (sscanf(optarg, "%"SCNd64, &arguments.outNelm) != 1){
-                    warnPrint("Invalid count argument '%s' "
-                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
-                }
-                else {
-                    if (arguments.outNelm < 1) {
-                        warnPrint("Count number for option '%s' "
-                                "must be positive integer - ignored.\n", long_options[opt_long].name);
-                        arguments.outNelm = -1;
-                    }
-                }
-                break;
-            case 18:   // field separator for output
-                if (sscanf(optarg, "%c", &arguments.fieldSeparator) != 1){
-                    warnPrint("Invalid argument '%s' "
-                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
-                }
-                break;
-            case 19:   // field separator for input
-                if (sscanf(optarg, "%c", &arguments.inputSeparator) != 1){
-                    warnPrint("Invalid argument '%s' "
-                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
-                }
-                else {
-                    arguments.parseArray = true;
-                }
-                break;
-            case 20:   // nord
-                arguments.nord = true;
-                break;
-            case 21:	// tool
-                // rev RV: what is this line below
-                ;//c
-                int tool;
-                if (sscanf(optarg, "%d", &tool) != 1){   // type was not given as a number [0, 1, 2]
-                    if(!strcmp("caget", optarg)){
-                        arguments.tool = caget;
-                    } else if(!strcmp("camon", optarg)){
-                        arguments.tool = camon;
-                    } else if(!strcmp("caput", optarg)){
-                        arguments.tool = caput;
-                    } else if(!strcmp("caputq", optarg)){
-                        arguments.tool = caputq;
-                    } else if(!strcmp("cagets", optarg)){
-                        arguments.tool = cagets;
-                    } else if(!strcmp("cado", optarg)){
-                        arguments.tool = cado;
-                    } else if(!strcmp("cawait", optarg)){
-                        arguments.tool = cawait;
-                    } else if(!strcmp("cainfo", optarg)){
-                        arguments.tool = cainfo;
-                    }
-                } else{ // type was given as a number
-                    if(tool >= caget|| tool <= cainfo){   //unknown tool case handled down below
-                        arguments.round = tool;
-                    }
-                }
-                break;
-            case 22: //timeout
-                if (sscanf(optarg, "%lf", &arguments.timeout) != 1){
-                    warnPrint("Invalid timeout argument '%s' "
-                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
-                }
-                else {
-                    if (arguments.timeout <= 0) {
-                        warnPrint("Timeout argument must be positive - ignored.\n");
-                        arguments.timeout = -1;
-                    }
-                }
-                break;
-            case 23: //dbrtype
-                if (sscanf(optarg, "%"SCNd32, &arguments.dbrRequestType) != 1)     // type was not given as an integer
-                {
-                    dbr_text_to_type(optarg, arguments.dbrRequestType);
-                    if (arguments.dbrRequestType == -1)                   // Invalid? Try prefix DBR_
-                    {
-                        char str[30] = "DBR_";
-                        strncat(str, optarg, 25);
-                        dbr_text_to_type(str, arguments.dbrRequestType);
-                    }
-                }
-                if (arguments.dbrRequestType < DBR_STRING    || arguments.dbrRequestType > DBR_CTRL_DOUBLE){
-                    warnPrint("Requested dbr type out of range "
-                            "or invalid - ignored. ('%s -h' for help.)\n", argv[0]);
-                    arguments.dbrRequestType = -1;
-                }
-                break;
-            }
-            break;
-        case '?':
-            fprintf(stderr, "Unrecognized option: '-%c'. ('%s -h' for help.). Exiting.\n", optopt, argv[0]);
-            return EXIT_FAILURE;
-            break;
-        case ':':
-            fprintf(stderr, "Option '-%c' requires an argument. ('%s -h' for help.). Exiting.\n", optopt, argv[0]);
-            return EXIT_FAILURE;
-
-            break;
-        case 'h':               //Print usage
-            usage(stdout, arguments.tool, argv[0]);
-            return EXIT_SUCCESS;
-        default:
-            usage(stderr, arguments.tool, argv[0]);
-            exit(EXIT_FAILURE);
-        }
-     }
-
-     //check mutually exclusive arguments (without taking dbr type into account)
-     if (arguments.tool == tool_unknown){
-         usage(stderr, arguments.tool,argv[0]);
-         return EXIT_FAILURE;
-     }
-     if(arguments.tool == cainfo && (arguments.str || arguments.num || arguments.bin  || arguments.hex || arguments.oct \
-             || arguments.dbrRequestType != -1 || arguments.prec != -1 || arguments.round != roundType_no_rounding || arguments.plain \
-             || arguments.dblFormatType != '\0' || arguments.stat || arguments.nostat || arguments.noname || arguments.nounit \
-             || arguments.timestamp != '\0' || arguments.timeout != -1 || arguments.date || arguments.time || arguments.localdate \
-             || arguments.localtime || arguments.fieldSeparator != ' ' || arguments.inputSeparator != ' ' || arguments.numUpdates != -1\
-             || arguments.parseArray || arguments.outNelm != -1 || arguments.nord)){
-         warnPrint("The only options allowed for cainfo are -w and -v. Ignoring the rest.\n");
-     }
-     else if (arguments.tool != camon){
-         if (arguments.timestamp != 0){
-             warnPrint("Option -timestamp can only be specified with camon.\n");
-         }
-         if (arguments.numUpdates != -1){
-             warnPrint("Option -n can only be specified with camon.\n");
-         }
-     }
-     else if ((arguments.parseArray || arguments.inputSeparator !=' ') && (arguments.tool != caput && arguments.tool != caputq)){
-         warnPrint("Option -a and -inSep can only be specified with caput or caputq.\n");
-     }
-     if ((arguments.outNelm != -1 || arguments.num !=false || arguments.hex !=false || arguments.bin !=false || arguments.oct !=false)\
-             && (arguments.tool == cado || arguments.tool == caputq)){
-         warnPrint("Option -outNelm, -num, -hex, -bin and -oct cannot be specified with cado or caputq, because they have no output.\n");
-     }
-     if (arguments.nostat != false && arguments.stat != false){
-         warnPrint("Options -stat and -nostat are mutually exclusive.\n");
-         arguments.nostat = false;
-     }
-     if (arguments.hex + arguments.bin + arguments.oct > 1 ) {
-         arguments.hex = false;
-         arguments.bin = false;
-         arguments.oct = false;
-         warnPrint("Options -hex and -bin and -oct are mutually exclusive. Ignoring.\n");
-     }
-     if (arguments.num && arguments.str){
-         warnPrint("Options -num and -s are mutually exclusive.\n");
-     }
-     if (arguments.plain || arguments.tool == cainfo) {
-         if (arguments.tool != cainfo) warnPrint("-plain option overrides all formatting switches.\n");
-         arguments.num =false; arguments.hex =false; arguments.bin = false; arguments.oct =false; arguments.str =false;
-         arguments.prec = -1;   // prec is also handled in printValue()
-         arguments.round = roundType_no_rounding;
-         arguments.dblFormatType = '\0';
-         arguments.fieldSeparator = ' ' ;
-         arguments.noname = true;
-         arguments.nostat = true;
-         arguments.stat = false;
-         arguments.nounit = true;
-     }
-
-
-    //Remaining arg list refers to PVs
-    if (arguments.tool == caget || arguments.tool == camon || arguments.tool == cagets || arguments.tool == cado || arguments.tool == cainfo){
-        nChannels = argc - optind;       // All remaining args are PV names
-    }
-    else {
-        if ((argc - optind) % 2) {
-            if (arguments.tool == caput || arguments.tool == caputq) fprintf(stderr, "One of the PVs is missing the value to be written ('%s -h' for help).\n", argv[0]);
-            if (arguments.tool == cawait)                            fprintf(stderr, "One of the PVs is missing the condition ('%s -h' for help).\n", argv[0]);
-            return EXIT_FAILURE;
-        }
-        nChannels = (argc - optind) / 2;	// half of the args are PV names, rest conditions/values
-    }
-
-
-    if (nChannels < 1)
-    {
-        fprintf(stderr, "No record name specified. ('%s -h' for help.)\n", argv[0]);
-        return EXIT_FAILURE;
-    }
-
-    //allocate memory for channel structures
-    channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "main");
-    for (i=0; i < nChannels; ++i) {
-        channels[i].base.connectionState = CA_OP_OTHER;
-        channels[i].base.created = false;
-        channels[i].base.done = false;
-
-        if (arguments.tool == cagets) {
-            channels[i].proc.name = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");//2 spaces for .(field name) + null termination
-            channels[i].proc.created = false;
-        }
-        if(arguments.tool == cainfo) {
-            size_t nFields = noFields;  // so we don't calculate in each loop
-            for (j=0; j < nFields; j++) {
-                channels[i].fields[j].name = callocMustSucceed(LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), fields[j]);
-                channels[i].fields[j].connectionState = CA_OP_OTHER;
-                channels[i].fields[j].created = false;
-                channels[i].fields[j].done = false;
-            }
-        }
-    }
-
-
-    bool success = true;
-    // Copy PV names from command line
-    for (i = 0; optind < argc; i++, optind++) {
-        channels[i].base.name = argv[optind];
-
-        if(strlen(channels[i].base.name) > LEN_RECORD_NAME + LEN_RECORD_FIELD + 1) { //worst case scenario: longest name + longest field + '.' that separates name and field
-            errPrint("Record name over %d characters: %s - aborting", LEN_RECORD_NAME + LEN_RECORD_FIELD + 1, channels[i].base.name);
-            success = false;
-            break;
-        }
-
-        channels[i].i = i;	// channel number, serves to synchronise pvs and output.
-
-        if (arguments.tool == caput || arguments.tool == caputq){
-            channels[i].inNelm = 1;
-
-            if (!arguments.parseArray) {  //the argument to write consists of just a single element.
-                truncate(argv[optind+1]);
-
-                // allocate resources and set pointer to the argument
-                channels[i].writeStr = callocMustSucceed (channels[i].inNelm, sizeof(char*), "main");
-                channels[i].writeStr[0] = argv[optind+1];
-            }
-            else{//parse the string assuming each element is delimited by the inputSeparator char
-                char inSep[2] = {arguments.inputSeparator, 0};
-
-                // first count the number of arguments.
-                char* tempstr = callocMustSucceed(strlen(argv[optind+1])+1, sizeof(char), "main");
-                strcpy(tempstr, argv[optind+1]);
-                j=0;
-                char *token = strtok(tempstr, inSep);
-                while(token) {
-                    j++;
-                    token = strtok(NULL, inSep);
-                }
-                free(tempstr);
-                channels[i].inNelm = j;
-
-                // allocate resources
-                channels[i].writeStr = callocMustSucceed (channels[i].inNelm, sizeof(char*), "main");
-
-                // extract arguments
-                j=0;
-                token = strtok(argv[optind+1], inSep);
-                while(token) {
-                    truncate(token);
-                    channels[i].writeStr[j] = token;
-                    j++;
-                    token = strtok(NULL, inSep);
-                }
-            }
-            //finally advance to the next argument
-            optind++;
-
-        }
-        else if (arguments.tool == cawait) {
-            //next argument is the condition string
-            if (!cawaitParseCondition(&channels[i], argv[optind+1])) {
-                success = false;
-                break;
-            }
-            optind++;
-        }
-        else if (arguments.tool == cagets) {
-
-            strcpy(channels[i].proc.name, channels[i].base.name);
-
-            //append .PROC
-            getBaseChannelName(channels[i].proc.name);
-            strcat(channels[i].proc.name, ".PROC");
-        }
-        else if (arguments.tool == cainfo) {
-            //set sibling channels for getting desc and severity data
-            getBaseChannelName(channels[i].base.name);
-
-            size_t nFields = noFields;  // so we don't calculate in each loop
-            for (j=0; j < nFields; j++) {
-                strcpy(channels[i].fields[j].name, channels[i].base.name);
-                strcat(channels[i].fields[j].name, fields[j]);
-            }
-        }
-    }
-
-
+void allocateGlobals(u_int32_t nChannels){
     //allocate memory for output strings
     errorTimestamp = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"errorTimestamp");
     outDate = callocMustSucceed(nChannels, sizeof(char *),"main");
@@ -2211,7 +1229,7 @@ int main ( int argc, char ** argv )
     outTimestamp = callocMustSucceed(nChannels, sizeof(char *),"main");
     outLocalDate = callocMustSucceed(nChannels, sizeof(char *),"main");
     outLocalTime = callocMustSucceed(nChannels, sizeof(char *),"main");
-    for(i = 0; i < nChannels; i++){
+    for(int i = 0; i < nChannels; i++){
         outDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
         outTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
         outSev[i] = callocMustSucceed(LEN_SEVSTAT, sizeof(char),"main");
@@ -2228,40 +1246,28 @@ int main ( int argc, char ** argv )
         firstUpdate = callocMustSucceed(nChannels, sizeof(bool),"main");
         numMonitorUpdates = 0;
     }
+}
 
-    //start channel access
-    if(success) success = caInit(channels, nChannels);
-
-    if (success && arguments.tool == cainfo) {
-        success = cainfoRequest(channels, nChannels);
-    }
-    else if(success && (arguments.tool == camon || arguments.tool == cawait)) {
-        monitorLoop();
-    }
-    else {
-        if (success) success = caRequest(channels, nChannels);
-    }
-
-    success &= caDisconnect(channels, nChannels);
-
-    ca_context_destroy();
-
+void freeChannels(struct channel * channels, u_int32_t nChannels){
     //free channels
-    for (i=0 ;i < nChannels; ++i) {
+    for (int i=0 ;i < nChannels; ++i) {
         free(channels[i].writeStr);
-        if (arguments.tool == cagets) free(channels[i].proc.name);
+        //if (arguments.tool == cagets) 
+        free(channels[i].proc.name);
 
         if (arguments.tool == cainfo) {
             size_t nFields = noFields;  // so we don't calculate in each loop
-            for (j=0; j < nFields; j++) {
+            for (int j=0; j < nFields; j++) {
                 free(channels[i].fields[j].name);
             }
         }
     }
     free(channels);
+}
 
+void freeGlobals(u_int32_t nChannels){
     //free output strings
-    for(i = 0; i < nChannels; i++) {
+    for(int i = 0; i < nChannels; i++) {
         free(outDate[i]);
         free(outTime[i]);
         free(outSev[i]);
@@ -2286,6 +1292,63 @@ int main ( int argc, char ** argv )
     free(firstUpdate);
 
     free(errorTimestamp);
+}
+
+int main ( int argc, char ** argv )
+{//main function: reads arguments, allocates memory, calls ca* functions, frees memory and exits.
+
+    u_int32_t nChannels=0;              // Number of channels
+    struct channel *channels;
+
+    runMonitor = true;
+
+    // remember time
+    epicsTimeGetCurrent(&programStartTime);
+
+    parseArguments(argc, argv, &nChannels, &arguments);
+
+    //allocate memory for channel structures
+    channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "main");
+
+    bool success = true;
+
+    success = parseChannels(argc, argv, nChannels, &arguments, channels);
+
+    allocateGlobals(nChannels);
+
+    //start channel access
+    if(success) success = caInit(channels, nChannels);
+
+    // set timeout time from now
+    if (success && arguments.tool == cawait && arguments.timeout!=-1){
+        //set first
+        epicsTimeGetCurrent(&timeoutTime);
+        epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
+    }
+    debugPrint("here\n");
+    for(int i=0; i < nChannels; i++) {
+        caGenerateReadRequests(&channels[i], &arguments);
+        ca_flush_io();
+        waitForCompletition(channels, nChannels, true);
+    }
+
+    if (success && arguments.tool == cainfo) {
+        success = cainfoRequest(channels, nChannels);
+    }
+    else if(success && (arguments.tool == camon || arguments.tool == cawait)) {
+        monitorLoop();
+    }
+    else {
+        //if (success) success = caRequest(channels, nChannels);
+    }
+
+    success &= caDisconnect(channels, nChannels);
+
+    ca_context_destroy();
+
+    freeChannels(channels, nChannels);
+
+    freeGlobals(nChannels);
 
     if (success) return EXIT_SUCCESS;
     else return EXIT_FAILURE;

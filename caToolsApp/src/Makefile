@@ -13,6 +13,8 @@ PROD = caTools
 # Build the main IOC entry point on workstation OSs.
 caTools_SRCS += caToolsMain.c
 caTools_SRCS += caToolsOutput.c
+caTools_SRCS += caToolsInput.c
+caTools_SRCS += caToolsUtils.c
 
 
 # Finally link to the EPICS Base libraries
