@@ -84,43 +84,6 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
     return -1;
 }
 
-
-// the same as epicsTimeLessThan(), except it only checks if pLeft < pRight
-bool timeLessThan(const epicsTimeStamp *pLeft, const epicsTimeStamp *pRight) {
-    return (pLeft->secPastEpoch < pRight->secPastEpoch || (pLeft->secPastEpoch == pRight->secPastEpoch && pLeft->nsec < pRight->nsec));
-}
-
-
-bool epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp *pLeft, const epicsTimeStamp *pRight) {
-// Calculates difference between two epicsTimeStamps: like epicsTimeDiffInSeconds but returning the answer
-//in form of a timestamp. The absolute value of the difference pLeft - pRight is saved to the timestamp diff, and the
-//returned value indicates if the said difference is negative.
-    bool negative = timeLessThan(pLeft, pRight);
-    if (negative) { //switch left and right
-        const epicsTimeStamp *temp = pLeft;
-        pLeft = pRight;
-        pRight = temp;
-    }
-
-    if (pLeft->nsec >= pRight->nsec) {
-        diff->secPastEpoch = pLeft->secPastEpoch - pRight->secPastEpoch;
-        diff->nsec = pLeft->nsec - pRight->nsec;
-    } else {
-        diff->secPastEpoch = pLeft->secPastEpoch - pRight->secPastEpoch - 1;
-        diff->nsec = pLeft->nsec + 1000000000ul - pRight->nsec;
-    }
-    return negative;
-}
-
-
-void validateTimestamp(epicsTimeStamp *timestamp, const char* name) {
-//checks a timestamp for illegal values.
-    if (timestamp->nsec >= 1000000000ul) {
-        errPeriodicPrint("Warning: invalid number of nanoseconds in timestamp: %s - assuming 0.\n", name);
-        timestamp->nsec = 0;
-    }
-}
-
 int getTimeStamp(u_int32_t i) {
 //calculates timestamp for monitor tool, formats it and saves it into the global string.
 
@@ -160,14 +123,13 @@ int getTimeStamp(u_int32_t i) {
         //this is the first update for this channel
         sprintf(outTimestamp[i],"%19c",' ');
     }
-    else {	//save to outTs string
+    else {  //save to outTs string
         char cSign = negative ? '-' : ' ';
         sprintf(outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
     }
 
     return 0;
 }
-
 
 //macros for reading requested data
 #define severity_status_get(T) \
@@ -178,6 +140,9 @@ severity = ((struct T *)args.dbr)->severity;
     validateTimestamp(&timestampRead[ch->i], ch->base.name);
 #define units_get_cb(T) clearStr(outUnits[ch->i]); sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
 #define precision_get(T) precision = (((struct T *)args.dbr)->precision);
+
+
+
 
 static void caReadCallback (evargs args){
 //reads and parses data fetched by calls. First, the global strings holding the output are cleared. Then, depending
@@ -413,6 +378,7 @@ static void caReadCallback (evargs args){
 static void caWriteCallback (evargs args) {
 //does nothing except signal that writing is finished.
 
+    debugPrint("caWriteCallback()\n");
     //check if status is ok
     if (args.status != ECA_NORMAL){
         errPrint("Error in write callback. %s.\n", ca_message(args.status));
@@ -508,9 +474,10 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
     }
 }
 
-bool castStrToDBR(void * data, char **str, unsigned long nelm, int32_t baseType){
+bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType){
+    debugPrint("castStrToDBR() - start\n");
     //convert input string to the baseType
-    data = callocMustSucceed(nelm, dbr_size[baseType], "castStrToDBR");
+    *data = callocMustSucceed(nelm, dbr_size[baseType], "castStrToDBR");
     int base = 0;   // used for number conversion in strto* functions
     char *endptr;   // used in strto* functions
     bool success = true;
@@ -518,7 +485,7 @@ bool castStrToDBR(void * data, char **str, unsigned long nelm, int32_t baseType)
     switch (baseType){
     case DBR_INT://and short
         for (j=0; j<nelm; ++j) {
-            ((dbr_int_t *)data)[j] = (dbr_int_t)strtoll(str[j], &endptr, base);
+            ((dbr_int_t *)(*data))[j] = (dbr_int_t)strtoll(str[j], &endptr, base);
             if (endptr == str[j] || *endptr != '\0') {
                 errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
                 success = false;
@@ -528,7 +495,7 @@ bool castStrToDBR(void * data, char **str, unsigned long nelm, int32_t baseType)
 
     case DBR_FLOAT:
         for (j=0; j<nelm; ++j) {
-            ((dbr_float_t *)data)[j] = (dbr_float_t)strtof(str[j], &endptr);
+            ((dbr_float_t *)(*data))[j] = (dbr_float_t)strtof(str[j], &endptr);
             if (endptr == str[j] || *endptr != '\0') {
                 errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
                 success = false;
@@ -540,7 +507,7 @@ bool castStrToDBR(void * data, char **str, unsigned long nelm, int32_t baseType)
         ;//check if put data is provided as a number
         bool isNumber = true;
         for (j=0; j<nelm; ++j) {
-            ((dbr_enum_t *)data)[j] = (dbr_enum_t)strtoull(str[j], &endptr, base);
+            ((dbr_enum_t *)(*data))[j] = (dbr_enum_t)strtoull(str[j], &endptr, base);
             if (endptr == str[j] || *endptr != '\0') {
                 isNumber = false;
             }
@@ -551,7 +518,7 @@ bool castStrToDBR(void * data, char **str, unsigned long nelm, int32_t baseType)
             baseType = DBR_STRING;
 
             free(data);
-            data = callocMustSucceed(nelm, dbr_size[baseType], "castStrToDBR");
+            *data = callocMustSucceed(nelm, dbr_size[baseType], "castStrToDBR");
         }
         else {
             break;
@@ -559,7 +526,7 @@ bool castStrToDBR(void * data, char **str, unsigned long nelm, int32_t baseType)
 
     case DBR_STRING:
         for (j=0; j<nelm; ++j) {
-            strcpy(((dbr_string_t *)data)[j], str[j]);
+            strcpy(((dbr_string_t *)(*data))[j], str[j]);
         }
         break;
 
@@ -573,15 +540,15 @@ bool castStrToDBR(void * data, char **str, unsigned long nelm, int32_t baseType)
             }
 
             if (charsInStr != nelm) { // don't fiddle with memory if we don't have to
-                free(data);
-                data = callocMustSucceed(charsInStr, dbr_size[baseType], "castStrToDBR");
+                free(*data);
+                *data = callocMustSucceed(charsInStr, dbr_size[baseType], "castStrToDBR");
             }
 
             // store all the chars to write
             charsInStr = 0;
             for (j=0; j < nelm; ++j) {
                 for (size_t k = 0; k < charsPerStr[j]; k++) {
-                    ((dbr_char_t *)data)[charsInStr] = (dbr_char_t)str[j][k];
+                    ((dbr_char_t *)(*data))[charsInStr] = (dbr_char_t)str[j][k];
                     charsInStr++;
                 }
             }
@@ -591,7 +558,7 @@ bool castStrToDBR(void * data, char **str, unsigned long nelm, int32_t baseType)
 
     case DBR_LONG:
         for (j=0; j<nelm; ++j) {
-            ((dbr_long_t *)data)[j] = (dbr_long_t)strtoll(str[j], &endptr, base);
+            ((dbr_long_t *)(*data))[j] = (dbr_long_t)strtoll(str[j], &endptr, base);
             if (endptr == str[j] || *endptr != '\0') {
                 errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
                 success = false;
@@ -601,7 +568,7 @@ bool castStrToDBR(void * data, char **str, unsigned long nelm, int32_t baseType)
 
     case DBR_DOUBLE:
         for (j=0; j<nelm; ++j) {
-            ((dbr_double_t *)data)[j] = (dbr_double_t)strtod(str[j], &endptr);
+            ((dbr_double_t *)(*data))[j] = (dbr_double_t)strtod(str[j], &endptr);
             if (endptr == str[j] || *endptr != '\0') {
                 errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
                 success = false;
@@ -613,95 +580,114 @@ bool castStrToDBR(void * data, char **str, unsigned long nelm, int32_t baseType)
         errPrint("Can not print %s DBR type (DBR numeric type code: %"PRId32"). \n", dbr_type_to_text(baseType), baseType);
         success = false;
     }
+    debugPrint("castStrToDBR() - end\n");
     return success;
 }
 
-bool caRequest(struct channel *channels, u_int32_t nChannels) {
-//sends get or put requests. ca_get or ca_put are called multiple times, depending on the tool. The reading,
-//parsing and printing of returned data is performed in callbacks.
-    int status = -1;
-    u_int32_t i;
-    
-    for(i=0; i < nChannels; i++) {
-        if (channels[i].base.connectionState != CA_OP_CONN_UP) {//skip disconnected channels
-            continue;
-        }
+bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
+    debugPrint("caGenerateWriteRequests() - %s\n", ch->base.name);
+    int status;    
 
-        if (arguments.tool == caget) {
-            status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].base.id, caReadCallback, &channels[i]);
-            // if (channels[i].type == DBR_STRING)
-                
-            //status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].base.id, caReadCallback, &channels[i]);
-        }
-        else if (arguments.tool == caput || arguments.tool == caputq) {
-            int32_t baseType = channels[i].type % (LAST_TYPE+1);   // use naked dbr_xx type for put
-            
+    //request ctrl type
+    int32_t baseType = ca_field_type(ch->base.id);
 
-            //if(arguments.bin) base = 2; TODO can be used to select binary input for numbers
-            void * input;
-            
-            if (castStrToDBR(input, channels[i].writeStr, channels[i].inNelm, baseType)) {
-                if(arguments.tool == caputq) status = ca_array_put(baseType, channels[i].inNelm, channels[i].base.id, input);
-                else status = ca_array_put_callback(baseType, channels[i].inNelm, channels[i].base.id, input, caWriteCallback, &channels[i]);
-                free(input);
-            }
-            else {
-                status = ECA_BADTYPE;
-                free(input);
-                return false;
-            }
+    ch->nRequests=0;
+   
+   if (arguments->tool == caput || arguments->tool == caputq) {        
+
+        //if(arguments.bin) base = 2; TODO can be used to select binary input for numbers
+        void * input;
+        
+        if (castStrToDBR(&input, ch->writeStr, ch->inNelm, baseType)) {
+            //dbr_char_t * putin = (dbr_char_t *) input;
+            debugPrint("nelm: %i\n", ch->inNelm);
+
+            if(arguments->tool == caputq) status = ca_array_put(baseType, ch->inNelm, ch->base.id, input);
+            else status = ca_array_put_callback(baseType, ch->inNelm, ch->base.id, input, caWriteCallback, ch);
+            //else status = ca_array_put_callback(DBF_CHAR, 1, ch->base.id, &putin, caWriteCallback, ch);
+            free(input);
         }
-        else if(arguments.tool == cagets && channels[i].proc.created) {
-            dbr_char_t input=1;
-            status = ca_array_put_callback(DBF_CHAR, 1, channels[i].proc.id, &input, caWriteCallback, &channels[i]);
-        }
-        else if(arguments.tool == cado) {
-            dbr_char_t input = 1;
-            status = ca_array_put(DBF_CHAR, 1, channels[i].base.id, &input); // old PSI tools behaved this way. Is it better to fill entire array?
-        }
-        if (status != ECA_NORMAL) {
-            errPrint("Problem creating request for process variable %s: %s.\n", channels[i].base.name, ca_message(status));
+        else {
+            status = ECA_BADTYPE;
+            free(input);
             return false;
         }
     }
-
-    if(arguments.tool == cado || arguments.tool == caputq) return true;  // we do not wait if cado or caputq
-
-     // wait for callbacks
-    waitForCompletition(channels, nChannels, true);
-
-    bool success = true;
-    //if caput or cagets issue a new read request.
-    if (arguments.tool == caput || arguments.tool == cagets){
-
-        for (i=0; i<nChannels; ++i) {
-            if (channels[i].base.connectionState != CA_OP_CONN_UP) {//skip disconnected channels
-                continue;
-            }
-            status = ca_array_get_callback(channels[i].type, channels[i].outNelm, channels[i].base.id, caReadCallback, &channels[i]);
-            if (status != ECA_NORMAL) {
-                errPrint("Problem creating get request for channel %s: %s.\n", channels[i].base.name,ca_message(status));
-                return false;
-            }
-
-        }
-
-        waitForCompletition(channels, nChannels, true);
+    else if(arguments->tool == cagets && ch->proc.created) {
+        dbr_char_t input=1;
+        status = ca_array_put_callback(DBF_CHAR, 1, ch->proc.id, &input, caWriteCallback, ch);
     }
-    /*
-    chid   mychid;
-    SEVCHK(ca_create_channel("StrRecord.OUT$",NULL,NULL,10,&mychid),"ca_create_channel failure");
-    
-    SEVCHK(ca_pend_io(5.0),"ca_pend_io failure");
-    unsigned elementCount = ca_element_count ( mychid );
-    printf("%i\n", elementCount);
-    char * mydata=malloc(elementCount);
-    SEVCHK(ca_array_get(DBR_CHAR,elementCount,mychid,mydata),"ca_get failure");
-    SEVCHK(ca_pend_io(5.0),"ca_pend_io failure");
-    printf("%s\n", mydata);
-    printOut(&channels[0], &arguments);
-    return success;
-    */
+    else if(arguments->tool == cado) {
+        dbr_char_t input = 1;
+        status = ca_array_put(DBF_CHAR, 1, ch->base.id, &input); // old PSI tools behaved this way. Is it better to fill entire array?
+    }
+    if (status != ECA_NORMAL) {
+        errPrint("Problem creating request for process variable %s: %s.\n", ch->base.name, ca_message(status));
+        return false;
+    }
+
+
+    return true;
+}
+
+bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
+    debugPrint("caGenerateRequests() - %s\n", ch->base.name);
+    int status;    
+
+
+    //request ctrl type
+    int32_t baseType = ca_field_type(ch->base.id);
+    int32_t reqType = dbf_type_to_DBR_CTRL(baseType);
+
+    // check number of elements
+    ch->count = ca_element_count ( ch->base.id );
+    if (arguments->outNelm == -1) ch->outNelm = ch->count;
+    else if(arguments->outNelm > 0 && (unsigned long) arguments->outNelm < ch->count) ch->outNelm = (unsigned long) arguments->outNelm;
+    else{
+        ch->outNelm = ch->count;
+        warnPeriodicPrint("Invalid number of requested elements to read (%"PRId64") from %s - reading maximum number of elements (%lu).\n", arguments->outNelm, ch->base.name, ch->count);
+    }
+   
+    // long strings
+    if (baseType==DBF_STRING && ch->str$.connectionState==CA_OP_CONN_UP && ca_element_count(ch->str$.id) > MAX_STRING_SIZE)
+    {
+        ch->nRequests=ch->nRequests+1;
+        status = ca_array_get_callback(DBR_CTRL_CHAR, ca_element_count(ch->str$.id), ch->str$.id, caReadCallback, ch);
+        if (status != ECA_NORMAL) {
+            errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->str$.name, ca_message(status));
+            return;
+        }
+    }else{
+        //default
+        ch->nRequests=ch->nRequests+1;
+        status = ca_array_get_callback(reqType, ch->outNelm, ch->base.id, caReadCallback, ch);
+        if (status != ECA_NORMAL) {
+            errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->base.name, ca_message(status));
+            return;
+        }
+    }
+    // get timestamp if needed
+    if (arguments->time || arguments->date || arguments->timestamp){
+        if (arguments->str && ca_field_type(ch->base.id) == DBF_ENUM){
+            //if enum && s, use time_string
+            reqType = DBR_TIME_STRING;
+        }
+        else{ //else use time_native
+            reqType = dbf_type_to_DBR_TIME(ca_field_type(ch->base.id));
+        }
+        ch->nRequests=ch->nRequests+1;
+        status = ca_array_get_callback(reqType, ch->outNelm, ch->base.id, caReadCallback, ch);
+        if (status != ECA_NORMAL) {
+            errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->base.name, ca_message(status));
+            return;
+        }
+    }
+    if (status != ECA_NORMAL) {
+        errPrint("Problem creating request for process variable %s: %s.\n", ch->base.name, ca_message(status));
+        return false;
+    }
+
+    return true;
 }
 
 bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
@@ -787,7 +773,7 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
                     epicsAlarmSeverityStrings[((struct dbr_sts_string *)data)->severity]);      //status and severity
             break;
         case DBR_CTRL_INT://and short
-            printf("\tUnits: %s\n", ((struct dbr_ctrl_int *)data)->units);            	//units
+            printf("\tUnits: %s\n", ((struct dbr_ctrl_int *)data)->units);              //units
             fputc('\n',stdout);
             printf("\tAlarm status: %s, severity: %s\n",
                     epicsAlarmConditionStrings[((struct dbr_ctrl_int *)data)->status],
@@ -798,9 +784,9 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
             printf("\tAlarm\tupper limit: %" PRId16"\n\t\tlower limit: %" PRId16"\n",
                     ((struct dbr_ctrl_int *)data)->upper_alarm_limit, ((struct dbr_ctrl_int *)data)->lower_alarm_limit); //alarm limits
             printf("\tControl\tupper limit: %"PRId16"\n\t\tlower limit: %"PRId16"\n", ((struct dbr_ctrl_int *)data)->upper_ctrl_limit,\
-                    ((struct dbr_ctrl_int *)data)->lower_ctrl_limit);                  	//control limits
+                    ((struct dbr_ctrl_int *)data)->lower_ctrl_limit);                   //control limits
             printf("\tDisplay\tupper limit: %"PRId16"\n\t\tower limit: %"PRId16"\n",
-                   ((struct dbr_ctrl_int *)data)->upper_disp_limit, ((struct dbr_ctrl_int *)data)->lower_disp_limit);                  	//display limits
+                   ((struct dbr_ctrl_int *)data)->upper_disp_limit, ((struct dbr_ctrl_int *)data)->lower_disp_limit);                   //display limits
             break;
         case DBR_CTRL_FLOAT:
             printf("\tUnits: %s\n", ((struct dbr_ctrl_float *)data)->units);
@@ -907,107 +893,53 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
     return true;
 }
 
-bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
-    debugPrint("caGenerateWriteRequests() - %s\n", ch->base.name);
-    int status;    
+bool caRequest(struct channel *channels, u_int32_t nChannels) {
+//sends get or put requests. ca_get or ca_put are called multiple times, depending on the tool. The reading,
+//parsing and printing of returned data is performed in callbacks.
+    int status = -1;
+    u_int32_t i;
 
-    //request ctrl type
-    int32_t baseType = ca_field_type(ch->base.id);
-
-    ch->nRequests=0;
-   
-   if (arguments->tool == caput || arguments->tool == caputq) {        
-
-        //if(arguments.bin) base = 2; TODO can be used to select binary input for numbers
-        void * input;
-        
-        if (castStrToDBR(input, ch->writeStr, ch->inNelm, baseType)) {
-            if(arguments->tool == caputq) status = ca_array_put(baseType, ch->inNelm, ch->base.id, input);
-            else status = ca_array_put_callback(baseType, ch->inNelm, ch->base.id, input, caWriteCallback, ch);
-            free(input);
-        }
-        else {
-            status = ECA_BADTYPE;
-            free(input);
-            return false;
-        }
-    }
-    else if(arguments->tool == cagets && ch->proc.created) {
-        dbr_char_t input=1;
-        status = ca_array_put_callback(DBF_CHAR, 1, ch->proc.id, &input, caWriteCallback, ch);
-    }
-    else if(arguments->tool == cado) {
-        dbr_char_t input = 1;
-        status = ca_array_put(DBF_CHAR, 1, ch->base.id, &input); // old PSI tools behaved this way. Is it better to fill entire array?
-    }
-    if (status != ECA_NORMAL) {
-        errPrint("Problem creating request for process variable %s: %s.\n", ch->base.name, ca_message(status));
-        return false;
-    }
-
-
-    return true;
-}
-
-bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
-    debugPrint("caGenerateRequests() - %s\n", ch->base.name);
-    int status;    
-
-
-    //request ctrl type
-    int32_t baseType = ca_field_type(ch->base.id);
-    int32_t reqType = dbf_type_to_DBR_CTRL(baseType);
-
-    // check number of elements
-    ch->count = ca_element_count ( ch->base.id );
-    if (arguments->outNelm == -1) ch->outNelm = ch->count;
-    else if(arguments->outNelm > 0 && (unsigned long) arguments->outNelm < ch->count) ch->outNelm = (unsigned long) arguments->outNelm;
-    else{
-        ch->outNelm = ch->count;
-        warnPeriodicPrint("Invalid number of requested elements to read (%"PRId64") from %s - reading maximum number of elements (%lu).\n", arguments->outNelm, ch->base.name, ch->count);
-    }
-   
-    // long strings
-    if (baseType==DBF_STRING && ch->str$.connectionState==CA_OP_CONN_UP && ca_element_count(ch->str$.id) > MAX_STRING_SIZE)
+    // generate write requests 
+    if (arguments.tool == caput || 
+        arguments.tool == caputq || 
+        arguments.tool == cado ||
+        arguments.tool == cagets)
     {
-        ch->nRequests=ch->nRequests+1;
-        status = ca_array_get_callback(DBR_CTRL_CHAR, ca_element_count(ch->str$.id), ch->str$.id, caReadCallback, ch);
-        if (status != ECA_NORMAL) {
-            errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->str$.name, ca_message(status));
-            return;
+        for(i=0; i < nChannels; i++) {
+            if (channels[i].base.connectionState != CA_OP_CONN_UP) {//skip disconnected channels
+                continue;
+            }
+            if(arguments.tool == cado || arguments.tool == caputq) return true;
+            caGenerateWriteRequests(&channels[i], &arguments);
         }
-    }else{
-        //default
-        ch->nRequests=ch->nRequests+1;
-        status = ca_array_get_callback(reqType, ch->outNelm, ch->base.id, caReadCallback, ch);
-        if (status != ECA_NORMAL) {
-            errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->base.name, ca_message(status));
-            return;
-        }
+        waitForCallbacks(channels, nChannels);
     }
-    // get timestamp if needed
-    if (arguments->time || arguments->date || arguments->timestamp){
-        if (arguments->str && ca_field_type(ch->base.id) == DBF_ENUM){
-            //if enum && s, use time_string
-            reqType = DBR_TIME_STRING;
+    // generate read requests 
+    if (arguments.tool == caget || 
+        arguments.tool == cagets || 
+        arguments.tool == caput)
+    {
+        for(i=0; i < nChannels; i++) {
+            if (channels[i].base.connectionState != CA_OP_CONN_UP) {//skip disconnected channels
+                continue;
+            }
+
+            caGenerateReadRequests(&channels[i], &arguments);
         }
-        else{ //else use time_native
-            reqType = dbf_type_to_DBR_TIME(ca_field_type(ch->base.id));
-        }
-        ch->nRequests=ch->nRequests+1;
-        status = ca_array_get_callback(reqType, ch->outNelm, ch->base.id, caReadCallback, ch);
-        if (status != ECA_NORMAL) {
-            errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->base.name, ca_message(status));
-            return;
-        }
+
+        waitForCallbacks(channels, nChannels);
     }
-    if (status != ECA_NORMAL) {
-        errPrint("Problem creating request for process variable %s: %s.\n", ch->base.name, ca_message(status));
-        return false;
+    if (arguments.tool == cainfo)
+    {
+        cainfoRequest(channels, nChannels);
     }
 
-    return true;
+    return true;    
 }
+
+
+
+
 
 void channelInitCallback(struct connection_handler_args args){
 //callback for ca_create_channel. Is executed whenever a channel connects or
@@ -1325,21 +1257,11 @@ int main ( int argc, char ** argv )
         epicsTimeGetCurrent(&timeoutTime);
         epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
     }
-    debugPrint("here\n");
-    for(int i=0; i < nChannels; i++) {
-        caGenerateReadRequests(&channels[i], &arguments);
-        ca_flush_io();
-        waitForCompletition(channels, nChannels, true);
-    }
 
-    if (success && arguments.tool == cainfo) {
-        success = cainfoRequest(channels, nChannels);
-    }
-    else if(success && (arguments.tool == camon || arguments.tool == cawait)) {
+    success = caRequest(channels, nChannels);
+
+    if(success && (arguments.tool == camon || arguments.tool == cawait)) {
         monitorLoop();
-    }
-    else {
-        //if (success) success = caRequest(channels, nChannels);
     }
 
     success &= caDisconnect(channels, nChannels);

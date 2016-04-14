@@ -7,7 +7,9 @@ void getBaseChannelName(char *name);
 size_t truncate(char *argument);
 bool isStrEmpty(char *str);
 bool isValField(char *name);
-
+bool timeLessThan(const epicsTimeStamp *pLeft, const epicsTimeStamp *pRight);
+bool epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp *pLeft, const epicsTimeStamp *pRight);
+void validateTimestamp(epicsTimeStamp *timestamp, const char* name);
 /**
  * @brief clearStr cleares a string
  * @param str the string to clear

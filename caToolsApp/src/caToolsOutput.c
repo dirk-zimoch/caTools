@@ -300,3 +300,4 @@ int printOutput(int i, evargs args, int32_t precision, arguments_T *arguments){
     putc('\n', stdout);
     return 0;
 }
+

@@ -84,3 +84,41 @@ size_t truncate(char *argument) {
 bool isStrEmpty(char *str) {
     return str[0] == '\0';
 }
+
+
+// the same as epicsTimeLessThan(), except it only checks if pLeft < pRight
+bool timeLessThan(const epicsTimeStamp *pLeft, const epicsTimeStamp *pRight) {
+    return (pLeft->secPastEpoch < pRight->secPastEpoch || (pLeft->secPastEpoch == pRight->secPastEpoch && pLeft->nsec < pRight->nsec));
+}
+
+
+bool epicsTimeDiffFull(epicsTimeStamp *diff, const epicsTimeStamp *pLeft, const epicsTimeStamp *pRight) {
+// Calculates difference between two epicsTimeStamps: like epicsTimeDiffInSeconds but returning the answer
+//in form of a timestamp. The absolute value of the difference pLeft - pRight is saved to the timestamp diff, and the
+//returned value indicates if the said difference is negative.
+    bool negative = timeLessThan(pLeft, pRight);
+    if (negative) { //switch left and right
+        const epicsTimeStamp *temp = pLeft;
+        pLeft = pRight;
+        pRight = temp;
+    }
+
+    if (pLeft->nsec >= pRight->nsec) {
+        diff->secPastEpoch = pLeft->secPastEpoch - pRight->secPastEpoch;
+        diff->nsec = pLeft->nsec - pRight->nsec;
+    } else {
+        diff->secPastEpoch = pLeft->secPastEpoch - pRight->secPastEpoch - 1;
+        diff->nsec = pLeft->nsec + 1000000000ul - pRight->nsec;
+    }
+    return negative;
+}
+
+
+void validateTimestamp(epicsTimeStamp *timestamp, const char* name) {
+//checks a timestamp for illegal values.
+    if (timestamp->nsec >= 1000000000ul) {
+        errPeriodicPrint("Warning: invalid number of nanoseconds in timestamp: %s - assuming 0.\n", name);
+        timestamp->nsec = 0;
+    }
+}
+
