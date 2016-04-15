@@ -7,21 +7,17 @@
 #include "caToolsUtils.h"
 #include "caToolsOutput.h"
 
-int printOut(struct channel *chan, arguments_T *arguments){
-     printf("New Printout Function!");
-     printf("\nTool:%i", arguments->tool);
-     printf("\nChannel:%s\n", chan->base.name);
-     return 0;
-}
-
 #define printBits(x) \
     for (int32_t i = sizeof(x) * 8 - 1; i >= 0; i--) { \
         fputc('0' + ((x >> i) & 1), stdout); \
     }
 
+
+
 int printValue(evargs args, int32_t precision, arguments_T *arguments){
 //Parses the data fetched by ca_get callback according to the data type and formatting arguments->
 //The result is printed to stdout.
+
 
     int32_t baseType;
     void *value;
@@ -31,6 +27,9 @@ int printValue(evargs args, int32_t precision, arguments_T *arguments){
     baseType = args.type % (LAST_TYPE+1);   // convert appropriate TIME, GR, CTRL,... type to basic one
     struct channel *ch = (struct channel *)args.usr;
     
+
+    debugPrint("printValue() - baseType: %s\n", dbr_type_to_text(baseType));
+
     //handle long strings
 
     if(baseType == DBR_CHAR && (ca_field_type(ch->base.id)==DBF_STRING || arguments->str)){

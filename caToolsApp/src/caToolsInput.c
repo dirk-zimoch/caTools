@@ -693,3 +693,113 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
 
     return success;
 }
+
+bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType){
+    debugPrint("castStrToDBR() - start\n");
+    //convert input string to the baseType
+    *data = callocMustSucceed(nelm, dbr_size[baseType], "castStrToDBR");
+    int base = 0;   // used for number conversion in strto* functions
+    char *endptr;   // used in strto* functions
+    bool success = true;
+    unsigned long j;
+    switch (baseType){
+    case DBR_INT://and short
+        for (j=0; j<nelm; ++j) {
+            ((dbr_int_t *)(*data))[j] = (dbr_int_t)strtoll(str[j], &endptr, base);
+            if (endptr == str[j] || *endptr != '\0') {
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                success = false;
+            }
+        }
+        break;
+
+    case DBR_FLOAT:
+        for (j=0; j<nelm; ++j) {
+            ((dbr_float_t *)(*data))[j] = (dbr_float_t)strtof(str[j], &endptr);
+            if (endptr == str[j] || *endptr != '\0') {
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                success = false;
+            }
+        }
+        break;
+
+    case DBR_ENUM:
+        ;//check if put data is provided as a number
+        bool isNumber = true;
+        for (j=0; j<nelm; ++j) {
+            ((dbr_enum_t *)(*data))[j] = (dbr_enum_t)strtoull(str[j], &endptr, base);
+            if (endptr == str[j] || *endptr != '\0') {
+                isNumber = false;
+            }
+        }
+
+        // if enum is entered as a string, reallocate memory and go to case DBR_STRING
+        if (!isNumber) {
+            baseType = DBR_STRING;
+
+            free(data);
+            *data = callocMustSucceed(nelm, dbr_size[baseType], "castStrToDBR");
+        }
+        else {
+            break;
+        }
+
+    case DBR_STRING:
+        for (j=0; j<nelm; ++j) {
+            strcpy(((dbr_string_t *)(*data))[j], str[j]);
+        }
+        break;
+
+    case DBR_CHAR:{
+            // count number of characters to write
+            size_t charsInStr = 0;
+            size_t charsPerStr[nelm];
+            for (j=0; j < nelm; ++j) {
+                charsPerStr[j] = strlen(str[j]);
+                charsInStr += charsPerStr[j];
+            }
+
+            if (charsInStr != nelm) { // don't fiddle with memory if we don't have to
+                free(*data);
+                *data = callocMustSucceed(charsInStr, dbr_size[baseType], "castStrToDBR");
+            }
+
+            // store all the chars to write
+            charsInStr = 0;
+            for (j=0; j < nelm; ++j) {
+                for (size_t k = 0; k < charsPerStr[j]; k++) {
+                    ((dbr_char_t *)(*data))[charsInStr] = (dbr_char_t)str[j][k];
+                    charsInStr++;
+                }
+            }
+            nelm = charsInStr;
+        }
+        break;
+
+    case DBR_LONG:
+        for (j=0; j<nelm; ++j) {
+            ((dbr_long_t *)(*data))[j] = (dbr_long_t)strtoll(str[j], &endptr, base);
+            if (endptr == str[j] || *endptr != '\0') {
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                success = false;
+            }
+        }
+        break;
+
+    case DBR_DOUBLE:
+        for (j=0; j<nelm; ++j) {
+            ((dbr_double_t *)(*data))[j] = (dbr_double_t)strtod(str[j], &endptr);
+            if (endptr == str[j] || *endptr != '\0') {
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                success = false;
+            }
+        }
+        break;
+
+    default:
+        errPrint("Can not print %s DBR type (DBR numeric type code: %"PRId32"). \n", dbr_type_to_text(baseType), baseType);
+        success = false;
+    }
+    debugPrint("castStrToDBR() - end\n");
+    return success;
+}
