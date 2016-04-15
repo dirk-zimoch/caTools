@@ -14,6 +14,16 @@
 #define VERBOSITY_WARN_PERIODIC 5
 #define VERBOSITY_DEBUG		    10
 
+
+//Document what theese defines do
+#define LEN_TIMESTAMP 50
+#define LEN_SEVSTAT 30
+#define LEN_UNITS  20+MAX_UNITS_SIZE
+#define LEN_RECORD_NAME  60
+#define LEN_RECORD_FIELD 4
+#define LEN_FQN_NAME LEN_RECORD_NAME + LEN_RECORD_FIELD + 2
+
+
 enum roundType {
     roundType_no_rounding = -1,
     roundType_round,
@@ -110,7 +120,7 @@ enum channelField {
 struct field {
     char *name;             // the name of the channel.field
     chid id;                // the id of the channel.field
-    long connectionState;   // channel connected/disconnected
+    long connectionState;   // channel connected/disconnected //Document meaning of the values here
     bool created;           // channel creation for the field was successfull
     bool done;              // indicates if callback has finished processing this channel
     struct channel * ch;	// reference to the channel
@@ -130,12 +140,12 @@ enum operator { //possible conditions for cawait
 struct channel {
     struct field    base;       // the name of the channel
     struct field    proc;       // sibling channel for writing to proc field
-    struct field    str$;       // sibling channel for reading string as an array of chars
+    struct field    str$;       // sibling channel for reading string as an array of chars //Consider refractoring to ASCII only variable name
     char           *name;       // the name of the channel
     char           *longStr;	// long string
-    struct field    fields[23]; // fields[noFields];    // sibling channels for fields (description, severities, ...)
+    struct field    fields[23]; // fields[noFields];    // sibling channels for fields (description, severities, ...) Used only by caInfo
 
-    long            type;       // dbr type
+    long            type;       // dbr type //This should probably be a short? Double check before though...
     int32_t 		precision;
     unsigned long   count;      // element count
     unsigned long   inNelm;     // requested number of elements for writing
@@ -150,19 +160,13 @@ struct channel {
 
 };
 
-extern char **outDate,**outTime, **outSev, **outStat, **outUnits, **outLocalDate, **outLocalTime, **outTimestamp;
-extern u_int32_t const LEN_RECORD_FIELD;
-extern u_int32_t const LEN_RECORD_NAME;
-extern u_int32_t const LEN_TIMESTAMP;
-extern epicsTimeStamp *timestampRead;
+extern char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outLocalDate, **g_outLocalTime, **g_outTimestamp;
 
-extern int verbosity;
-#define customPrint(level,output,M, ...) if(verbosity >= level) fprintf(output, M,##__VA_ARGS__)
-#define warnPrint(M, ...) customPrint(VERBOSITY_WARN, stdout, "Warning: "M, ##__VA_ARGS__)
-#define warnPeriodicPrint(M, ...) customPrint(VERBOSITY_WARN_PERIODIC, stdout, "Warning: "M, ##__VA_ARGS__)
-#define errPrint(M, ...) customPrint(VERBOSITY_ERR, stderr, "Error: "M, ##__VA_ARGS__)
-#define errPeriodicPrint(M, ...) customPrint(VERBOSITY_ERR_PERIODIC, stderr, "Error: "M, ##__VA_ARGS__)
-#define debugPrint(M, ...) customPrint(VERBOSITY_DEBUG, stderr, "Debug: "M, ##__VA_ARGS__)
+
+
+extern epicsTimeStamp *g_timestampRead;
+
+extern int g_verbosity;
 
 
 

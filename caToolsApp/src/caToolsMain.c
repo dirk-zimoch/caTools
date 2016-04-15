@@ -1,5 +1,9 @@
 /* caToolsMain.c */
-/* Author:  Rok Vuga Date:    FEB 2016 */
+/* Author:  Rok Vuga     Date:    FEB 2016 */
+/* Author:  Tomaz Sustar Date:    FEB 2016 */
+/* Author:  Tom Slejko   Date:    FEB 2016 */
+
+
 #include <stdio.h>
 #include <getopt.h>
 #include <string.h>
@@ -14,12 +18,15 @@
 #include "alarmString.h"
 #include "alarm.h"
 #include "caToolsTypes.h"
-#include "caToolsGlobals.h"
+#include "caToolsGlobals.c"
 #include "caToolsOutput.h"
 #include "caToolsInput.h"
 #include "caToolsUtils.h"
 
 int cawaitEvaluateCondition(struct channel channel, evargs args){
+/* At some point change the comments fom C++ to C style */
+
+
 //evaluates output of channel i against the corresponding condition.
 //returns 1 if matching, 0 otherwise, and -1 if error.
 //Before evaluation, channel output is converted to double. If this is
@@ -94,7 +101,7 @@ int getTimeStamp(u_int32_t i) {
 
     if (arguments.timestamp == 'r') {
         //calculate elapsed time since startTime
-        negative = epicsTimeDiffFull(&elapsed, &timestampRead[i], &programStartTime);
+        negative = epicsTimeDiffFull(&elapsed, &g_timestampRead[i], &g_programStartTime);
     }
     else if(arguments.timestamp == 'c' || arguments.timestamp == 'u') {
         //calculate elapsed time since last update; if using 'c' keep
@@ -102,15 +109,15 @@ int getTimeStamp(u_int32_t i) {
         //for all channels (commonI).
 
         // firstUpodate var is set at the end of caReadCallback, just before printing results.
-        if (firstUpdate[i]) {
-            negative = epicsTimeDiffFull(&elapsed, &timestampRead[i], &lastUpdate[commonI]);
+        if (g_firstUpdate[i]) {
+            negative = epicsTimeDiffFull(&elapsed, &g_timestampRead[i], &g_lastUpdate[commonI]);
         }
         else {
-            firstUpdate[i] = true;
+            g_firstUpdate[i] = true;
             showEmpty = true;
         }
 
-        lastUpdate[commonI] = timestampRead[i]; // reset
+        g_lastUpdate[commonI] = g_timestampRead[i]; // reset
     }
 
     //convert to h,m,s,ns
@@ -121,11 +128,11 @@ int getTimeStamp(u_int32_t i) {
 
     if (showEmpty) {
         //this is the first update for this channel
-        sprintf(outTimestamp[i],"%19c",' ');
+        sprintf(g_outTimestamp[i],"%19c",' ');
     }
     else {  //save to outTs string
         char cSign = negative ? '-' : ' ';
-        sprintf(outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
+        sprintf(g_outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
     }
 
     return 0;
@@ -136,9 +143,9 @@ int getTimeStamp(u_int32_t i) {
 status = ((struct T *)args.dbr)->status; \
 severity = ((struct T *)args.dbr)->severity;
 #define timestamp_get(T) \
-    timestampRead[ch->i] = ((struct T *)args.dbr)->stamp;\
-    validateTimestamp(&timestampRead[ch->i], ch->base.name);
-#define units_get_cb(T) clearStr(outUnits[ch->i]); sprintf(outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
+    g_timestampRead[ch->i] = ((struct T *)args.dbr)->stamp;\
+    validateTimestamp(&g_timestampRead[ch->i], ch->base.name);
+#define units_get_cb(T) clearStr(g_outUnits[ch->i]); sprintf(g_outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
 #define precision_get(T) precision = (((struct T *)args.dbr)->precision);
 
 
@@ -151,7 +158,7 @@ static void caReadCallback (evargs args){
 
     //if we are in monitor and just waiting for the program to exit, don't proceed.
     bool monitor = (arguments.tool == camon || arguments.tool == cawait);
-    if (monitor && runMonitor == false) return;
+    if (monitor && g_runMonitor == false) return;
 
     //check if data was returned
     if (args.status != ECA_NORMAL){
@@ -166,12 +173,12 @@ static void caReadCallback (evargs args){
 
     //clear global output strings; the purpose of this callback is to overwrite them
     //the exception are units, which we may be getting from elsewhere; we only clear them if we can write them
-    clearStr(outDate[ch->i]);
-    clearStr(outTime[ch->i]);
-    clearStr(outSev[ch->i]);
-    clearStr(outStat[ch->i]);
-    clearStr(outLocalDate[ch->i]);
-    clearStr(outLocalTime[ch->i]);
+    clearStr(g_outDate[ch->i]);
+    clearStr(g_outTime[ch->i]);
+    clearStr(g_outSev[ch->i]);
+    clearStr(g_outStat[ch->i]);
+    clearStr(g_outLocalDate[ch->i]);
+    clearStr(g_outLocalTime[ch->i]);
 
     //read requested data
     // rev RV: some doubles and floats has no precision to take. Precision set here and hanled in printValues in none-standard way
@@ -335,10 +342,10 @@ static void caReadCallback (evargs args){
         if (arguments.timestamp) getTimeStamp(ch->i);	//calculate relative timestamps.
 
         if (arguments.numUpdates != -1) {
-            numMonitorUpdates++;	//increase counter of updates
+            g_numMonitorUpdates++;	//increase counter of updates
 
-            if (numMonitorUpdates > arguments.numUpdates) {
-                runMonitor = false;
+            if (g_numMonitorUpdates > arguments.numUpdates) {
+                g_runMonitor = false;
             }
         }
 
@@ -348,17 +355,17 @@ static void caReadCallback (evargs args){
                 epicsTimeStamp timeoutNow;
                 epicsTimeGetCurrent(&timeoutNow);
 
-                if (epicsTimeGreaterThanEqual(&timeoutNow, &timeoutTime)) {
+                if (epicsTimeGreaterThanEqual(&timeoutNow, &g_timeoutTime)) {
                     //we are done waiting
                     printf("Condition not met in %f seconds - exiting.\n",arguments.timeout);
-                    runMonitor = false;
+                    g_runMonitor = false;
                     shouldPrint = false;
                 }
             }
 
             //check display condition
             if (cawaitEvaluateCondition(*ch, args) == 1) {
-                runMonitor = false;
+                g_runMonitor = false;
             }else{
                 shouldPrint = false;
             }
@@ -394,7 +401,7 @@ void monitorLoop (){
 //runs monitor loop. Stops after -n updates (camon, cawait) or
 //after -timeout is exceeded (cawait).
 
-    while (runMonitor){
+    while (g_runMonitor){
         ca_pend_event(0.1);
     }
 }
@@ -449,13 +456,25 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
     epicsTimeGetCurrent(&timeout);
     epicsTimeAddSeconds(&timeout, arguments.caTimeout);
 
-    while(!allDone && !elapsed) {
-        ca_pend_event(0.1);
+    while(!allDone) {
+        ca_pend_event(0.1); //Consider lowering this something like a millisecond, define it amongst defines
         // check for timeout
         epicsTimeGetCurrent(&timeoutNow);
+
+        /*
+         * LOWPRIO, no need to change time
+         * This snippet indeed checks for timeouts, but it would make more sense if it would check for a per
+         * channel timeout instead.
+         */
         if (epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
             warnPrint("Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
-            elapsed = true;
+
+            // reset completition flags
+            for (i=0; i < nChannels; ++i) {
+                channels[i].nRequests = 0;
+            }
+
+            break;
         }
 
         // check for callback completition
@@ -468,10 +487,7 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
         }
     }
     debugPrint("waitForCallbacks - done.");
-    // reset completition flags
-    for (i=0; i < nChannels; ++i) {
-        channels[i].nRequests = 0;
-    }
+
 }
 
 
@@ -584,7 +600,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
 
 bool caGenerateSubscription(struct channel *ch, arguments_T * arguments){
     debugPrint("caGenerateSubscription() - %s\n", ch->base.name);
-    int status;    
+    int status;
 
 
     //request ctrl type
@@ -802,6 +818,7 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
     return true;
 }
 
+
 bool caRequest(struct channel *channels, u_int32_t nChannels) {
 //sends get or put requests. ca_get or ca_put are called multiple times, depending on the tool. The reading,
 //parsing and printing of returned data is performed in callbacks.
@@ -839,18 +856,7 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
 
         waitForCallbacks(channels, nChannels);
     }
-    // generate subscription 
-    if (arguments.tool == camon ||
-        arguments.tool == cawait)
-    {
-        for(i=0; i < nChannels; i++) {
-            if (channels[i].base.connectionState != CA_OP_CONN_UP) {//skip disconnected channels
-                continue;
-            }
 
-            caGenerateSubscription(&channels[i], &arguments);
-        }
-    }
     if (arguments.tool == cainfo)
     {
         cainfoRequest(channels, nChannels);
@@ -864,15 +870,16 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
 
 
 void channelInitCallback(struct connection_handler_args args){
-//callback for ca_create_channel. Is executed whenever a channel connects or
-//disconnects. It is used for field channels in caInfo tool.
-//When a field for a channel that exist cannot be created, we clear the channel for the field.
+    //Fix desc
+    //callback for ca_create_channel. Is executed whenever a channel connects or
+    //disconnects. It is used for field channels in caInfo tool.
+    //When a field for a channel that exist cannot be created, we clear the channel for the field.
     debugPrint("channelFieldStatusCallback()\n");
 
     struct field   *field = ( struct field * ) ca_puser ( args.chid );
     struct channel *ch = field->ch;
     debugPrint("channelFieldStatusCallback() callbacks to process: %i\n", ch->nRequests);
-    ch->nRequests=ch->nRequests-1;
+    ch->nRequests=ch->nRequests-1; //Used to notify waitForCallbacks about finished request
 
     if (field->connectionState == CA_OP_OTHER) {
         field->done = true;   // set field to done only on first connection, not when connection goes up / down
@@ -888,7 +895,7 @@ void channelInitCallback(struct connection_handler_args args){
         debugPrint("channelFieldStatusCallback() - not connected\n");
         if (&ch->base == field){
             // base channel
-            printf(" %s disconnected\n", ch->base.name);
+            printf(" %s DISCONNECTED!\n", ch->base.name);
         }
     }
 }
@@ -917,20 +924,21 @@ void caCustomExceptionHandler( struct exception_handler_args args) {
     }
 
     epicsTimeGetCurrent(&timestamp);
-    epicsTimeToStrftime(errorTimestamp, LEN_TIMESTAMP, "%Y-%m-%d %H:%M:%S.%06f", &timestamp);
+    epicsTimeToStrftime(g_errorTimestamp, LEN_TIMESTAMP, "%Y-%m-%d %H:%M:%S.%06f", &timestamp);
 
     if (args.stat == ECA_DISCONN || args.stat == ECA_DISCONNCHID) {
-        printf("%s ", errorTimestamp);
+        printf("%s ", g_errorTimestamp);
     }
     else {
         sprintf ( buf,
                 "%s in %s - with request chanel=%s operation=%ld data type=%s count=%ld",
-                errorTimestamp, args.ctx, pName, args.op, dbr_type_to_text ( args.type ), args.count );
+                g_errorTimestamp, args.ctx, pName, args.op, dbr_type_to_text ( args.type ), args.count );
         ca_signal ( args.stat, buf );
     }
 }
 
-// init field and crreate ca_channel
+// init field and crreate ca_channel#
+//Document how this works
 bool initField(struct channel *ch, struct field * field)
 {
     debugPrint("initField() - %s\n", field->name);
@@ -949,10 +957,10 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
 
     //if tool = cagets, each channel has a sibling connecting to the proc field
     if (arguments->tool == cagets) {
-        ch->proc.name = callocMustSucceed (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), "main");//2 spaces for .(field name) + null termination
-        strcpy(ch->proc.name, ch->base.name);
+        ch->proc.name = callocMustSucceed (LEN_FQN_NAME, sizeof(char), "main");//2 spaces for .(field name) + null termination
+        strcpy(ch->proc.name, ch->base.name); //Consider using strn_xxxx everywhere
         getBaseChannelName(ch->proc.name); //append .PROC
-        strcat(ch->proc.name, ".PROC");
+        strncat(ch->proc.name, ".PROC",LEN_FQN_NAME);
         hasSiblings = initField(ch, &ch->proc);  
     }
     // open sibling channel for long strings
@@ -975,7 +983,7 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
         for (j=0; j < nFields; j++) {
             debugPrint("caInit() - If caInfo for j=%i\n", j);
             ch->fields[j].created = true;
-            ch->fields[j].name = callocMustSucceed(LEN_RECORD_NAME + LEN_RECORD_FIELD + 2, sizeof(char), fields[j]);
+            ch->fields[j].name = callocMustSucceed(LEN_FQN_NAME, sizeof(char), fields[j]);
             strcpy(ch->fields[j].name, ch->base.name);
             getBaseChannelName(ch->fields[j].name); 
             strcat(ch->fields[j].name, fields[j]);
@@ -985,8 +993,10 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
     return hasSiblings;
 }
 
+
+//WARNING: This never returns false!!!
 bool caInit(struct channel *channels, u_int32_t nChannels){
-//creates contexts and channels.
+    //creates contexts and channels.
     int status;
     u_int32_t i;
     debugPrint("caInit()\n");
@@ -1055,40 +1065,43 @@ bool caDisconnect(struct channel * channels, u_int32_t nChannels){
     return success;
 }
 
-void allocateGlobals(u_int32_t nChannels){
+
+
+void allocateStringBuffers(u_int32_t nChannels){
     //allocate memory for output strings
-    errorTimestamp = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"errorTimestamp");
-    outDate = callocMustSucceed(nChannels, sizeof(char *),"main");
-    outTime = callocMustSucceed(nChannels, sizeof(char *),"main");
-    outSev = callocMustSucceed(nChannels, sizeof(char *),"main");
-    outStat = callocMustSucceed(nChannels, sizeof(char *),"main");
-    outUnits = callocMustSucceed(nChannels, sizeof(char *),"main");
-    outTimestamp = callocMustSucceed(nChannels, sizeof(char *),"main");
-    outLocalDate = callocMustSucceed(nChannels, sizeof(char *),"main");
-    outLocalTime = callocMustSucceed(nChannels, sizeof(char *),"main");
+    g_errorTimestamp = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"errorTimestamp");
+    g_outDate = callocMustSucceed(nChannels, sizeof(char *),"main");
+    g_outTime = callocMustSucceed(nChannels, sizeof(char *),"main");
+    g_outSev = callocMustSucceed(nChannels, sizeof(char *),"main");
+    g_outStat = callocMustSucceed(nChannels, sizeof(char *),"main");
+    g_outUnits = callocMustSucceed(nChannels, sizeof(char *),"main");
+    g_outTimestamp = callocMustSucceed(nChannels, sizeof(char *),"main");
+    g_outLocalDate = callocMustSucceed(nChannels, sizeof(char *),"main");
+    g_outLocalTime = callocMustSucceed(nChannels, sizeof(char *),"main");
+
     for(int i = 0; i < nChannels; i++){
-        outDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
-        outTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
-        outSev[i] = callocMustSucceed(LEN_SEVSTAT, sizeof(char),"main");
-        outStat[i] = callocMustSucceed(LEN_SEVSTAT, sizeof(char),"main");
-        outUnits[i] = callocMustSucceed(LEN_UNITS, sizeof(char),"main");
-        outTimestamp[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
-        outLocalDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
-        outLocalTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
+        g_outDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
+        g_outTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
+        g_outSev[i] = callocMustSucceed(LEN_SEVSTAT, sizeof(char),"main");
+        g_outStat[i] = callocMustSucceed(LEN_SEVSTAT, sizeof(char),"main");
+        g_outUnits[i] = callocMustSucceed(LEN_UNITS, sizeof(char),"main");
+        g_outTimestamp[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
+        g_outLocalDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
+        g_outLocalTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
     }
     //memory for timestamp
-    timestampRead = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
+    g_timestampRead = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
     if (arguments.tool == camon || arguments.tool == cawait){
-        lastUpdate = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
-        firstUpdate = callocMustSucceed(nChannels, sizeof(bool),"main");
-        numMonitorUpdates = 0;
+        g_lastUpdate = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
+        g_firstUpdate = callocMustSucceed(nChannels, sizeof(bool),"main");
+        g_numMonitorUpdates = 0;
     }
 }
 
 void freeChannels(struct channel * channels, u_int32_t nChannels){
     //free channels
     for (int i=0 ;i < nChannels; ++i) {
-        free(channels[i].writeStr);
+        free(channels[i].writeStr); //This will not properly deallocate the contents of writeStr.
         //if (arguments.tool == cagets) 
         free(channels[i].proc.name);
 
@@ -1105,30 +1118,30 @@ void freeChannels(struct channel * channels, u_int32_t nChannels){
 void freeGlobals(u_int32_t nChannels){
     //free output strings
     for(int i = 0; i < nChannels; i++) {
-        free(outDate[i]);
-        free(outTime[i]);
-        free(outSev[i]);
-        free(outStat[i]);
-        free(outUnits[i]);
-        free(outTimestamp[i]);
-        free(outLocalDate[i]);
-        free(outLocalTime[i]);
+        free(g_outDate[i]);
+        free(g_outTime[i]);
+        free(g_outSev[i]);
+        free(g_outStat[i]);
+        free(g_outUnits[i]);
+        free(g_outTimestamp[i]);
+        free(g_outLocalDate[i]);
+        free(g_outLocalTime[i]);
     }
-    free(outDate);
-    free(outTime);
-    free(outSev);
-    free(outStat);
-    free(outUnits);
-    free(outTimestamp);
-    free(outLocalDate);
-    free(outLocalTime);
+    free(g_outDate);
+    free(g_outTime);
+    free(g_outSev);
+    free(g_outStat);
+    free(g_outUnits);
+    free(g_outTimestamp);
+    free(g_outLocalDate);
+    free(g_outLocalTime);
 
     //free monitor's timestamp
-    free(timestampRead);
-    free(lastUpdate);
-    free(firstUpdate);
+    free(g_timestampRead);
+    free(g_lastUpdate);
+    free(g_firstUpdate);
 
-    free(errorTimestamp);
+    free(g_errorTimestamp);
 }
 
 int main ( int argc, char ** argv )
@@ -1137,45 +1150,65 @@ int main ( int argc, char ** argv )
     u_int32_t nChannels=0;              // Number of channels
     struct channel *channels;
 
-    runMonitor = true;
+    g_runMonitor = true;
 
     // remember time
-    epicsTimeGetCurrent(&programStartTime);
-
-    parseArguments(argc, argv, &nChannels, &arguments);
-
-    //allocate memory for channel structures
-    channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "main");
-
+    epicsTimeGetCurrent(&g_programStartTime);
     bool success = true;
 
-    success = parseChannels(argc, argv, nChannels, &arguments, channels);
+    success = parseArguments(argc, argv, &nChannels, &arguments); //WARNING: This does not correctly return success failure, refracture and clean it up..
 
-    allocateGlobals(nChannels);
+    //allocate memory for channel structures
+    channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "Could not allocate channels"); //Consider adding more descriptive error message.
+
+    success = parseChannels(argc, argv, nChannels, &arguments, channels); //WARNING: This may not correctly return success failure, refracture and clean it up..
+
+    if(!success){
+        exit(EXIT_FAILURE);
+    }
+
+    allocateStringBuffers(nChannels);
 
     //start channel access
+    //Clear up all if(success) and replace with proper exit and cleanup
     if(success) success = caInit(channels, nChannels);
 
     // set timeout time from now
-    if (success && arguments.tool == cawait && arguments.timeout!=-1){
+    if (arguments.timeout!=-1){
         //set first
-        epicsTimeGetCurrent(&timeoutTime);
-        epicsTimeAddSeconds(&timeoutTime, arguments.timeout);
+        epicsTimeGetCurrent(&g_timeoutTime);
+        epicsTimeAddSeconds(&g_timeoutTime, arguments.timeout);
     }
 
     success = caRequest(channels, nChannels);
 
-    if(success && (arguments.tool == camon || arguments.tool == cawait)) {
+    if( arguments.tool == camon || arguments.tool == cawait ) {
+
+        for(size_t i=0; i < nChannels; i++) {
+            if (channels[i].base.connectionState != CA_OP_CONN_UP) {//skip disconnected channels //Check if you really need to
+                continue;
+            }
+
+            caGenerateSubscription(&channels[i], &arguments);
+        }
+
         monitorLoop();
     }
 
+
+    //Add GOTO definitions for cleanup, reorder cleanup in inverse order compared to allocations...
+    //Check LKML and Linux sources for details on clean implementation....
+
     success &= caDisconnect(channels, nChannels);
+
 
     ca_context_destroy();
 
     freeChannels(channels, nChannels);
 
     freeGlobals(nChannels);
+
+
 
     if (success) return EXIT_SUCCESS;
     else return EXIT_FAILURE;

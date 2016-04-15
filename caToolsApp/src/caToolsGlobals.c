@@ -1,5 +1,7 @@
 #include "caToolsTypes.h"
 
+//Document that this is included from xyz...
+
 #define CA_PRIORITY CA_PRIORITY_MIN
 
 //intialize arguments
@@ -66,23 +68,18 @@ const char * fields[] = {
 
 //output strings
 // TODO: most of theese should go in struct channel
-u_int32_t const LEN_TIMESTAMP = 50;
-static u_int32_t const LEN_SEVSTAT = 30;
-static u_int32_t const LEN_UNITS = 20+MAX_UNITS_SIZE;
-u_int32_t const LEN_RECORD_NAME = 60;
-u_int32_t const LEN_RECORD_FIELD = 4;
-char *errorTimestamp;   // timestamp used in caCustomExceptionHandler
-char **outDate,**outTime, **outSev, **outStat, **outUnits, **outLocalDate, **outLocalTime;
-char **outTimestamp; //relative timestamps for camon
+char *g_errorTimestamp;   // timestamp used in caCustomExceptionHandler
+char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outLocalDate, **g_outLocalTime;
+char **g_outTimestamp; //relative timestamps for camon
 
 
 //timestamps needed by -timestamp
-epicsTimeStamp *timestampRead;      //timestamps of received data (per channel)
-epicsTimeStamp programStartTime;  //timestamp indicating program start
-epicsTimeStamp *lastUpdate;       //timestamp indicating last update per channel
-bool *firstUpdate;              //indicates that lastUpdate has not been initialized
-epicsTimeStamp timeoutTime;       //when to stop monitoring (-timeout)
+epicsTimeStamp *g_timestampRead;      //timestamps of received data (per channel)
+epicsTimeStamp g_programStartTime;  //timestamp indicating program start
+epicsTimeStamp *g_lastUpdate;       //timestamp indicating last update per channel
+bool *g_firstUpdate;              //indicates that lastUpdate has not been initialized
+epicsTimeStamp g_timeoutTime;       //when to stop monitoring (-timeout)
 
-bool runMonitor;                //indicates when to stop monitoring according to -timeout, -n or cawait condition is true
-u_int32_t numMonitorUpdates;    //counts updates needed by -n
-int verbosity;                  //global verbosity
+bool g_runMonitor;                //indicates when to stop monitoring according to -timeout, -n or cawait condition is true
+u_int32_t g_numMonitorUpdates;    //counts updates needed by -n
+int g_verbosity;                  //global verbosity

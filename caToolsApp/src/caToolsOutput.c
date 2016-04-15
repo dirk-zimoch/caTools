@@ -227,17 +227,17 @@ int printOutput(int i, evargs args, int32_t precision, arguments_T *arguments){
 
     //check alarm limits
     if (arguments->stat || (!arguments->nostat && (ch->status != 0 || ch->severity != 0))) { //  display status/severity
-        if (ch->status <= lastEpicsAlarmCond) sprintf(outStat[ch->i],"STAT:%s", epicsAlarmConditionStrings[ch->status]); // strcpy(outStat[ch->i], epicsAlarmConditionStrings[ch->status]);
-        else sprintf(outStat[ch->i],"UNKNOWN: %u",ch->status);
+        if (ch->status <= lastEpicsAlarmCond) sprintf(g_outStat[ch->i],"STAT:%s", epicsAlarmConditionStrings[ch->status]); // strcpy(outStat[ch->i], epicsAlarmConditionStrings[ch->status]);
+        else sprintf(g_outStat[ch->i],"UNKNOWN: %u",ch->status);
 
-        if (ch->severity <= lastEpicsAlarmSev) sprintf(outSev[ch->i],"SEVR:%s", epicsAlarmSeverityStrings[ch->severity]);//strcpy(outSev[ch->i], epicsAlarmSeverityStrings[ch->]);
-        else sprintf(outSev[ch->i],"UNKNOWN: %u",ch->status);
+        if (ch->severity <= lastEpicsAlarmSev) sprintf(g_outSev[ch->i],"SEVR:%s", epicsAlarmSeverityStrings[ch->severity]);//strcpy(outSev[ch->i], epicsAlarmSeverityStrings[ch->]);
+        else sprintf(g_outSev[ch->i],"UNKNOWN: %u",ch->status);
     }
 
     if (args.type >= DBR_TIME_STRING && args.type <= DBR_TIME_DOUBLE){//otherwise we don't have it
         //we assume that manually specifying dbr_time implies -time or -date.
-        if (arguments->date || arguments->dbrRequestType != -1) epicsTimeToStrftime(outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &timestampRead[ch->i]);
-        if (arguments->time || arguments->dbrRequestType != -1) epicsTimeToStrftime(outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &timestampRead[ch->i]);
+        if (arguments->date || arguments->dbrRequestType != -1) epicsTimeToStrftime(g_outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &g_timestampRead[ch->i]);
+        if (arguments->time || arguments->dbrRequestType != -1) epicsTimeToStrftime(g_outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &g_timestampRead[ch->i]);
     }
 
 
@@ -247,8 +247,8 @@ int printOutput(int i, evargs args, int32_t precision, arguments_T *arguments){
         epicsTimeGetCurrent(&localTime);
         //validateTimestamp(&localTime, "localTime");
 
-        if (arguments->localdate) epicsTimeToStrftime(outLocalDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &localTime);
-        if (arguments->localtime) epicsTimeToStrftime(outLocalTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &localTime);
+        if (arguments->localdate) epicsTimeToStrftime(g_outLocalDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &localTime);
+        if (arguments->localtime) epicsTimeToStrftime(g_outLocalTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &localTime);
     }
 
     //if both local and server times are requested, clarify which is which
@@ -258,22 +258,22 @@ int printOutput(int i, evargs args, int32_t precision, arguments_T *arguments){
     }
 
     //server date
-    if (!isStrEmpty(outDate[i]))    printf("%s ",outDate[i]);
+    if (!isStrEmpty(g_outDate[i]))    printf("%s ",g_outDate[i]);
     //server time
-    if (!isStrEmpty(outTime[i]))    printf("%s ",outTime[i]);
+    if (!isStrEmpty(g_outTime[i]))    printf("%s ",g_outTime[i]);
 
     if (doubleTime){
         fputs("local time: ",stdout);
     }
 
     //local date
-    if (!isStrEmpty(outLocalDate[i]))   printf("%s ",outLocalDate[i]);
+    if (!isStrEmpty(g_outLocalDate[i]))   printf("%s ",g_outLocalDate[i]);
     //local time
-    if (!isStrEmpty(outLocalTime[i]))   printf("%s ",outLocalTime[i]);
+    if (!isStrEmpty(g_outLocalTime[i]))   printf("%s ",g_outLocalTime[i]);
 
 
     //timestamp if monitor and if requested
-    if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp)   printf("%s ", outTimestamp[i]);
+    if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp)   printf("%s ", g_outTimestamp[i]);
 
     //channel name
     if (!arguments->noname)  printf("%s ",ch->base.name);
@@ -287,14 +287,14 @@ int printOutput(int i, evargs args, int32_t precision, arguments_T *arguments){
     fputc(' ',stdout);
 
     //egu
-    if (!isStrEmpty(outUnits[i]) && !arguments->nounit) printf("%s ",outUnits[i]);
+    if (!isStrEmpty(g_outUnits[i]) && !arguments->nounit) printf("%s ",g_outUnits[i]);
 
     //severity
-    if (!isStrEmpty(outSev[i])) printf("(%s",outSev[i]);
+    if (!isStrEmpty(g_outSev[i])) printf("(%s",g_outSev[i]);
 
     //status
-    if (!isStrEmpty(outStat[i])) printf(" %s)",outStat[i]);
-    else if (!isStrEmpty(outSev[i])) putc(')', stdout);
+    if (!isStrEmpty(g_outStat[i])) printf(" %s)",g_outStat[i]);
+    else if (!isStrEmpty(g_outSev[i])) putc(')', stdout);
 
     putc('\n', stdout);
     return 0;

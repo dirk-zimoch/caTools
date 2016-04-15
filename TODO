@@ -1,0 +1,53 @@
+- camon prints lines even when they do not change. This can happen when the precision more coarse than the MDEL field. Thus the client gets monitor updates but they all round to the same string.
+My version suppresses this noise. Only when the output actually changes it is printed. This may be with the same value string if time stamps are printed too or if the alarm status changes.
+
+- Well, there are several c99 features used in the code.
+What about architectures without gcc? Try Windows cl compiler and also clang.
+
+- Array handling: Variable sized arrays are not supported.
+Comparison of different tools:
+EPICS base:
+caget gives NELM values
+camonitor gives NORD values
+Tcl:
+caget gives NELM values
+camon gives NELM values
+New tool:
+caget gives NELM values
+camon gives NELM values
+So the behavior is like with the Tcl tools. However I don't like it. I would prefer dynamic array support for both, caget and camon, that means both should give NORD values. This should work by requesting 0 values – with EPICS 3.14.12 at least. Make sure that both, new 3.14.12 IOCs and old, e.g. 3.13.10 IOCs give reasonable responses. Maybe the CA protocol version of the server needs to be checked? I don't know.
+caget -nord PV also shows NELM, not NORD (at least consistent)
+caput to arrays needs -a flag. Why? If the channel is an array and the value is "1 2 3", everything should be clear?
+But I get:
+Error: Impossible to convert input 1 2 3 to format DBR_SHORT
+
+
+- caget of "long strings" (arrays of CHAR meant as strings) does not work correctly.
+It prints a list of single characters instead of a single string, even when used with -s option
+I use a heuristic method to find out if an array of char is meant to be a string: If all chars up to a 0 byte are printable and only 0 bytes follow, I assume it is a string. To be exact, I test for ((c & 0x7f) >= 0x20 || c == 0x0a || c == 0x0c) && c != 0x7f, but of course that is questionable because of different encodings for c>=0x80. (maybe tab should also be valid).
+A typical application is a long file path.
+
+caget of strings fields (>= 40 chars) does not work correctly. The value is truncated after char 39.
+All fields (except .VAL) that have string values but can be longer than 40 chars, e.g. DESC, INP, NAME can be read as an array of chars by appending $ to the field name from recent IOCs.
+My caget version does this automatically: If the data type is STRING and the string length is 39 and the field is not .VAL (or nothing, which means .VAL) then try again with appended $ and display the result as a string. Expect the $ call to fail in case of old IOCs. In that case display what we got earlier.
+Maybe we can easily find out if the CA server supports $ before actually trying it and maybe getting a timeout. I don't know. We would need to know the CA protocol version of the server (without an additional read action of course).
+
+
+- Interpreting negative precision as exponential format does not work.
+This is a feature I had added to our Tcl implementation.
+A positive precision prints like printf ("%.*f",prec,value) but a negative precision like printf ("%.*e",-prec,value)
+
+
+- UTF8 ?
+
+
+
+DONE: 
+
+- Source code contains TAB characters which lead to jumping columns in all editors with TAB setting different from those of the original author. Replace TABs with the proper amount of spaces.
+
+OK
+
+- Code contains C++ style // comments. But this is C code. Option -std=c99 is no excuse 
+
+OK-ish, maybe fix some more during the dev. 

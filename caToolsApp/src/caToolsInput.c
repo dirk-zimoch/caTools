@@ -170,6 +170,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
     }
 }
 
+//WARNING: This does not correctly return success failure, refracture and clean it up..
 int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *arguments){
 	int opt;                    // getopt() current option
     int opt_long;               // getopt_long() current long option
@@ -476,7 +477,7 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
         }
      }
 
-     verbosity = arguments->verbosity;
+     g_verbosity = arguments->verbosity;
 
      //check mutually exclusive arguments (without taking dbr type into account)
      if (arguments->tool == tool_unknown){
@@ -624,6 +625,7 @@ bool cawaitParseCondition(struct channel *channel, char *str)
 
 
 
+//WARNING: This does not correctly return success failure, refracture and clean it up..
 bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *arguments, struct channel *channels){
 	u_int32_t i,j;                      // counter
 	bool success = true;
