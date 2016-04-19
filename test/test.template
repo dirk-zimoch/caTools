@@ -134,37 +134,35 @@ record(mbbo, "$(P):TEST_MBBO") {
     field(EIST, "2.50 Hz")
     field(NIST, "1.00 Hz")
 }
-
 record(calcout, "$(P):SECONDS"){
 	field(DESC, "Counting seconds")
-	field(SCAN,"1 second")
+	field(SCAN, "1 second")
 	field(CALC, "A<C?(A+B):D")
-	field(INPA, "MySecondRecord.VAL NPP NMS")
+	field(INPA, "$(P):SECONDS.VAL NPP NMS")
 	field(INPB, "1")
 	field(INPC, "59")
 	field(INPD, "0")
 	field(EGU, "Seconds")
-	field(OUT, "MyMinuteRecord.B PP")
+	field(OUT, "$(P):MINUTES.B PP")
 	field(OOPT, "Transition To Zero")
 	field(DOPT, "Use OCAL")
 	field(OCAL, "B")
-	field(HOPR, 60)
-	field(HIGH, 30)
-	field(HIHI, 45)
-	field(HHSV, 1)
-	field(HSV, 1)
+	field(HOPR, "60")
+	field(HIGH, "30")
+	field(HIHI, "45")
+	field(HHSV, "1")
+	field(HSV, "1")
 }
-
-record(calc, "$(P):MINUTES"){
+record(calcout, "$(P):MINUTES"){
 	field(DESC, "Counting Minutes")
-	field(SCAN,"Passive")
+	field(SCAN, "Passive")
 	field(CALC, "A+B")
-	field(INPA, "MyMinuteRecord.VAL NPP NMS")
+	field(INPA, "$(P):MINUTES.VAL NPP")
 	field(INPB, "0")
 	field(EGU, "Minutes")
 	field(PINI, "1")
-	field(HIGH, 30)
-	field(HIHI, 45)
+	field(HIGH, "30")
+	field(HIHI, "45")
 }
 
 record(stringout, "$(P):STRING"){

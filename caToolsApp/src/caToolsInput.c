@@ -320,31 +320,31 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
                     warnPrint("Option '-prec' ignored because of '-f', '-e' or '-g'.\n");
                 }
                 break;
-            case 4:   //hex
+            case 4:   /* hex */
                 arguments->hex = true;
                 break;
-            case 5:   // bin
+            case 5:   /* bin */
                 arguments->bin = true;
                 break;
-            case 6:   // oct
+            case 6:   /* oct */
                 arguments->oct = true;
                 break;
-            case 7:   // plain
+            case 7:   /* plain */
                 arguments->plain = true;
                 break;
-            case 8:   // stat
+            case 8:   /* stat */
                 arguments->stat = true;
                 break;
-            case 9:	  // nostat
+            case 9:	  /* nostat */
                 arguments->nostat = true;
                 break;
-            case 10:   // noname
+            case 10:   /* noname */
                 arguments->noname = true;
                 break;
-            case 11:   // nounit
+            case 11:   /* nounit */
                 arguments->nounit = true;
                 break;
-            case 12:   // timestamp
+            case 12:   /* timestamp */
                 if (sscanf(optarg, "%c", &arguments->timestamp) != 1){
                    warnPrint("Invalid argument '%s' "
                             "for option '%s' - ignored. Allowed arguments: r,u,c.\n", optarg, long_options[opt_long].name);
@@ -357,19 +357,19 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
                     }
                 }
                 break;
-            case 13:   // localdate
+            case 13:   /* localdate */
                 arguments->localdate = true;
                 break;
-            case 14:   // time
+            case 14:   /* time */
                 arguments->time = true;
                 break;
-            case 15:   // localtime
+            case 15:   /* localtime */
                 arguments->localtime = true;
                 break;
-            case 16:   // date
+            case 16:   /* date */
                 arguments->date = true;
                 break;
-            case 17:   // outNelm - number of elements - read
+            case 17:   /* outx - number of elements - read */
                 if (sscanf(optarg, "%"SCNd64, &arguments->outNelm) != 1){
                     warnPrint("Invalid count argument '%s' "
                             "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
@@ -378,17 +378,17 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
                     if (arguments->outNelm < 1) {
                         warnPrint("Count number for option '%s' "
                                 "must be positive integer - ignored.\n", long_options[opt_long].name);
-                        arguments->outNelm = -1;
+                        arguments->outNelm = 0;
                     }
                 }
                 break;
-            case 18:   // field separator for output
+            case 18:   /* field separator for output */
                 if (sscanf(optarg, "%c", &arguments->fieldSeparator) != 1){
                     warnPrint("Invalid argument '%s' "
                             "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                 }
                 break;
-            case 19:   // field separator for input
+            case 19:   /* field separator for input */
                 if (sscanf(optarg, "%c", &arguments->inputSeparator) != 1){
                     warnPrint("Invalid argument '%s' "
                             "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
@@ -461,19 +461,18 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
             break;
         case '?':
             fprintf(stderr, "Unrecognized option: '-%c'. ('%s -h' for help.). Exiting.\n", optopt, argv[0]);
-            return EXIT_FAILURE;
+            return false;
             break;
         case ':':
             fprintf(stderr, "Option '-%c' requires an argument. ('%s -h' for help.). Exiting.\n", optopt, argv[0]);
-            return EXIT_FAILURE;
-
+            return false;
             break;
         case 'h':               //Print usage
             usage(stdout, arguments->tool, argv[0]);
-            return EXIT_SUCCESS;
+            exit(EXIT_SUCCESS);
         default:
             usage(stderr, arguments->tool, argv[0]);
-            exit(EXIT_FAILURE);
+            return false;
         }
      }
 
@@ -534,7 +533,7 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
      }
 
 
-    //Remaining arg list refers to PVs
+    /* Remaining arg list refers to PVs */
     if (arguments->tool == caget || arguments->tool == camon || arguments->tool == cagets || arguments->tool == cado || arguments->tool == cainfo){
        *nChannels = argc - optind;       // All remaining args are PV names
     }
@@ -542,25 +541,25 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
         if ((argc - optind) % 2) {
             if (arguments->tool == caput || arguments->tool == caputq) fprintf(stderr, "One of the PVs is missing the value to be written ('%s -h' for help).\n", argv[0]);
             if (arguments->tool == cawait)                            fprintf(stderr, "One of the PVs is missing the condition ('%s -h' for help).\n", argv[0]);
-            return EXIT_FAILURE;
+            return false;
         }
-        *nChannels = (argc - optind) / 2;	// half of the args are PV names, rest conditions/values
+        *nChannels = (argc - optind) / 2;	/* half of the args are PV names, rest conditions/values */
     }
 
 
     if (*nChannels < 1)
     {
         fprintf(stderr, "No record name specified. ('%s -h' for help.)\n", argv[0]);
-        return EXIT_FAILURE;
+        return false;
     }
 
-    return EXIT_SUCCESS;
+    return true;
 }
 
 
-//parses input string and extracts operators and numerals,
-//then saves them to the channel structure.
-//Supported operators: >,<,<=,>=,==,!=,!, ==A...B(in interval), !=A...B(out of interval), !A...B (out of interval).
+/* parses input string and extracts operators and numerals,
+* then saves them to the channel structure.
+* Supported operators: >,<,<=,>=,==,!=,!, ==A...B(in interval), !=A...B(out of interval), !A...B (out of interval). */
 bool cawaitParseCondition(struct channel *channel, char *str)
 {
     enum operator operator;
@@ -629,7 +628,7 @@ bool cawaitParseCondition(struct channel *channel, char *str)
 bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *arguments, struct channel *channels){
 	u_int32_t i,j;                      // counter
 	bool success = true;
-	// Copy PV names from command line
+    /* Copy PV names from command line */
     for (i = 0; optind < argc; i++, optind++) {
         channels[i].base.name = argv[optind];
 
@@ -639,47 +638,22 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
             break;
         }
 
-        channels[i].i = i;	// channel number, serves to synchronise pvs and output.
+        channels[i].i = i;	/* channel number, serves to synchronise pvs and output. */
 
         if (arguments->tool == caput || arguments->tool == caputq){
             channels[i].inNelm = 1;
 
-            if (!arguments->parseArray) {  //the argument to write consists of just a single element.
-                truncate(argv[optind+1]);
+            truncate(argv[optind+1]);
 
-                // allocate resources and set pointer to the argument
-                channels[i].writeStr = callocMustSucceed (channels[i].inNelm, sizeof(char*), "main");
-                channels[i].writeStr[0] = argv[optind+1];
-            }
-            else{//parse the string assuming each element is delimited by the inputSeparator char
-                char inSep[2] = {arguments->inputSeparator, 0};
+            /* allocate resources */
+            channels[i].writeStr = callocMustSucceed (channels[i].inNelm, sizeof(char*), "parseChannels");
 
-                // first count the number of arguments->
-                char* tempstr = callocMustSucceed(strlen(argv[optind+1])+1, sizeof(char), "main");
-                strcpy(tempstr, argv[optind+1]);
-                j=0;
-                char *token = strtok(tempstr, inSep);
-                while(token) {
-                    j++;
-                    token = strtok(NULL, inSep);
-                }
-                free(tempstr);
-                channels[i].inNelm = j;
+            /* store to the whole string to channels[i].writeStr[0].
+             * We will check for arrays later when we know the COUNT of the connected channel. */
+            channels[i].writeStr[0] = argv[optind+1];
 
-                // allocate resources
-                channels[i].writeStr = callocMustSucceed (channels[i].inNelm, sizeof(char*), "main");
 
-                // extract arguments
-                j=0;
-                token = strtok(argv[optind+1], inSep);
-                while(token) {
-                    truncate(token);
-                    channels[i].writeStr[j] = token;
-                    j++;
-                    token = strtok(NULL, inSep);
-                }
-            }
-            //finally advance to the next argument
+            /* finally advance to the next argument */
             optind++;
 
         }
@@ -695,6 +669,49 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
 
     return success;
 }
+
+void parseAsArray(struct channel * ch, arguments_T * arguments){
+    /**
+     * Checks if channel is an array or if -a argument. If so, parses the string in
+     * ch->writeStr[0] as an array and puts splited strings back to ch->writeStr[]
+     */
+
+    if(ch->count > 1 || arguments->parseArray){
+        char inSep[2] = {arguments->inputSeparator, 0};
+        size_t j;
+
+        /* first count the number of arguments */
+        char* tempstr = callocMustSucceed(strlen(ch->writeStr[0])+1, sizeof(char), "parseArray");
+        strcpy(tempstr, ch->writeStr[0]);
+        j=0;
+        char *token = strtok(tempstr, inSep);
+        while(token) {
+            j++;
+            token = strtok(NULL, inSep);
+        }
+        ch->inNelm = j;
+        strcpy(tempstr, ch->writeStr[0]);
+        debugPrint("parseAsArray() - tempstr: %s\n", tempstr);
+
+        /* re-allocate resources */
+        free(ch->writeStr);
+        ch->writeStr = callocMustSucceed (ch->inNelm, sizeof(char*), "parseArray");
+        /* extract arguments */
+        j=0;
+        token = strtok(tempstr, inSep);
+        while(token) {
+            truncate(token);
+            debugPrint("parseAsArray() - token: %s\n", token);
+            ch->writeStr[j] = mallocMustSucceed(strlen(token)+1, sizeof(char), "parseArray");
+            strcpy(ch->writeStr[j], token);
+            j++;
+            token = strtok(NULL, inSep);
+        }
+        /* cleanup */
+        free(tempstr);
+    }
+}
+
 
 bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType){
     debugPrint("castStrToDBR() - start\n");

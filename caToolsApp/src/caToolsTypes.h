@@ -64,7 +64,7 @@ typedef struct {
    bool date;               //server date
    bool localdate;        //client date
    bool time;               //server time
-   bool localtime;        //client time
+   bool localtime;        //client timeqmake -project
    char fieldSeparator;     //array field separator for output
    char inputSeparator;     //array field separator for input
    enum tool tool;        //tool type
@@ -140,7 +140,7 @@ enum operator { //possible conditions for cawait
 struct channel {
     struct field    base;       // the name of the channel
     struct field    proc;       // sibling channel for writing to proc field
-    struct field    str$;       // sibling channel for reading string as an array of chars //Consider refractoring to ASCII only variable name
+    struct field    lstr;       // sibling channel for reading string as an array of chars //Consider refractoring to ASCII only variable name
     char           *name;       // the name of the channel
     char           *longStr;	// long string
     struct field    fields[23]; // fields[noFields];    // sibling channels for fields (description, severities, ...) Used only by caInfo
@@ -152,7 +152,7 @@ struct channel {
     unsigned long   outNelm;    // requested number of elements for reading
     u_int32_t       i;          // process variable id
     u_int32_t       nRequests;  // holds the number of requests to finish
-    char          **writeStr;   // value(s) to be written
+    char          **writeStr;   // vqmake -projectalue(s) to be written
     enum operator conditionOperator; //cawait operator
     double        conditionOperands[2]; //cawait operands
     u_int32_t       status;          // status

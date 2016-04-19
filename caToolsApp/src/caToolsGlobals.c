@@ -1,6 +1,7 @@
-#include "caToolsTypes.h"
+/* This file contains declaration of global variables. 
+This is included from caToolsMain.c only. */
 
-//Document that this is included from xyz...
+#include "caToolsTypes.h"
 
 #define CA_PRIORITY CA_PRIORITY_MIN
 
@@ -32,7 +33,7 @@ arguments_T arguments = {
         .tool = tool_unknown,
         .numUpdates = -1, //never exit
         .parseArray = false,
-        .outNelm = -1,  //number of elements equal to field count
+        .outNelm = 0,  /* return number of elements defined by IOC NORD in R3.14.21 or NELM in R3.13.10*/
         .nord = false,
         .verbosity = VERBOSITY_ERR // show errors
 };

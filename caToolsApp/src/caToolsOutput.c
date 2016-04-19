@@ -50,8 +50,8 @@ int printValue(evargs args, int32_t precision, arguments_T *arguments){
         switch (baseType) {
         case DBR_STRING:
             // check if long string
-            if(ch->str$.created){
-                printf("\"%.*s\"", ca_element_count(ch->str$.id), (char *) ch->longStr); 
+            if(ch->lstr.created){
+                printf("\"%.*s\"", ca_element_count(ch->lstr.id), (char *) ch->longStr);
             }else{
                 printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);    // TODO: is this always null-terminated?
             }
