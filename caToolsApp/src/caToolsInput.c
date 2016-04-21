@@ -170,8 +170,15 @@ void usage(FILE *stream, enum tool tool, char *programName){
     }
 }
 
-/* WARNING: This does not correctly return success failure, refracture and clean it up.. */
-int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *arguments){
+/**
+ * @brief parseArguments - parses command line arguments and fills up the arguments variable
+ * @param argc from main
+ * @param argv from main
+ * @param nChannels pointer to the variable holding the number of channels
+ * @param arguments pointer to the variable holding the arguments
+ * @return success
+ */
+bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *arguments){
     int opt;                    /*  getopt() current option */
     int opt_long;               /*  getopt_long() current long option */
 

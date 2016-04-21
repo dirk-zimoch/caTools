@@ -7,13 +7,13 @@
 #include "caToolsUtils.h"
 #include "caToolsOutput.h"
 
-#define printBits(x) \ I we need CLM
+#define printBits(x) \
     for (int32_t i = sizeof(x) * 8 - 1; i >= 0; i--) { \
         fputc('0' + ((x >> i) & 1), stdout); \
     }
 
 
-int printValue(evargs args, arguments_T *arguments){
+void printValue(evargs args, arguments_T *arguments){
 /* Parses the data fetched by ca_get callback according to the data type and formatting arguments-> */
 /* The result is printed to stdout. */
 
@@ -37,7 +37,7 @@ int printValue(evargs args, arguments_T *arguments){
              isPrintable((char *) value, (size_t) args.count)))   /* if all characters are printable */
     {  /* print as string */
         printf("\"%.*s\"", (int) args.count, (char *) value); 
-        return 0;
+        return;
     }
 
     /* loop over the whole array */
@@ -219,11 +219,10 @@ int printValue(evargs args, arguments_T *arguments){
 
     }
 
-    return 0;
 }
 
 
-int printOutput(int i, evargs args, arguments_T *arguments){
+void printOutput(evargs args, arguments_T *arguments){
 /*  prints global output strings corresponding to i-th channel. */
 
     struct channel *ch = (struct channel *)args.usr;
@@ -262,22 +261,22 @@ int printOutput(int i, evargs args, arguments_T *arguments){
     }
 
     /* server date */
-    if (!isStrEmpty(g_outDate[i]))    printf("%s ",g_outDate[i]);
+    if (!isStrEmpty(g_outDate[ch->i]))    printf("%s ",g_outDate[ch->i]);
     /* server time */
-    if (!isStrEmpty(g_outTime[i]))    printf("%s ",g_outTime[i]);
+    if (!isStrEmpty(g_outTime[ch->i]))    printf("%s ",g_outTime[ch->i]);
 
     if (doubleTime){
         fputs("local time: ",stdout);
     }
 
     /* local date */
-    if (!isStrEmpty(g_outLocalDate[i]))   printf("%s ",g_outLocalDate[i]);
+    if (!isStrEmpty(g_outLocalDate[ch->i]))   printf("%s ",g_outLocalDate[ch->i]);
     /* local time */
-    if (!isStrEmpty(g_outLocalTime[i]))   printf("%s ",g_outLocalTime[i]);
+    if (!isStrEmpty(g_outLocalTime[ch->i]))   printf("%s ",g_outLocalTime[ch->i]);
 
 
-    /* timestamp if monitor and if requested */
-    if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp)   printf("%s ", g_outTimestamp[i]);
+    /* timestamp if monitor and if req[i]uested */
+    if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp)   printf("%s ", g_outTimestamp[ch->i]);
 
     /* channel name */
     if (!arguments->noname)  printf("%s ",ch->base.name);
@@ -291,14 +290,14 @@ int printOutput(int i, evargs args, arguments_T *arguments){
     fputc(' ',stdout);
 
     /* egu */
-    if (!isStrEmpty(g_outUnits[i]) && !arguments->nounit) printf("%s ",g_outUnits[i]);
+    if (!isStrEmpty(g_outUnits[ch->i]) && !arguments->nounit) printf("%s ",g_outUnits[ch->i]);
 
     /* severity */
-    if (!isStrEmpty(g_outSev[i])) printf("(%s",g_outSev[i]);
+    if (!isStrEmpty(g_outSev[ch->i])) printf("(%s",g_outSev[ch->i]);
 
     /* status */
-    if (!isStrEmpty(g_outStat[i])) printf(" %s)",g_outStat[i]);
-    else if (!isStrEmpty(g_outSev[i])) putc(')', stdout);
+    if (!isStrEmpty(g_outStat[ch->i])) printf(" %s)",g_outStat[ch->i]);
+    else if (!isStrEmpty(g_outSev[ch->i])) putc(')', stdout);
 
     putc('\n', stdout);
     return 0;

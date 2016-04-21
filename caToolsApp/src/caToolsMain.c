@@ -13,7 +13,7 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include <cantProceed.h>
+#include "cantProceed.h"
 #include "cadef.h"
 #include "alarmString.h"
 #include "alarm.h"
@@ -24,14 +24,11 @@
 #include "caToolsUtils.h"
 
 int cawaitEvaluateCondition(struct channel channel, evargs args){
-/* At some point change the comments fom C++ to C style */
-
-
-/*evaluates output of channel i against the corresponding condition. */
-/*returns 1 if matching, 0 otherwise, and -1 if error. */
-/*Before evaluation, channel output is converted to double. If this is */
-/*not successful, the function returns -1. If the channel in question */
-/*is an array, the condition is evaluated against the first element. */
+    /*evaluates output of channel i against the corresponding condition. */
+    /*returns 1 if matching, 0 otherwise, and -1 if error. */
+    /*Before evaluation, channel output is converted to double. If this is */
+    /*not successful, the function returns -1. If the channel in question */
+    /*is an array, the condition is evaluated against the first element. */
 
     /*get value */
     void *nativeValue = dbr_value_ptr(args.dbr, args.type);
@@ -220,7 +217,7 @@ static void caReadCallback (evargs args){
             }
         }
         /* print out */
-        printOutput(ch->i, args, &arguments);
+        printOutput(args, &arguments);
     }
     ch->base.done = true;
 }

@@ -7,13 +7,6 @@
 
 #define CA_DEFAULT_TIMEOUT 1
 
-/*  warning and error printout */
-#define VERBOSITY_ERR           2
-#define VERBOSITY_WARN          3
-#define VERBOSITY_ERR_PERIODIC  4
-#define VERBOSITY_WARN_PERIODIC 5
-#define VERBOSITY_DEBUG		    10
-
 
 /* Document what theese defines do */
 #define LEN_TIMESTAMP 50
@@ -142,7 +135,7 @@ enum channelField {
 struct field {
     char *name;             /* the name of the channel.field */
     chid id;                /* the id of the channel.field */
-    long connectionState;   /* channel connected/disconnected /* Document meaning of the values here */ */
+    long connectionState;   /* channel connected/disconnected  */
     bool created;           /* channel creation for the field was successfull */
     bool done;              /* indicates if callback has finished processing this channel */
     struct channel * ch;	/* reference to the channel */
@@ -162,11 +155,11 @@ enum operator { /* possible conditions for cawait */
 struct channel {
     struct field    base;       /* the name of the channel */
     struct field    proc;       /* sibling channel for writing to proc field */
-    struct field    lstr;       /* sibling channel for reading string as an array of chars /* Consider refractoring to ASCII only variable name */ */
+    struct field    lstr;       /* sibling channel for reading string as an array of chars  */
     char           *name;       /* the name of the channel */
-    struct field    fields[23]; /* fields[noFields];    /*  sibling channels for fields (description, severities, ...) Used only by caInfo */ */
+    struct field    fields[23]; /* sibling channels for fields (description, severities, ...) Used only by caInfo */
 
-    long            type;       /* dbr type /* This should probably be a short? Double check before though... */ */
+    short           type;       /* dbr type This should probably be a short? Double check before though...  */
     int      		precision;
     size_t          count;      /* element count */
     size_t          inNelm;     /* requested number of elements for writing */

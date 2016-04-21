@@ -2,6 +2,7 @@
 This is included from caToolsMain.c only. */
 
 #include "caToolsTypes.h"
+#include "caToolsUtils.h"
 
 #define CA_PRIORITY CA_PRIORITY_MIN
 
