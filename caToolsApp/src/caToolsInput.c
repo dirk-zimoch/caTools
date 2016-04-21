@@ -625,8 +625,6 @@ bool cawaitParseCondition(struct channel *channel, char *str)
 }
 
 
-
-/* WARNING: This does not correctly return success failure, refracture and clean it up.. */
 bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *arguments, struct channel *channels){
     debugPrint("parseChannels()\n");
     u_int32_t i,j;                      /* counter */
