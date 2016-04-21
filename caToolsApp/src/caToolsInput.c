@@ -14,7 +14,7 @@
  */
 void usage(FILE *stream, enum tool tool, char *programName){
 
-    //usage:
+    /* usage: */
     if (tool == caget || tool == cagets || tool == camon || tool == cado) {
         fprintf(stream, "\nUsage: %s [flags] <pv> [<pv> ...]\n", programName);
     }
@@ -27,13 +27,13 @@ void usage(FILE *stream, enum tool tool, char *programName){
     else if (tool == cainfo  ) {
         fprintf(stream, "\nUsage: %s [flags] <pv> [<pv> ...]\n", programName);
     }
-    else { //tool unknown
+    else { /* tool unknown */
         fprintf(stream, "\nUnknown tool. Try %s -tool with any of the following arguments: caget, caput, cagets, "\
                 "caputq, cado, camon, cawait, cainfo.\n", programName);
         return;
     }
 
-    //descriptions
+    /* descriptions */
     fputs("\n",stream);
 
     if (tool == caget) {
@@ -46,7 +46,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         if (tool == caput) {
             fputs("Writes value(s) to the PV(s), waits until processing finishes and returns updated value(s).\n", stream);
         }
-        else { //caputq
+        else { /* caputq */
             fputs("Writes value(s) to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
         }
         fputs("Array handling:\n", stream);
@@ -73,7 +73,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Displays detailed information about the provided records.\n", stream);
     }
 
-    //flags common for all tools
+    /* flags common for all tools */
     fputs("\n", stream);
     fputs("Accepted flags:\n", stream);
     fputs("\n", stream);
@@ -84,7 +84,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
     fprintf(stream,"                       Also print error messages that occur periodically: %d\n", VERBOSITY_ERR_PERIODIC);
     fprintf(stream,"                       Also print warning messages that occur periodically: %d\n\n", VERBOSITY_WARN_PERIODIC);
 
-    //flags common for most of the tools
+    /* flags common for most of the tools */
     if (tool != cado){
         fputs("Channel Access options\n", stream);
         if (tool != cainfo) {
@@ -106,7 +106,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fprintf(stream, "  -w <time>            Wait time in seconds, specifies CA timeout. (default: %d s)\n", CA_DEFAULT_TIMEOUT);
     }
 
-    //flags associated with writing
+    /* flags associated with writing */
     if (tool == caput || tool == caputq) {
         fputs("Formating input : Array format options\n", stream);
         fputs("  -a                   Input separator (-inSep argument) is used to parse elements in an array.\n", stream);
@@ -115,7 +115,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("                       If specified, '-a' option is automatically used. \n", stream);
     }
 
-    // flags associated with monitoring
+    /*  flags associated with monitoring */
     if (tool == camon) {
         fputs("Monitoring options\n", stream);
         fputs("  -n <number>          Exit the program after <number> updates.\n", stream);
@@ -129,7 +129,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -timeout <number>    Exit the program after <number> seconds without an update.\n", stream);
     }
 
-    //Flags associated with returned values. Used by both reading and writing tools.
+    /* Flags associated with returned values. Used by both reading and writing tools. */
     if (tool == caget || tool == cagets || tool == camon
             || tool == cawait ||  tool == caput) {
         fputs("Formating output : General options\n", stream);
@@ -153,7 +153,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Formating output : Floating point format options\n", stream);
         fputs("  -e <number>          Format doubles using scientific notation with precision <number>. Overrides -prec option.\n", stream);
         fputs("  -f <number>          Format doubles using floating point with precision <number>. Overrides -prec option.\n", stream);
-        fputs("  -g <number>          Format doubles using shortest representation with precision <number>. Overrides -prec option.\n", stream);
+        fputs("  -g <number>          Format doubles using shorter of e or g <number>. Overrides -prec option.\n", stream);
         fputs("  -prec <number>       Override PREC field with <number>. (default: PREC field).\n", stream);
         fputs("  -round <option>      Round floating point value(s). Options:\n", stream);
         fputs("                                 round: round to nearest (default).\n", stream);
@@ -170,10 +170,10 @@ void usage(FILE *stream, enum tool tool, char *programName){
     }
 }
 
-//WARNING: This does not correctly return success failure, refracture and clean it up..
+/* WARNING: This does not correctly return success failure, refracture and clean it up.. */
 int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *arguments){
-	int opt;                    // getopt() current option
-    int opt_long;               // getopt_long() current long option
+    int opt;                    /*  getopt() current option */
+    int opt_long;               /*  getopt_long() current long option */
 
 	if (endsWith(argv[0],"caget")) arguments->tool = caget;
     if (endsWith(argv[0],"caput")) arguments->tool = caput;
@@ -186,73 +186,67 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
 
     static struct option long_options[] = {
         {"num",     	no_argument,        0,  0 },
-        {"int",     	no_argument,        0,  0 },    //same as num
-        {"round",   	required_argument,  0,  0 },	//type of rounding:round, ceil, floor
-        {"prec",    	required_argument,  0,  0 },	//precision
-        {"hex",     	no_argument,        0,  0 },	//display as hex
-        {"bin",     	no_argument,        0,  0 },	//display as bin
-        {"oct",     	no_argument,        0,  0 },	//display as oct
-        {"plain",   	no_argument,        0,  0 },	//ignore formatting switches
-        {"stat",    	no_argument,       0,  0 },	//status and severity on
-        {"nostat",  	no_argument,        0,  0 },	//status and severity off
-        {"noname",  	no_argument,        0,  0 },	//hide name
-        {"nounit",  	no_argument,        0,  0 },	//hide units
-        {"timestamp",	required_argument, 	0,  0 },	//timestamp type r,u,c
-        {"localdate",	no_argument,       0,  0 },	//client date
-        {"time",      no_argument,       0,  0 },	//server time
-        {"localtime",	no_argument,       0,  0 },	//client time
-        {"date",      no_argument,       0,  0 },	//server date
-        {"outNelm", 	required_argument,	0,  0 },	//number of array elements - read
-        {"outSep",      required_argument,	0,  0 },	//array field separator - read
-        {"inSep",      required_argument,	0,  0 },	//array field separator - write
-        {"nord",      no_argument,      0,  0 },	//display number of array elements
-        {"tool",      required_argument, 	0,	0 },	//tool
-        {"timeout",   	required_argument, 	0,	0 },	//timeout
-        {"dbrtype",   	required_argument, 	0,	0 },	//dbrtype
+        {"int",     	no_argument,        0,  0 },    /* same as num */
+        {"round",   	required_argument,  0,  0 },	/* type of rounding:round, ceil, floor */
+        {"prec",    	required_argument,  0,  0 },	/* precision */
+        {"hex",     	no_argument,        0,  0 },	/* display as hex */
+        {"bin",     	no_argument,        0,  0 },	/* display as bin */
+        {"oct",     	no_argument,        0,  0 },	/* display as oct */
+        {"plain",   	no_argument,        0,  0 },	/* ignore formatting switches */
+        {"stat",    	no_argument,       0,  0 },     /* status and severity on */
+        {"nostat",  	no_argument,        0,  0 },	/* status and severity off */
+        {"noname",  	no_argument,        0,  0 },	/* hide name */
+        {"nounit",  	no_argument,        0,  0 },	/* hide units */
+        {"timestamp",	required_argument, 	0,  0 },	/* timestamp type r,u,c */
+        {"localdate",	no_argument,       0,  0 },     /* client date */
+        {"time",      no_argument,       0,  0 },       /* server time */
+        {"localtime",	no_argument,       0,  0 },     /* client time */
+        {"date",      no_argument,       0,  0 },       /* server date */
+        {"outNelm", 	required_argument,	0,  0 },	/* number of array elements - read */
+        {"outSep",      required_argument,	0,  0 },	/* array field separator - read */
+        {"inSep",      required_argument,	0,  0 },	/* array field separator - write */
+        {"nord",      no_argument,      0,  0 },        /* display number of array elements */
+        {"tool",      required_argument, 	0,	0 },	/* tool */
+        {"timeout",   	required_argument, 	0,	0 },	/* timeout */
+        {"dbrtype",   	required_argument, 	0,	0 },	/* dbrtype */
         {0,         	0,                 	0,  0 }
     };
-    putenv("POSIXLY_CORRECT="); //Behave correctly on GNU getopt systems = stop parsing after 1st non option is encountered
+    putenv("POSIXLY_CORRECT="); /* Behave correctly on GNU getopt systems = stop parsing after 1st non option is encountered */
 
     while ((opt = getopt_long_only(argc, argv, ":w:e:f:g:n:sthdav:", long_options, &opt_long)) != -1) {
         switch (opt) {
         case 'w':
-            if (sscanf(optarg, "%lf", &arguments->caTimeout) != 1){    // type was not given as float
+            if (sscanf(optarg, "%lf", &arguments->caTimeout) != 1){    /*  type was not given as float */
                 arguments->caTimeout = CA_DEFAULT_TIMEOUT;
                 warnPrint("Requested timeout invalid - ignored. ('%s -h' for help.)\n", argv[0]);
             }
             break;
-        case 'd': // same as date
+        case 'd': /* same as date */
             arguments->date = true;
             break;
-        case 'e':	//how to format doubles in strings
+        case 'e':	/* how to format doubles in strings */
         case 'f':
         case 'g':
-            ;//declaration must not follow label
-            int32_t digits;
-            if (sscanf(optarg, "%"SCNd32, &digits) != 1){
+            if (sscanf(optarg, "%"SCNd32, &arguments->prec) != 1){
                 warnPrint("Invalid precision argument '%s' "
                         "for option '-%c' - ignored.\n", optarg, opt);
             } else {
-                if (digits>=0){
-                    if (arguments->dblFormatType == '\0' && arguments->prec >= 0) { // in case of overiding -prec
-                        warnPrint("Option '-%c' overrides precision set with '-prec'.\n", opt);
-                    }
-                    arguments->dblFormatType = opt; // set 'e' 'f' or 'g'
-                    arguments->prec = digits;
+                if (arguments->prec>=0){
+                    arguments->dblFormatType = opt; /* set 'e' 'f' or 'g' */
                 }
                 else{
                     warnPrint("Precision %d for option '-%c' "
-                            "out of range - ignored.\n", digits, opt);
+                            "out of range. Should be positive integer. - ignored.\n", arguments->prec, opt);
                 }
             }
             break;
-        case 's':	//try to interpret values as strings
+        case 's':	/* try to interpret values as strings */
             arguments->str = true;
             break;
-        case 't':	//same as time
+        case 't':	/* same as time */
             arguments->time = true;
             break;
-        case 'n':	//stop monitor after numUpdates
+        case 'n':	/* stop monitor after numUpdates */
             if (sscanf(optarg, "%"SCNd64, &arguments->numUpdates) != 1) {
                 warnPrint("Invalid argument '%s' for option '-%c' - ignored.\n", optarg, opt);
                 arguments->numUpdates = -1;
@@ -272,18 +266,18 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
                 warnPrint("Invalid argument '%s' for option '-%c' - ignored.\n", optarg, opt);
             }
             break;
-        case 0:   // long options
+        case 0:   /* long options */
             switch (opt_long) {
-            case 0:   // num
+            case 0:   /* num */
                 arguments->num = true;
                 break;
-            case 1:   // int
+            case 1:   /* int */
                 arguments->num = true;
                 break;
-            case 2:   // round
-                ;//declaration must not follow label
+            case 2:   /* round */
+                ;/* declaration must not follow label */
                 int type;
-                if (sscanf(optarg, "%d", &type) != 1) {   // type was not given as a number [0, 1, 2]
+                if (sscanf(optarg, "%d", &type) != 1) {   /*  type was not given as a number [0, 1, 2] */
                     if(!strcmp("round", optarg)) {
                         arguments->round = roundType_round;
                     } else if(!strcmp("ceil", optarg)) {
@@ -295,8 +289,8 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
                         warnPrint("Invalid round type '%s' "
                             "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                     }
-                } else { // type was given as a number
-                    if( type < roundType_round || roundType_floor < type) {   // out of range check
+                } else { /* type was given as a number */
+                    if( type < roundType_round || roundType_floor < type) {   /*  out of range check */
                         arguments->round = roundType_no_rounding;
                         warnPrint("Invalid round type '%s' "
                             "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
@@ -305,15 +299,16 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
                     }
                 }
                 break;
-            case 3:   // prec
-                if (arguments->dblFormatType == '\0') { // formating with -f -g -e has priority
+            case 3:   /* prec */
+                if (arguments->dblFormatType == '\0') { /* formating with -f -g -e has priority */
                     if (sscanf(optarg, "%"SCNd32, &arguments->prec) != 1){
                         warnPrint("Invalid precision argument '%s' "
                                 "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
-                    } else if (arguments->prec < 0) {
-                       warnPrint("Precision %"PRId32" for option '%s' "
-                               "out of range - ignored.\n", arguments->prec, long_options[opt_long].name);
-                       arguments->prec = -1;
+                    } else{
+                       /* set format type depending on sign, exponential for negative, normal for positive argument */
+                       if (arguments->prec < 0) arguments->dblFormatType = 'e';
+                       else arguments->dblFormatType = 'f';
+                       arguments->prec = abs(arguments->prec);
                     }
                 }
                 else {
@@ -397,14 +392,14 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
                     arguments->parseArray = true;
                 }
                 break;
-            case 20:   // nord
+            case 20:   /*  nord */
                 arguments->nord = true;
                 break;
-            case 21:	// tool
-                // rev RV: what is this line below
-                ;//c
+            case 21:	/*  tool */
+                /*  rev RV: what is this line below */
+                ;/* c */
                 int tool;
-                if (sscanf(optarg, "%d", &tool) != 1){   // type was not given as a number [0, 1, 2]
+                if (sscanf(optarg, "%d", &tool) != 1){   /*  type was not given as a number [0, 1, 2] */
                     if(!strcmp("caget", optarg)){
                         arguments->tool = caget;
                     } else if(!strcmp("camon", optarg)){
@@ -422,13 +417,13 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
                     } else if(!strcmp("cainfo", optarg)){
                         arguments->tool = cainfo;
                     }
-                } else{ // type was given as a number
-                    if(tool >= caget|| tool <= cainfo){   //unknown tool case handled down below
+                } else{ /*  type was given as a number */
+                    if(tool >= caget|| tool <= cainfo){   /* unknown tool case handled down below */
                         arguments->round = tool;
                     }
                 }
                 break;
-            case 22: //timeout
+            case 22: /* timeout */
                 if (sscanf(optarg, "%lf", &arguments->timeout) != 1){
                     warnPrint("Invalid timeout argument '%s' "
                             "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
@@ -440,11 +435,11 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
                     }
                 }
                 break;
-            case 23: //dbrtype
-                if (sscanf(optarg, "%"SCNd32, &arguments->dbrRequestType) != 1)     // type was not given as an integer
+            case 23: /* dbrtype */
+                if (sscanf(optarg, "%"SCNd32, &arguments->dbrRequestType) != 1)     /*  type was not given as an integer */
                 {
                     dbr_text_to_type(optarg, arguments->dbrRequestType);
-                    if (arguments->dbrRequestType == -1)                   // Invalid? Try prefix DBR_
+                    if (arguments->dbrRequestType == -1)                   /*  Invalid? Try prefix DBR_ */
                     {
                         char str[30] = "DBR_";
                         strncat(str, optarg, 25);
@@ -467,7 +462,7 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
             fprintf(stderr, "Option '-%c' requires an argument. ('%s -h' for help.). Exiting.\n", optopt, argv[0]);
             return false;
             break;
-        case 'h':               //Print usage
+        case 'h':               /* Print usage */
             usage(stdout, arguments->tool, argv[0]);
             exit(EXIT_SUCCESS);
         default:
@@ -478,7 +473,7 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
 
      g_verbosity = arguments->verbosity;
 
-     //check mutually exclusive arguments (without taking dbr type into account)
+     /* check mutually exclusive arguments (without taking dbr type into account) */
      if (arguments->tool == tool_unknown){
          usage(stderr, arguments->tool,argv[0]);
          return EXIT_FAILURE;
@@ -522,7 +517,7 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
      if (arguments->plain || arguments->tool == cainfo) {
          if (arguments->tool != cainfo) warnPrint("-plain option overrides all formatting switches.\n");
          arguments->num =false; arguments->hex =false; arguments->bin = false; arguments->oct =false; arguments->str =false;
-         arguments->prec = -1;   // prec is also handled in printValue()
+         arguments->prec = -1;   /*  prec is also handled in printValue() */
          arguments->round = roundType_no_rounding;
          arguments->dblFormatType = '\0';
          arguments->fieldSeparator = ' ' ;
@@ -535,7 +530,7 @@ int parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *ar
 
     /* Remaining arg list refers to PVs */
     if (arguments->tool == caget || arguments->tool == camon || arguments->tool == cagets || arguments->tool == cado || arguments->tool == cainfo){
-       *nChannels = argc - optind;       // All remaining args are PV names
+       *nChannels = argc - optind;       /*  All remaining args are PV names */
     }
     else {
         if ((argc - optind) % 2) {
@@ -613,7 +608,7 @@ bool cawaitParseCondition(struct channel *channel, char *str)
         }
     }
 
-    // TODO: if arg1 > arg2 when using ... syntax
+    /*  TODO: if arg1 > arg2 when using ... syntax */
 
     channel->conditionOperator = operator;
     channel->conditionOperands[0] = arg1;
@@ -624,15 +619,16 @@ bool cawaitParseCondition(struct channel *channel, char *str)
 
 
 
-//WARNING: This does not correctly return success failure, refracture and clean it up..
+/* WARNING: This does not correctly return success failure, refracture and clean it up.. */
 bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *arguments, struct channel *channels){
-	u_int32_t i,j;                      // counter
+    debugPrint("parseChannels()\n");
+    u_int32_t i,j;                      /* counter */
 	bool success = true;
     /* Copy PV names from command line */
     for (i = 0; optind < argc; i++, optind++) {
         channels[i].base.name = argv[optind];
 
-        if(strlen(channels[i].base.name) > LEN_RECORD_NAME + LEN_RECORD_FIELD + 1) { //worst case scenario: longest name + longest field + '.' that separates name and field
+        if(strlen(channels[i].base.name) > LEN_RECORD_NAME + LEN_RECORD_FIELD + 1) { /* worst case scenario: longest name + longest field + '.' that separates name and field */
             errPrint("Record name over %d characters: %s - aborting", LEN_RECORD_NAME + LEN_RECORD_FIELD + 1, channels[i].base.name);
             success = false;
             break;
@@ -643,13 +639,11 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
         if (arguments->tool == caput || arguments->tool == caputq){
             channels[i].inNelm = 1;
 
-            truncate(argv[optind+1]);
-
-            /* allocate resources */
+            /* allocate pointer */
             channels[i].writeStr = callocMustSucceed (channels[i].inNelm, sizeof(char*), "parseChannels");
 
-            /* store to the whole string to channels[i].writeStr[0].
-             * We will check for arrays later when we know the COUNT of the connected channel. */
+            /* store the pointer to correct argv to channels[i].writeStr[0].
+             * We will check for arrays later when we know ic channel is an array */
             channels[i].writeStr[0] = argv[optind+1];
 
 
@@ -658,7 +652,7 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
 
         }
         else if (arguments->tool == cawait) {
-            //next argument is the condition string
+            /* next argument is the condition string */
             if (!cawaitParseCondition(&channels[i], argv[optind+1])) {
                 success = false;
                 break;
@@ -670,12 +664,14 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
     return success;
 }
 
-void parseAsArray(struct channel * ch, arguments_T * arguments){
+bool parseAsArray(struct channel * ch, arguments_T * arguments){
+    debugPrint("parseAsArray()\n");
     /**
-     * Checks if channel is an array or if -a argument. If so, parses the string in
-     * ch->writeStr[0] as an array and puts splited strings back to ch->writeStr[]
+     * Checks if IOC channel is an array or if -a argument. If so, parses the string in
+     * ch->writeStr[0] as an array and puts splited strings back to ch->writeStr[].
      */
 
+    /* check if the connected channel has more than one elements or if -a*/
     if(ch->count > 1 || arguments->parseArray){
         char inSep[2] = {arguments->inputSeparator, 0};
         size_t j;
@@ -690,39 +686,46 @@ void parseAsArray(struct channel * ch, arguments_T * arguments){
             token = strtok(NULL, inSep);
         }
         ch->inNelm = j;
-        strcpy(tempstr, ch->writeStr[0]);
+        strcpy(tempstr, ch->writeStr[0]); /* points to string allocated in argv*/
         debugPrint("parseAsArray() - tempstr: %s\n", tempstr);
 
-        /* re-allocate resources */
-        free(ch->writeStr);
-        ch->writeStr = callocMustSucceed (ch->inNelm, sizeof(char*), "parseArray");
+        /* re-allocate pointer array */
+        ch->writeStr = realloc(ch->writeStr, ch->inNelm * sizeof(char*));
+        if(ch->writeStr==NULL){
+            free(tempstr);
+            ch->inNelm = 1;
+            cantProceed("Error at reallocating ch->writestr");
+            return false;
+        }
         /* extract arguments */
+        token = strtok(ch->writeStr[0], inSep);
         j=0;
-        token = strtok(tempstr, inSep);
         while(token) {
             truncate(token);
             debugPrint("parseAsArray() - token: %s\n", token);
-            ch->writeStr[j] = mallocMustSucceed(strlen(token)+1, sizeof(char), "parseArray");
-            strcpy(ch->writeStr[j], token);
+            ch->writeStr[j] = token; /* points to string allocated in argv*/
             j++;
             token = strtok(NULL, inSep);
         }
         /* cleanup */
         free(tempstr);
+        return true;
     }
+
+    return true;
 }
 
 
 bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType){
     debugPrint("castStrToDBR() - start\n");
-    //convert input string to the baseType
+    /* convert input string to the baseType */
     *data = callocMustSucceed(nelm, dbr_size[baseType], "castStrToDBR");
-    int base = 0;   // used for number conversion in strto* functions
-    char *endptr;   // used in strto* functions
+    int base = 0;   /*  used for number conversion in strto* functions */
+    char *endptr;   /*  used in strto* functions */
     bool success = true;
     unsigned long j;
     switch (baseType){
-    case DBR_INT://and short
+    case DBR_INT:/* and short */
         for (j=0; j<nelm; ++j) {
             ((dbr_int_t *)(*data))[j] = (dbr_int_t)strtoll(str[j], &endptr, base);
             if (endptr == str[j] || *endptr != '\0') {
@@ -743,7 +746,7 @@ bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType
         break;
 
     case DBR_ENUM:
-        ;//check if put data is provided as a number
+        ;/* check if put data is provided as a number */
         bool isNumber = true;
         for (j=0; j<nelm; ++j) {
             ((dbr_enum_t *)(*data))[j] = (dbr_enum_t)strtoull(str[j], &endptr, base);
@@ -752,7 +755,7 @@ bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType
             }
         }
 
-        // if enum is entered as a string, reallocate memory and go to case DBR_STRING
+        /*  if enum is entered as a string, reallocate memory and go to case DBR_STRING */
         if (!isNumber) {
             baseType = DBR_STRING;
 
@@ -770,7 +773,7 @@ bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType
         break;
 
     case DBR_CHAR:{
-            // count number of characters to write
+            /*  count number of characters to write */
             size_t charsInStr = 0;
             size_t charsPerStr[nelm];
             for (j=0; j < nelm; ++j) {
@@ -778,12 +781,12 @@ bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType
                 charsInStr += charsPerStr[j];
             }
 
-            if (charsInStr != nelm) { // don't fiddle with memory if we don't have to
+            if (charsInStr != nelm) { /*  don't fiddle with memory if we don't have to */
                 free(*data);
                 *data = callocMustSucceed(charsInStr, dbr_size[baseType], "castStrToDBR");
             }
 
-            // store all the chars to write
+            /*  store all the chars to write */
             charsInStr = 0;
             for (j=0; j < nelm; ++j) {
                 for (size_t k = 0; k < charsPerStr[j]; k++) {

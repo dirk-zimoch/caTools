@@ -169,5 +169,6 @@ record(stringout, "$(P):STRING"){
 	field(VAL, "Value field can have only fourty")
 	field(DESC, "Long description more than fourty characters and even more text. It is long, so to say.")
 	field(SCAN,"Passive")
-	field(OUT, "Longdescriptionmorethanfourtycharactersandevenmoretext.Itislongsotosay")
+	#field(OUT, "Longdescriptionmorethanfourtycharactersandevenmoretext.Itislongsotosay")
+	field(OUT, "one456789ten3456789twenty789thirty6789f")
 }
