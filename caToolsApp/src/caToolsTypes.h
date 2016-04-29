@@ -7,14 +7,13 @@
 
 #define CA_DEFAULT_TIMEOUT 1
 
-
-/* Document what theese defines do */
-#define LEN_TIMESTAMP 50
-#define LEN_SEVSTAT 30
-#define LEN_UNITS  20+MAX_UNITS_SIZE
-#define LEN_RECORD_NAME  60
-#define LEN_RECORD_FIELD 4
-#define LEN_FQN_NAME LEN_RECORD_NAME + LEN_RECORD_FIELD + 2
+/* string lengths */
+#define LEN_TIMESTAMP 50              /* Max length of the timestamp string */
+#define LEN_SEVSTAT 30                /* Max length of the severity and status string */
+#define LEN_UNITS  20+MAX_UNITS_SIZE  /* Max length of the units string */
+#define LEN_RECORD_NAME  60           /* Max length of the epics record name */
+#define LEN_RECORD_FIELD 4            /* Max length of the epics record field name */
+#define LEN_FQN_NAME LEN_RECORD_NAME + LEN_RECORD_FIELD + 2 /* Max length of the full epics record name */
 
 
 enum roundType {
@@ -40,7 +39,7 @@ typedef struct {
    double caTimeout;        /* ca timeout */
    int32_t  dbrRequestType; /* dbr request type */
    bool num;                /* same as -int */
-   enum roundType round;  /* type of rounding: round(), ceil(), floor() */
+   enum roundType round;    /* type of rounding: round(), ceil(), floor() */
    int32_t prec;            /* precision */
    bool hex;                /* display as hex */
    bool bin;                /* display as bin */
@@ -52,15 +51,15 @@ typedef struct {
    bool nostat;             /* status and severity off */
    bool noname;             /* hide name */
    bool nounit;             /* hide units */
-   char timestamp;        /* timestamp type ('r', 'u' or 'c') */
-   double timeout;        /* cawait timeout */
+   char timestamp;          /* timestamp type ('r', 'u' or 'c') */
+   double timeout;          /* cawait timeout */
    bool date;               /* server date */
-   bool localdate;        /* client date */
+   bool localdate;          /* client date */
    bool time;               /* server time */
-   bool localtime;        /* client timeqmake -project */
+   bool localtime;          /* client timeqmake -project */
    char fieldSeparator;     /* array field separator for output */
    char inputSeparator;     /* array field separator for input */
-   enum tool tool;        /* tool type */
+   enum tool tool;          /* tool type */
    int64_t numUpdates;      /* number of monitor updates after which to quit */
    bool parseArray;         /* use inputSeparator to parse array */
    int64_t outNelm;         /* number of array elements to read */
@@ -97,8 +96,9 @@ enum channelField {
 
 #ifndef INCLcadefh
     /*
-     * cadef.h can be included only ones, since it defines some globals
-     * if cadef.h is not already included some epics types and definitions are defined here
+     * cadef.h can be included only once in the project, since it defines some globals
+     * if cadef.h is not already included for current compile unit some epics types and
+     * definitions are defined here
      */
 	#include "db_access.h"
 	#include "alarm.h"
@@ -133,8 +133,8 @@ enum channelField {
 #endif
 
 struct field {
-    char *name;             /* the name of the channel.field */
-    chid id;                /* the id of the channel.field */
+    char *name;             /* the name of the ca channel */
+    chid id;                /* the id of the ca channel */
     long connectionState;   /* channel connected/disconnected  */
     bool created;           /* channel creation for the field was successfull */
     bool done;              /* indicates if callback has finished processing this channel */
@@ -166,7 +166,7 @@ struct channel {
     size_t          outNelm;    /* requested number of elements for reading */
     int             i;          /* process variable id */
     int             nRequests;  /* holds the number of requests to finish */
-    char          **writeStr;   /* vqmake -projectalue(s) to be written */
+    char          **writeStr;   /* value(s) to be written */
     enum operator   conditionOperator;    /* cawait operator */
     double          conditionOperands[2]; /* cawait operands */
     int             status;          /*  status */
@@ -175,9 +175,9 @@ struct channel {
 
 };
 
+
+/* global strings */
 extern char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outLocalDate, **g_outLocalTime, **g_outTimestamp;
-
-
 
 extern epicsTimeStamp *g_timestampRead;
 

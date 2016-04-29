@@ -82,7 +82,7 @@ record(waveform, "$(P):TEST_WVF-LONG")
 record(waveform, "$(P):TEST_WVF-CHAR")
 {
 	field(SCAN, "Passive")
-	field(NELM, "10")	
+	field(NELM, "5")	
 	field(FTVL, "CHAR")	
 	field(PINI, "YES")
 }

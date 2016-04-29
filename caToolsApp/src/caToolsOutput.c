@@ -31,10 +31,11 @@ void printValue(evargs args, arguments_T *arguments){
 
     /* handle long strings */
     if(baseType == DBR_CHAR &&
-       !(arguments->bin || arguments->hex || arguments->oct || arguments->num) &&   /* no special formating specified */
-            (ca_field_type(ch->base.id)==DBF_STRING ||   /* if base channel is DBF_STRING*/
-             arguments->str ||                           /* if requested string formatting */
-             isPrintable((char *) value, (size_t) args.count)))   /* if all characters are printable */
+           !(arguments->bin || arguments->hex || arguments->oct || arguments->num) &&   /* no special numeric formating specified */
+                (ca_field_type(ch->base.id)==DBF_STRING ||   /* if base channel is DBF_STRING*/
+                 arguments->str ||                           /* if requested string formatting */
+                 args.count > 1 && isPrintable((char *) value, (size_t) args.count))/* if array returned and all characters are printable */
+        )
     {  /* print as string */
         printf("\"%.*s\"", (int) args.count, (char *) value); 
         return;
@@ -192,11 +193,8 @@ void printValue(evargs args, arguments_T *arguments){
             break;
         }
         case DBR_CHAR:{
-            debugPrint("printValue() - case DBR_CHAR\n");
-            if (arguments->num) {    /* check if requested as a a number */
-                printf("%" PRIu8, ((u_int8_t*) value)[j]);
-            }
-            else if (arguments->hex){
+           debugPrint("printValue() - case DBR_CHAR\n");
+           if (arguments->hex){
                 printf("0x%" PRIx8, ((u_int8_t*) value)[j]);
             }
             else if (arguments->oct){
@@ -206,8 +204,8 @@ void printValue(evargs args, arguments_T *arguments){
                 printf("0b");
                 printBits(((u_int8_t*) value)[j]);
             }
-            else{
-                fputc(((char*) value)[j], stdout);
+            else{    /* output as a number */
+                printf("%" PRIu8, ((u_int8_t*) value)[j]);
             }
             break;
         }

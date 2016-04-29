@@ -349,7 +349,7 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
 
         /* parse as array if needed */
         if(!parseAsArray(ch, arguments)) return false;
-        if (castStrToDBR(&input, ch->writeStr, ch->inNelm, baseType)) {
+        if (castStrToDBR(&input, ch->writeStr, &ch->inNelm, baseType, arguments)) {
             /*dbr_char_t * putin = (dbr_char_t *) input; */
             debugPrint("nelm: %i\n", ch->inNelm);
 
@@ -373,7 +373,7 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
         status = ca_array_put(DBF_CHAR, 1, ch->base.id, &input); /* old PSI tools behaved this way. Is it better to fill entire array? */
     }
     if (status != ECA_NORMAL) {
-        errPrint("Problem creating request for process variable %s: %s.\n", ch->base.name, ca_message(status));
+        errPrint("Problem creating put request for process variable %s: %s.\n", ch->base.name, ca_message(status));
         return false;
     }
 
@@ -421,7 +421,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     ch->nRequests=ch->nRequests+1;
     status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
     if (status != ECA_NORMAL) {
-        errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->base.name, ca_message(status));
+        errPeriodicPrint("Problem creating get request for process variable %s: %s\n",ch->base.name, ca_message(status));
         return;
     }
 
@@ -437,7 +437,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         ch->nRequests=ch->nRequests+1;
         status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
         if (status != ECA_NORMAL) {
-            errPeriodicPrint("Problem creating ca_get request for process variable %s: %s\n",ch->base.name, ca_message(status));
+            errPeriodicPrint("Problem creating subscription for process variable %s: %s\n",ch->base.name, ca_message(status));
             return;
         }
     }
@@ -801,15 +801,19 @@ void caCustomExceptionHandler( struct exception_handler_args args) {
     }
 }
 
-/* init field and crreate ca_channel# */
-/*Document how this works */
+/**
+ * @brief initField - creates ca_channel and sets some flags on channel and field structure
+ * @param ch - poiter to the channel structure
+ * @param field - pointer to the field structure
+ * @return returns true if the channel was created succesfully
+ */
 bool initField(struct channel *ch, struct field * field)
 {
     debugPrint("initField() - %s\n", field->name);
-    field->connectionState = CA_OP_OTHER;
-    field->done = false;
-    field->ch = ch;
-    ch->nRequests=ch->nRequests+1;
+    field->connectionState = CA_OP_OTHER; /* ca connection state - is updated in initCallback */
+    field->done = false;                  /* indicates wether the first callback arrived */
+    field->ch = ch;                       /* pointer back to channel structure */
+    ch->nRequests=ch->nRequests+1;        /* indicates number of issued requests. Callback functions substract one from this field and take corresponding actions on ch->nRequests==0 */
     int status = ca_create_channel(field->name, channelInitCallback, field, CA_PRIORITY, &field->id);
     field->created = checkStatus(status);    /* error if the channels are not created */
     return field->created;
@@ -858,7 +862,6 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
 }
 
 
-/*WARNING: This never returns false!!! */
 bool caInit(struct channel *channels, u_int32_t nChannels){
     /*creates contexts and channels. */
     int status;
@@ -907,6 +910,10 @@ bool caDisconnect(struct channel * channels, u_int32_t nChannels){
     for (i=0; i < nChannels; i++) {
         if (channels[i].base.created) {
             status = ca_clear_channel(channels[i].base.id);
+            success &= checkStatus(status);
+        }
+        if (channels[i].lstr.created) {
+            status = ca_clear_channel(channels[i].lstr.id);
             success &= checkStatus(status);
         }
 
@@ -979,7 +986,7 @@ void freeChannels(struct channel * channels, u_int32_t nChannels){
     free(channels);
 }
 
-void freeGlobals(u_int32_t nChannels){
+void freeStringBuffers(u_int32_t nChannels){
     /*free output strings */
     for(int i = 0; i < nChannels; i++) {
         free(g_outDate[i]);
@@ -1009,7 +1016,7 @@ void freeGlobals(u_int32_t nChannels){
 }
 
 int main ( int argc, char ** argv )
-{/*main function: reads arguments, allocates memory, calls ca* functions, frees memory and exits. */
+{/* main function: reads arguments, allocates memory, calls ca* functions, frees memory and exits. */
 
     u_int32_t nChannels=0;              /* Number of channels */
     struct channel *channels;
@@ -1023,48 +1030,43 @@ int main ( int argc, char ** argv )
     if(!(success=parseArguments(argc, argv, &nChannels, &arguments)))
         goto the_very_end;
 
-    /*allocate memory for channel structures */
+    /* allocate memory for channel structures */
     channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "Could not allocate channels"); /*Consider adding more descriptive error message. */
 
-    success = parseChannels(argc, argv, nChannels, &arguments, channels); /*WARNING: This may not correctly return success failure, refracture and clean it up.. */
-
-    if(!success){
-        exit(EXIT_FAILURE);
-    }
+    /* parse command line and fill up the channel structures*/
+    if(!(success = parseChannels(argc, argv, nChannels, &arguments, channels)))
+        goto clear_channels;
 
     allocateStringBuffers(nChannels);
 
     /*start channel access */
-    /*Clear up all if(success) and replace with proper exit and cleanup */
-    if(success) success = caInit(channels, nChannels);
+    if(!(success = caInit(channels, nChannels)))
+        goto clear_global_strings;
 
     /* set timeout time from now */
     if (arguments.timeout!=-1){
-        /*set first */
+        /* set first */
         epicsTimeGetCurrent(&g_timeoutTime);
         epicsTimeAddSeconds(&g_timeoutTime, arguments.timeout);
     }
 
-    success = caRequest(channels, nChannels);
+    /* issue ca requests and subscribtions */
+    if(!(success = caRequest(channels, nChannels)))
+        goto ca_disconnect;
 
+    /* wait for monitor or cawait to finish */
     if( arguments.tool == camon || arguments.tool == cawait ) {
-
         monitorLoop();
     }
 
-
-    /*Add GOTO definitions for cleanup, reorder cleanup in inverse order compared to allocations... */
-    /*Check LKML and Linux sources for details on clean implementation.... */
-
-    success &= caDisconnect(channels, nChannels);
-
-
-    ca_context_destroy();
-
-    freeChannels(channels, nChannels);
-
-    freeGlobals(nChannels);
-
+    /* cleanup */
+    ca_disconnect:
+        success = caDisconnect(channels, nChannels);
+        ca_context_destroy();
+    clear_global_strings:
+        freeStringBuffers(nChannels);
+    clear_channels:
+        freeChannels(channels, nChannels);
     the_very_end:
         if (success) return EXIT_SUCCESS;
         else return EXIT_FAILURE;

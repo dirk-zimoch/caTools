@@ -55,11 +55,11 @@ bool isValField(char *name) {
 
 size_t truncate(char *argument) {
     size_t length = strlen(argument);
-    if (length > MAX_STRING_SIZE) {
-        warnPrint("Input %s is longer than the allowed size %u. Truncating to ", argument, MAX_STRING_SIZE);
+    if (length > MAX_STRING_SIZE-1) {
+        warnPrint("Input %s is longer than the allowed size %u.\n", argument, MAX_STRING_SIZE-1);
         length = MAX_STRING_SIZE;
-        argument[length] = '\0';
-        warnPrint("%s\n", argument);   /*  end of upper fprintf */
+        argument[length-1] = '\0';
+        warnPrint("Truncating to: %s\n", argument);   /*  end of upper fprintf */
     }
     return length;
 }

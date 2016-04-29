@@ -676,8 +676,11 @@ bool parseAsArray(struct channel * ch, arguments_T * arguments){
      * ch->writeStr[0] as an array and puts splited strings back to ch->writeStr[].
      */
 
-    /* check if the connected channel has more than one elements or if -a*/
-    if(ch->count > 1 || arguments->parseArray){
+    /* check if the connected channel has more than one elements or if -a
+     * and not -s argument. If -s interpret as one long string
+     */
+    if((ch->count > 1 || arguments->parseArray) && !arguments->str)
+    {
         char inSep[2] = {arguments->inputSeparator, 0};
         size_t j;
 
@@ -721,17 +724,23 @@ bool parseAsArray(struct channel * ch, arguments_T * arguments){
 }
 
 
-bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType){
+bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, arguments_T * arguments){
     debugPrint("castStrToDBR() - start\n");
     /* convert input string to the baseType */
-    *data = callocMustSucceed(nelm, dbr_size[baseType], "castStrToDBR");
+    *data = callocMustSucceed(*nelm, dbr_size[baseType], "castStrToDBR");
     int base = 0;   /*  used for number conversion in strto* functions */
     char *endptr;   /*  used in strto* functions */
     bool success = true;
     unsigned long j;
+
+    /* set up numeric base for sring conversion */
+    if(arguments->bin) base = 2;
+    else if(arguments->oct) base = 8;
+    else if(arguments->hex) base = 16;
+
     switch (baseType){
     case DBR_INT:/* and short */
-        for (j=0; j<nelm; ++j) {
+        for (j=0; j<*nelm; ++j) {
             ((dbr_int_t *)(*data))[j] = (dbr_int_t)strtoll(str[j], &endptr, base);
             if (endptr == str[j] || *endptr != '\0') {
                 errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
@@ -741,7 +750,7 @@ bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType
         break;
 
     case DBR_FLOAT:
-        for (j=0; j<nelm; ++j) {
+        for (j=0; j<*nelm; ++j) {
             ((dbr_float_t *)(*data))[j] = (dbr_float_t)strtof(str[j], &endptr);
             if (endptr == str[j] || *endptr != '\0') {
                 errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
@@ -753,8 +762,8 @@ bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType
     case DBR_ENUM:
         ;/* check if put data is provided as a number */
         bool isNumber = true;
-        for (j=0; j<nelm; ++j) {
-            ((dbr_enum_t *)(*data))[j] = (dbr_enum_t)strtoull(str[j], &endptr, base);
+        for (j=0; j<*nelm; ++j) {
+            ((dbr_enum_t *)(*data))[j] = (dbr_enum_t)strtoul(str[j], &endptr, base);
             if (endptr == str[j] || *endptr != '\0') {
                 isNumber = false;
             }
@@ -765,46 +774,58 @@ bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType
             baseType = DBR_STRING;
 
             free(data);
-            *data = callocMustSucceed(nelm, dbr_size[baseType], "castStrToDBR");
+            *data = callocMustSucceed(*nelm, dbr_size[baseType], "castStrToDBR");
         }
         else {
             break;
         }
 
     case DBR_STRING:
-        for (j=0; j<nelm; ++j) {
-            strcpy(((dbr_string_t *)(*data))[j], str[j]);
+        for (j=0; j<*nelm; ++j) {
+            int length = truncate(str[j]); /* truncate to MAX_STRING_SIZE */
+            debugPrint("truncated string: %s\n", str[j]);
+            strncpy(((dbr_string_t *)(*data))[j], str[j], length);
         }
         break;
 
     case DBR_CHAR:{
-            /*  count number of characters to write */
+            /*  count max possible number of characters to write */
             size_t charsInStr = 0;
-            size_t charsPerStr[nelm];
-            for (j=0; j < nelm; ++j) {
+            size_t charsPerStr[*nelm];
+            size_t k = 0; /*index*/
+            long number = 0;
+            for (j=0; j < *nelm; ++j) {
                 charsPerStr[j] = strlen(str[j]);
                 charsInStr += charsPerStr[j];
             }
 
-            if (charsInStr != nelm) { /*  don't fiddle with memory if we don't have to */
+
+            if (charsInStr != *nelm) { /*  don't fiddle with memory if we don't have to */
                 free(*data);
                 *data = callocMustSucceed(charsInStr, dbr_size[baseType], "castStrToDBR");
             }
 
-            /*  store all the chars to write */
             charsInStr = 0;
-            for (j=0; j < nelm; ++j) {
-                for (size_t k = 0; k < charsPerStr[j]; k++) {
-                    ((dbr_char_t *)(*data))[charsInStr] = (dbr_char_t)str[j][k];
-                    charsInStr++;
+            for (j=0; j<*nelm; ++j) {
+                number = (dbr_enum_t)strtoul(str[j], &endptr, base);
+                if (endptr != str[j] && *endptr == '\0' && number >=0 && number < 256) {
+                    /* is a valid 8 bit number */
+                    ((dbr_char_t *)(*data))[charsInStr] = (dbr_char_t)(char)number;
+                    charsInStr ++;
+                }else{
+                    /*  store all chars to write */
+                    for (size_t k = 0; k < charsPerStr[j]; k++) {
+                        ((dbr_char_t *)(*data))[charsInStr] = (dbr_char_t)str[j][k];
+                        charsInStr++;
+                    }
                 }
             }
-            nelm = charsInStr;
+            *nelm = charsInStr;
         }
         break;
 
     case DBR_LONG:
-        for (j=0; j<nelm; ++j) {
+        for (j=0; j<*nelm; ++j) {
             ((dbr_long_t *)(*data))[j] = (dbr_long_t)strtoll(str[j], &endptr, base);
             if (endptr == str[j] || *endptr != '\0') {
                 errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
@@ -814,7 +835,7 @@ bool castStrToDBR(void ** data, char **str, unsigned long nelm, int32_t baseType
         break;
 
     case DBR_DOUBLE:
-        for (j=0; j<nelm; ++j) {
+        for (j=0; j<*nelm; ++j) {
             ((dbr_double_t *)(*data))[j] = (dbr_double_t)strtod(str[j], &endptr);
             if (endptr == str[j] || *endptr != '\0') {
                 errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
