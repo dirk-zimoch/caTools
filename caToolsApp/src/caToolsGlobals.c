@@ -84,4 +84,4 @@ epicsTimeStamp g_timeoutTime;       /* when to stop monitoring (-timeout) */
 
 bool g_runMonitor;                /* indicates when to stop monitoring according to -timeout, -n or cawait condition is true */
 u_int32_t g_numMonitorUpdates;    /* counts updates needed by -n */
-int g_verbosity;                  /* global verbosity */
+int g_verbosity = VERBOSITY_ERR;  /* global verbosity */

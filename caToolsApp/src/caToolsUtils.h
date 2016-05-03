@@ -101,14 +101,6 @@ void validateTimestamp(epicsTimeStamp *timestamp, const char* name);
 bool isPrintable(char * str, size_t n);
 
 /**
- * @brief getMetadataFromEvArgs - updates global strings and metadata for the channel
- * @param ch - pointer to struct channel
- * @param args - evargs from callback function
- * @return true if everything goes well
- */
-bool getMetadataFromEvArgs(struct channel * ch, evargs args);
-
-/**
  * @brief clearStr cleares a string
  * @param str the string to clear
  */

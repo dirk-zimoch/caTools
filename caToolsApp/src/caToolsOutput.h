@@ -19,4 +19,12 @@ void printOutput(evargs args, arguments_T *arguments);
  */
 void printValue(evargs args, arguments_T *arguments);
 
+/**
+ * @brief getMetadataFromEvArgs - updates global strings and metadata for the channel
+ * @param ch - pointer to struct channel
+ * @param args - evargs from callback function
+ * @return true if everything goes well
+ */
+bool getMetadataFromEvArgs(struct channel * ch, evargs args);
+
 #endif

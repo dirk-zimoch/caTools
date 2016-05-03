@@ -30,6 +30,8 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
     /*not successful, the function returns -1. If the channel in question */
     /*is an array, the condition is evaluated against the first element. */
 
+
+
     /*get value */
     void *nativeValue = dbr_value_ptr(args.dbr, args.type);
 
@@ -64,6 +66,8 @@ int cawaitEvaluateCondition(struct channel channel, evargs args){
         return -1;
         break;
     }
+
+    debugPrint("cawaitEvaluateCondition() - operator: %i, a0: %f, a1: %f, value: %f\n", channel.conditionOperator, channel.conditionOperands[0], channel.conditionOperands[1], dblValue);
 
     /*evaluate and exit */
     switch (channel.conditionOperator){
@@ -140,30 +144,22 @@ static void caReadCallback (evargs args){
 /*on the type of the returned data, the available information is extracted. The extracted info is then saved to the */
 /*global strings and printed. */
 
-    /*if we are in monitor and just waiting for the program to exit, don't proceed. */
-    bool monitor = (arguments.tool == camon || arguments.tool == cawait);
-    if (monitor && g_runMonitor == false) return;
-
-    /*check if data was returned */
-    if (args.status != ECA_NORMAL){
-        errPeriodicPrint("Error in read callback. %s.\n", ca_message(args.status));
-        return;
-    }
-    struct channel *ch = (struct channel *)args.usr;
-    debugPrint("ReadCallback() callbacks to process: %i\n", ch->nRequests);
-    debugPrint("ReadCallback() type: %s\n", dbr_type_to_text(args.type));
-    ch->nRequests=ch->nRequests-1;
-
-
-    /* remember status and sevestatic void caWriteCallback (evargs args) {
-    /*does nothing except signal that writing is finished. */
-
     debugPrint("caWriteCallback()\n");
     /*check if status is ok */
     if (args.status != ECA_NORMAL){
         errPrint("Error in read callback. %s.\n", ca_message(args.status));
         return;
     }
+
+    struct channel *ch = (struct channel *)args.usr;
+    debugPrint("ReadCallback() callbacks to process: %i\n", ch->nRequests);
+    debugPrint("ReadCallback() type: %s\n", dbr_type_to_text(args.type));
+    ch->nRequests=ch->nRequests-1;
+
+    /*if we are in monitor and just waiting for the program to exit, don't proceed. */
+    /*bool monitor = (arguments.tool == camon || arguments.tool == cawait);
+    if (monitor && g_runMonitor == false) return;
+*/
 
     /* get metadata from args and fill the global strings and channel properties:
      * status, severity, timestamp, precision, units*/
@@ -175,8 +171,13 @@ static void caReadCallback (evargs args){
     /* if monitor, there is extra stuff to do before printing data out. */
     bool shouldPrint = true;
 
-    if (arguments.tool == cawait || arguments.tool == camon) {
-        if (arguments.timestamp) getTimeStamp(ch->i);	/*calculate relative timestamps. */
+    if(ch->nRequests > 0){
+        /* wait for all get requests to arrive before printing anything*/
+        shouldPrint = false;
+    }{
+        /* update relative timestamps only after all initial get requests have arived*/
+        if ((arguments.tool == cawait || arguments.tool == camon) && arguments.timestamp)
+            getTimeStamp(ch->i);	/*calculate relative timestamps. */
 
         if (arguments.tool == cawait) {
             /*check stop condition */
@@ -201,11 +202,6 @@ static void caReadCallback (evargs args){
         }
     }
 
-    if(ch->nRequests > 0){
-        /* wait for all requests before printing anything*/
-        shouldPrint = false;
-    }
-
     /* finish */
     if(shouldPrint){
         /* handle -n option, count plus one and stop after n */
@@ -216,6 +212,7 @@ static void caReadCallback (evargs args){
                 g_runMonitor = false;
             }
         }
+
         /* print out */
         printOutput(args, &arguments);
     }
@@ -264,7 +261,7 @@ void waitForCompletition(struct channel *channels, u_int32_t nChannels, bool che
     epicsTimeAddSeconds(&timeout, arguments.caTimeout);
 
     while(!allDone && !elapsed) {
-        ca_pend_event(0.1);
+        ca_pend_event(0.01);
         /* check for timeout */
         epicsTimeGetCurrent(&timeoutNow);
         if (epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
@@ -326,7 +323,7 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
             }
         }
     }
-    debugPrint("waitForCallbacks - done.");
+    debugPrint("waitForCallbacks - done.\n");
 
 }
 
@@ -350,12 +347,10 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
         /* parse as array if needed */
         if(!parseAsArray(ch, arguments)) return false;
         if (castStrToDBR(&input, ch->writeStr, &ch->inNelm, baseType, arguments)) {
-            /*dbr_char_t * putin = (dbr_char_t *) input; */
             debugPrint("nelm: %i\n", ch->inNelm);
 
             if(arguments->tool == caputq) status = ca_array_put(baseType, ch->inNelm, ch->base.id, input);
             else status = ca_array_put_callback(baseType, ch->inNelm, ch->base.id, input, caWriteCallback, ch);
-            /*else status = ca_array_put_callback(DBF_CHAR, 1, ch->base.id, &putin, caWriteCallback, ch); */
             free(input);
         }
         else {
@@ -426,7 +421,9 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     }
 
     /* second request - get timestamp if needed */
-    if (arguments->time || arguments->date || arguments->timestamp){
+    if ((arguments->time || arguments->date || arguments->timestamp) &&
+            arguments->dbrRequestType == -1 )
+    {
         if (arguments->str && ca_field_type(reqChid) == DBF_ENUM){
             /* if enum && s, use time_string */
             reqType = DBR_TIME_STRING;
@@ -437,7 +434,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         ch->nRequests=ch->nRequests+1;
         status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
         if (status != ECA_NORMAL) {
-            errPeriodicPrint("Problem creating subscription for process variable %s: %s\n",ch->base.name, ca_message(status));
+            errPeriodicPrint("Problem creating get_request for process variable %s: %s\n",ch->base.name, ca_message(status));
             return;
         }
     }
@@ -452,23 +449,6 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         }
     }
 
-    return true;
-}
-
-bool caGenerateSubscription(struct channel *ch, arguments_T * arguments){
-    debugPrint("caGenerateSubscription() - %s\n", ch->base.name);
-    int status;
-
-
-    /*request ctrl type */
-    int32_t baseType = ca_field_type(ch->base.id);
-    int32_t reqType = dbf_type_to_DBR_CTRL(baseType);
-
-    status = ca_create_subscription(reqType, ch->outNelm, ch->base.id, DBE_VALUE | DBE_ALARM | DBE_LOG, caReadCallback, ch, 0);
-    if (status != ECA_NORMAL) {
-        errPrint("Problem creating subscription for process variable %s: %s.\n",ch->base.name, ca_message(status));
-        return false;
-    }
     return true;
 }
 
@@ -691,17 +671,19 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
         for(i=0; i < nChannels; i++) {
             if (channels[i].base.connectionState != CA_OP_CONN_UP) {/*skip disconnected channels */
                 continue;
-            }
-            if(arguments.tool == cado || arguments.tool == caputq) return true;
+            }            
             caGenerateWriteRequests(&channels[i], &arguments);
         }
+        if(arguments.tool == cado || arguments.tool == caputq) return true;
         waitForCallbacks(channels, nChannels);
+
     }
     /* generate read requests caTools-TEST:SECONDS */
     if (arguments.tool == caget || 
         arguments.tool == cagets || 
         arguments.tool == caput  ||
-        arguments.tool == camon)
+        arguments.tool == camon ||
+        arguments.tool == cawait)
     {
         for(i=0; i < nChannels; i++) {
             if (channels[i].base.connectionState != CA_OP_CONN_UP) {/*skip disconnected channels */
@@ -837,7 +819,8 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
             (arguments->tool == caget ||
             arguments->tool == cagets ||
             arguments->tool == cainfo ||
-            arguments->tool == camon )){
+            arguments->tool == camon  ||
+            arguments->tool == cawait )){
         debugPrint("caInitSiblings() - string chanel\n");
         debugPrint("caInitSiblings() - dbftype: %s\n", dbf_type_to_text(ca_field_type(ch->base.id)));
         ch->lstr.name = callocMustSucceed (strlen(ch->base.name) + 2, sizeof(char), "main"); /*2 spaces for $ + null termination */
@@ -883,6 +866,7 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
     debugPrint("caInit() - First Connections completed\n");
 
     /* open silbling channels if needed (in case of cainfo, cagets or long string) */
+    /* check if at least one chanel connected */
     bool siblings = false;
     for (i=0; i < nChannels; ++i) {
         if (channels[i].base.connectionState == CA_OP_CONN_UP)
@@ -891,7 +875,6 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
             printf("Process variable %s not connected.\n", channels[i].base.name);
     }
     if (siblings){
-        /*ca_flush_io(); */
         waitForCallbacks(channels, nChannels);
         debugPrint("caInit() - Siblings connected\n");
     }
@@ -1027,35 +1010,46 @@ int main ( int argc, char ** argv )
     epicsTimeGetCurrent(&g_programStartTime);
     bool success = true;
 
-    if(!(success=parseArguments(argc, argv, &nChannels, &arguments)))
+    if(!(success=parseArguments(argc, argv, &nChannels, &arguments))){
+        debugPrint("main() - no succes with parseArguments\n");
         goto the_very_end;
+    }
 
     /* allocate memory for channel structures */
     channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "Could not allocate channels"); /*Consider adding more descriptive error message. */
 
     /* parse command line and fill up the channel structures*/
-    if(!(success = parseChannels(argc, argv, nChannels, &arguments, channels)))
+    if(!(success = parseChannels(argc, argv, nChannels, &arguments, channels))){
+        debugPrint("main() - no succes with parseChannels\n");
         goto clear_channels;
+    }
 
     allocateStringBuffers(nChannels);
 
     /*start channel access */
-    if(!(success = caInit(channels, nChannels)))
+    if(!(success = caInit(channels, nChannels))){
+        debugPrint("main() - no succes with caInit\n");
         goto clear_global_strings;
+    }
 
     /* set timeout time from now */
     if (arguments.timeout!=-1){
         /* set first */
         epicsTimeGetCurrent(&g_timeoutTime);
+
         epicsTimeAddSeconds(&g_timeoutTime, arguments.timeout);
     }
 
     /* issue ca requests and subscribtions */
-    if(!(success = caRequest(channels, nChannels)))
+    if(!(success = caRequest(channels, nChannels))){
+        debugPrint("main() - no succes with caRequest\n");
         goto ca_disconnect;
+    }
+
 
     /* wait for monitor or cawait to finish */
     if( arguments.tool == camon || arguments.tool == cawait ) {
+        debugPrint("main() - enter monitor loop\n");
         monitorLoop();
     }
 

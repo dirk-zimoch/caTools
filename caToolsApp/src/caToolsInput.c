@@ -87,29 +87,35 @@ void usage(FILE *stream, enum tool tool, char *programName){
     /* flags common for most of the tools */
     if (tool != cado){
         fputs("Channel Access options\n", stream);
+        fprintf(stream, "  -w <time>            Wait time in seconds, specifies CA timeout.\n"
+                        "                       (default: %d s)\n", CA_DEFAULT_TIMEOUT);
         if (tool != cainfo) {
-            fputs("  -dbrtype <type>      Type of DBR request to use for communicating with the server.\n", stream);
-            fputs("                       Use string (DBR_ prefix may be omitted, or number of one of the following types:\n", stream);
-            fputs("           DBR_STRING     0  DBR_STS_FLOAT    9  DBR_TIME_LONG   19  DBR_CTRL_SHORT    29\n"
-                  "           DBR_INT        1  DBR_STS_ENUM    10  DBR_TIME_DOUBLE 20  DBR_CTRL_INT      29\n"
-                  "           DBR_SHORT      1  DBR_STS_CHAR    11  DBR_GR_STRING   21  DBR_CTRL_FLOAT    30\n"
-                  "           DBR_FLOAT      2  DBR_STS_LONG    12  DBR_GR_SHORT    22  DBR_CTRL_ENUM     31\n"
-                  "           DBR_ENUM       3  DBR_STS_DOUBLE  13  DBR_GR_INT      22  DBR_CTRL_CHAR     32\n"
-                  "           DBR_CHAR       4  DBR_TIME_STRING 14  DBR_GR_FLOAT    23  DBR_CTRL_LONG     33\n"
-                  "           DBR_LONG       5  DBR_TIME_INT    15  DBR_GR_ENUM     24  DBR_CTRL_DOUBLE   34\n"
-                  "           DBR_DOUBLE     6  DBR_TIME_SHORT  15  DBR_GR_CHAR     25  DBR_STSACK_STRING 37\n"
-                  "           DBR_STS_STRING 7  DBR_TIME_FLOAT  16  DBR_GR_LONG     26  DBR_CLASS_NAME    38\n"
-                  "           DBR_STS_SHORT  8  DBR_TIME_ENUM   17  DBR_GR_DOUBLE   27\n"
-                  "           DBR_STS_INT    8  DBR_TIME_CHAR   18  DBR_CTRL_STRING 28\n", stream);
-
+            fputs("  -dbrtype <type>      Type of DBR request to use for communicating\n"
+                  "                       with the server. Use string (DBR_ prefix may be\n"
+                  "                       omitted, or number of one of the following types:\n", stream);
+            fputs("             DBR_STRING     0  DBR_STS_LONG    12  DBR_GR_ENUM       24\n"
+                  "             DBR_INT        1  DBR_STS_DOUBLE  13  DBR_GR_CHAR       25\n"
+                  "             DBR_SHORT      1  DBR_TIME_STRING 14  DBR_GR_LONG       26\n"
+                  "             DBR_FLOAT      2  DBR_TIME_INT    15  DBR_GR_DOUBLE     27\n"
+                  "             DBR_ENUM       3  DBR_TIME_SHORT  15  DBR_CTRL_STRING   28\n"
+                  "             DBR_CHAR       4  DBR_TIME_FLOAT  16  DBR_CTRL_SHORT    29\n"
+                  "             DBR_LONG       5  DBR_TIME_ENUM   17  DBR_CTRL_INT      29\n"
+                  "             DBR_DOUBLE     6  DBR_TIME_CHAR   18  DBR_CTRL_FLOAT    30\n"
+                  "             DBR_STS_STRING 7  DBR_TIME_LONG   19  DBR_CTRL_ENUM     31\n"
+                  "             DBR_STS_SHORT  8  DBR_TIME_DOUBLE 20  DBR_CTRL_CHAR     32\n"
+                  "             DBR_STS_INT    8  DBR_GR_STRING   21  DBR_CTRL_LONG     33\n"
+                  "             DBR_STS_FLOAT  9  DBR_GR_SHORT    22  DBR_CTRL_DOUBLE   34\n"
+                  "             DBR_STS_ENUM  10  DBR_GR_INT      22  DBR_STSACK_STRING 37\n"
+                  "             DBR_STS_CHAR  11  DBR_GR_FLOAT    23  DBR_CLASS_NAME    38\n\n", stream);
         }
-        fprintf(stream, "  -w <time>            Wait time in seconds, specifies CA timeout. (default: %d s)\n", CA_DEFAULT_TIMEOUT);
+
     }
 
     /* flags associated with writing */
     if (tool == caput || tool == caputq) {
         fputs("Formating input : Array format options\n", stream);
-        fputs("  -a                   Input separator (-inSep argument) is used to parse elements in an array.\n", stream);
+        fputs("  -a                   Input separator (-inSep argument) is used to parse\n"
+              "                       elements in an array.\n", stream);
         fputs("  -inSep <separator>   Separator used between array elements in <value>.\n", stream);
         fputs("                       If not specified, space is used.\n", stream);
         fputs("                       If specified, '-a' option is automatically used. \n", stream);
@@ -120,7 +126,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Monitoring options\n", stream);
         fputs("  -n <number>          Exit the program after <number> updates.\n", stream);
         fputs("  -timestamp <option>  Display relative timestamps. Options:\n", stream);
-        fputs("                            r: time elapsed since start of the program,\n", stream);
+        fputs("                            r: server time relative to the start of the program,\n", stream);
         fputs("                            u: time elapsed since last update of any PV,\n", stream);
         fputs("                            c: time elapsed since last update separately for each PV.\n", stream);
     }
@@ -136,7 +142,8 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -noname              Hide PV name.\n", stream);
         fputs("  -nostat              Never display alarm status and severity.\n", stream);
         fputs("  -stat                Always display alarm status and severity.\n", stream);
-        fputs("  -plain               Ignore all formatting switches (displays only PV value) except date/time related.\n", stream);
+        fputs("  -plain               Ignore all formatting switches (displays\n"\
+              "                       only PV value) except date/time related.\n", stream);
 
         fputs("Formating output : Time options\n", stream);
         fputs("  -d -date             Display server date.\n", stream);
@@ -151,10 +158,14 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -s                   Interpret value(s) as char (number to ascii).\n", stream);
 
         fputs("Formating output : Floating point format options\n", stream);
-        fputs("  -e <number>          Format doubles using scientific notation with precision <number>. Overrides -prec option.\n", stream);
-        fputs("  -f <number>          Format doubles using floating point with precision <number>. Overrides -prec option.\n", stream);
-        fputs("  -g <number>          Format doubles using shorter of e or g <number>. Overrides -prec option.\n", stream);
-        fputs("  -prec <number>       Override PREC field with <number>. (default: PREC field).\n", stream);
+        fputs("  -e <number>          Format doubles using scientific notation with\n" \
+              "                       precision <number>. Overrides -prec option.\n", stream);
+        fputs("  -f <number>          Format doubles using floating point with precision\n"\
+              "                       <number>. Overrides -prec option.\n", stream);
+        fputs("  -g <number>          Format doubles using shorter of e or f <number>.\n"\
+              "                       Overrides -prec option.\n", stream);
+        fputs("  -prec <number>       Override PREC field with <number>.\n"\
+              "                       (default: PREC field).\n", stream);
         fputs("  -round <option>      Round floating point value(s). Options:\n", stream);
         fputs("                                 round: round to nearest (default).\n", stream);
         fputs("                                 ceil: round up,\n", stream);
@@ -271,7 +282,10 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
         case 'v':
             if (sscanf(optarg, "%"SCNu16, &arguments->verbosity) != 1) {
                 warnPrint("Invalid argument '%s' for option '-%c' - ignored.\n", optarg, opt);
+            }else{
+                g_verbosity = arguments->verbosity;
             }
+
             break;
         case 0:   /* long options */
             switch (opt_long) {
@@ -478,8 +492,6 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
         }
      }
 
-     g_verbosity = arguments->verbosity;
-
      /* check mutually exclusive arguments (without taking dbr type into account) */
      if (arguments->tool == tool_unknown){
          usage(stderr, arguments->tool,argv[0]);
@@ -564,32 +576,32 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
 * Supported operators: >,<,<=,>=,==,!=,!, ==A...B(in interval), !=A...B(out of interval), !A...B (out of interval). */
 bool cawaitParseCondition(struct channel *channel, char *str)
 {
-    enum operator operator;
+    enum operator op;
     double arg1;
     double arg2 = 0;
 
 
     if (removePrefix(&str, "!")) {
-        operator = operator_neq;
+        op = operator_neq;
         removePrefix(&str, "=");
     }
     else if (removePrefix(&str, ">=")) {
-        operator = operator_gte;
+        op = operator_gte;
     }
     else if (removePrefix(&str, "<=")) {
-        operator = operator_lte;
+        op = operator_lte;
     }
     else if (removePrefix(&str, ">")) {
-        operator = operator_gt;
+        op = operator_gt;
     }
     else if (removePrefix(&str, "<")) {
-        operator = operator_lt;
+        op = operator_lt;
     }
     else if (removePrefix(&str, "==")) {
-        operator = operator_eq;
+        op = operator_eq;
     }
     else {
-        operator = operator_eq;
+        op = operator_eq;
     }
 
 
@@ -603,7 +615,7 @@ bool cawaitParseCondition(struct channel *channel, char *str)
     }
 
     token = strtok(NULL, "...");
-    if (operator != operator_eq && operator != operator_neq && token) {
+    if (op != operator_eq && op != operator_neq && token) {
         errPrint("Invalid syntax for interval condition.\n");
         return false;
     }
@@ -613,13 +625,20 @@ bool cawaitParseCondition(struct channel *channel, char *str)
             errPrint("Invalid second operand for interval condition.\n");
             return false;
         }
+        /* we have an interval */
+        if(op==operator_eq)  op = operator_in;
+        if(op==operator_neq) op = operator_out;
     }
 
-    /*  TODO: if arg1 > arg2 when using ... syntax */
-
-    channel->conditionOperator = operator;
-    channel->conditionOperands[0] = arg1;
-    channel->conditionOperands[1] = arg2;
+    /*  make the first operand allways smaller */
+    if( arg1 < arg2 ){
+        channel->conditionOperands[0] = arg1;
+        channel->conditionOperands[1] = arg2;
+    }else{
+        channel->conditionOperands[0] = arg2;
+        channel->conditionOperands[1] = arg1;
+    }
+    channel->conditionOperator = op;
 
     return true;
 }
