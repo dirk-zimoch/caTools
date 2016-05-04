@@ -2,17 +2,12 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <math.h>
+#include <assert.h>
 
 #include "epicsTime.h"
 #include "caToolsTypes.h"
 #include "caToolsUtils.h"
 #include "caToolsOutput.h"
-
-
-#define printBits(x) \
-    for (int32_t i = sizeof(x) * 8 - 1; i >= 0; i--) { \
-        fputc('0' + ((x >> i) & 1), stdout); \
-    }
 
 
 void printValue(evargs args, arguments_T *arguments){
@@ -474,4 +469,119 @@ bool getMetadataFromEvArgs(struct channel * ch, evargs args){
             errPeriodicPrint("Can not print %s DBR type (DBR numeric type code: %ld). \n", dbr_type_to_text(args.type), args.type);
             return;
     }
+}
+
+int getTimeStamp(size_t i, arguments_T * arguments) {
+/*calculates timestamp for monitor tool, formats it and saves it into the global string. */
+
+    epicsTimeStamp elapsed;
+    bool negative=false;
+    size_t commonI = (arguments->timestamp == 'c') ? i : 0;
+    bool showEmpty = false;
+
+    if (arguments->timestamp == 'r') {
+        /*calculate elapsed time since startTime */
+        negative = epicsTimeDiffFull(&elapsed, &g_timestampRead[i], &g_programStartTime);
+    }
+    else if(arguments->timestamp == 'c' || arguments->timestamp == 'u') {
+        /*calculate elapsed time since last update; if using 'c' keep */
+        /*timestamps separate for each channel, otherwise use lastUpdate[0] */
+        /*for all channels (commonI). */
+
+        /* firstUpodate var is set at the end of caReadCallback, just before printing results. */
+        if (g_firstUpdate[i]) {
+            negative = epicsTimeDiffFull(&elapsed, &g_timestampRead[i], &g_lastUpdate[commonI]);
+        }
+        else {
+            g_firstUpdate[i] = true;
+            showEmpty = true;
+        }
+
+        g_lastUpdate[commonI] = g_timestampRead[i]; /* reset */
+    }
+
+    /*convert to h,m,s,ns */
+    struct tm tm;
+    unsigned long nsec;
+    int status = epicsTimeToGMTM(&tm, &nsec, &elapsed);
+    assert(status == epicsTimeOK);
+
+    if (showEmpty) {
+        /*this is the first update for this channel */
+        sprintf(g_outTimestamp[i],"%19c",' ');
+    }
+    else {  /*save to outTs string */
+        char cSign = negative ? '-' : ' ';
+        sprintf(g_outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
+    }
+
+    return 0;
+}
+
+
+bool cawaitEvaluateCondition(struct channel channel, evargs args){
+    /*evaluates output of channel i against the corresponding condition. */
+    /*returns 1 if matching, 0 otherwise, and -1 if error. */
+    /*Before evaluation, channel output is converted to double. If this is */
+    /*not successful, the function returns -1. If the channel in question */
+    /*is an array, the condition is evaluated against the first element. */
+
+    /*get value */
+    void *nativeValue = dbr_value_ptr(args.dbr, args.type);
+
+    /*convert the value to double */
+    double dblValue;
+    int32_t baseType = args.type % (LAST_TYPE+1);
+    switch (baseType){
+    case DBR_DOUBLE:
+        dblValue = (double) *(dbr_double_t*)nativeValue;
+        break;
+    case DBR_FLOAT:
+        dblValue = (double) *(dbr_float_t*)nativeValue;
+        break;
+    case DBR_INT:
+        dblValue = (double) *(dbr_int_t*)nativeValue;
+        break;
+    case DBR_LONG:
+        dblValue = (double) *(dbr_long_t*)nativeValue;
+        break;
+    case DBR_CHAR:
+    case DBR_STRING:
+        if (sscanf(nativeValue, "%lf", &dblValue) <= 0){        /* TODO: is this always null-terminated? */
+            errPeriodicPrint("Record %s value %s cannot be converted to double.\n", channel.base.name, (char*)nativeValue);
+            return false;
+        }
+        break;
+    case DBR_ENUM:
+        dblValue = (double) *(dbr_enum_t*)nativeValue;
+        break;
+    default:
+        errPrint("Unrecognized DBR type.\n");
+        return false;
+        break;
+    }
+
+    debugPrint("cawaitEvaluateCondition() - operator: %i, a0: %f, a1: %f, value: %f\n", channel.conditionOperator, channel.conditionOperands[0], channel.conditionOperands[1], dblValue);
+
+    /*evaluate and exit */
+    switch (channel.conditionOperator){
+    case operator_gt:
+        return dblValue > channel.conditionOperands[0];
+    case operator_gte:
+        return dblValue >= channel.conditionOperands[0];
+    case operator_lt:
+        return dblValue < channel.conditionOperands[0];
+    case operator_lte:
+        return dblValue <= channel.conditionOperands[0];
+    case operator_eq:
+        return dblValue == channel.conditionOperands[0];
+    case operator_neq:
+        return dblValue != channel.conditionOperands[0];
+    case operator_in:
+        return (dblValue >= channel.conditionOperands[0]) && (dblValue <= channel.conditionOperands[1]);
+    case operator_out:
+        return !((dblValue >= channel.conditionOperands[0]) && (dblValue <= channel.conditionOperands[1]));
+    }
+
+    return false;
 }

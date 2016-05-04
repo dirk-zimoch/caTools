@@ -34,6 +34,7 @@ install: links
 endif
 
 links: 
+	ln -sf caTools $(INSTALL_BIN)/cado
 	ln -sf caTools $(INSTALL_BIN)/caget
 	ln -sf caTools $(INSTALL_BIN)/cagets
 	ln -sf caTools $(INSTALL_BIN)/cainfo
@@ -42,3 +43,4 @@ links:
 	ln -sf caTools $(INSTALL_BIN)/caputq
 	ln -sf caTools $(INSTALL_BIN)/caputs
 	ln -sf caTools $(INSTALL_BIN)/cawait
+

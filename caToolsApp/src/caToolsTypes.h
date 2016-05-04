@@ -6,6 +6,7 @@
 #include <stdbool.h>
 
 #define CA_DEFAULT_TIMEOUT 1
+#define CA_PEND_EVENT_TIMEOUT 0.01
 
 /* string lengths */
 #define LEN_TIMESTAMP 50              /* Max length of the timestamp string */
@@ -176,10 +177,12 @@ struct channel {
 };
 
 
-/* global strings */
+/* global strings see caToolsGlobals.c */
 extern char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outLocalDate, **g_outLocalTime, **g_outTimestamp;
 
-extern epicsTimeStamp *g_timestampRead;
+extern bool *g_firstUpdate; /* indicates that lastUpdate has not been initialized */
+
+extern epicsTimeStamp *g_timestampRead, g_programStartTime, *g_lastUpdate; /* see caToolsGlobals.c */
 
 extern int g_verbosity;
 

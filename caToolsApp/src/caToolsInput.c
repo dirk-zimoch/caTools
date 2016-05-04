@@ -58,7 +58,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  caput -inSep ; pvA '1;2;3' pvB '4;5;6'\n", stream);
     }
     if (tool == cado) {
-        fputs("Writes 1 to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
+        fputs("Writes 1 to PROC, but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
     }
     if (tool == camon) {
         fputs("Monitors the PV(s).\n", stream);
@@ -571,79 +571,6 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
 }
 
 
-/* parses input string and extracts operators and numerals,
-* then saves them to the channel structure.
-* Supported operators: >,<,<=,>=,==,!=,!, ==A...B(in interval), !=A...B(out of interval), !A...B (out of interval). */
-bool cawaitParseCondition(struct channel *channel, char *str)
-{
-    enum operator op;
-    double arg1;
-    double arg2 = 0;
-
-
-    if (removePrefix(&str, "!")) {
-        op = operator_neq;
-        removePrefix(&str, "=");
-    }
-    else if (removePrefix(&str, ">=")) {
-        op = operator_gte;
-    }
-    else if (removePrefix(&str, "<=")) {
-        op = operator_lte;
-    }
-    else if (removePrefix(&str, ">")) {
-        op = operator_gt;
-    }
-    else if (removePrefix(&str, "<")) {
-        op = operator_lt;
-    }
-    else if (removePrefix(&str, "==")) {
-        op = operator_eq;
-    }
-    else {
-        op = operator_eq;
-    }
-
-
-    char *token = strtok(str, "...");
-    char *endptr;
-
-    arg1 = strtod(str, &endptr);
-    if (endptr == token || *endptr != '\0') {
-        errPrint("Invalid operand in condition.\n");
-        return false;
-    }
-
-    token = strtok(NULL, "...");
-    if (op != operator_eq && op != operator_neq && token) {
-        errPrint("Invalid syntax for interval condition.\n");
-        return false;
-    }
-    else if(token) {
-        arg2 = strtod(token, &endptr);
-        if (endptr == str || *endptr) {
-            errPrint("Invalid second operand for interval condition.\n");
-            return false;
-        }
-        /* we have an interval */
-        if(op==operator_eq)  op = operator_in;
-        if(op==operator_neq) op = operator_out;
-    }
-
-    /*  make the first operand allways smaller */
-    if( arg1 < arg2 ){
-        channel->conditionOperands[0] = arg1;
-        channel->conditionOperands[1] = arg2;
-    }else{
-        channel->conditionOperands[0] = arg2;
-        channel->conditionOperands[1] = arg1;
-    }
-    channel->conditionOperator = op;
-
-    return true;
-}
-
-
 bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *arguments, struct channel *channels){
     debugPrint("parseChannels()\n");
     u_int32_t i,j;                      /* counter */
@@ -761,7 +688,8 @@ bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, argum
     case DBR_INT:/* and short */
         for (j=0; j<*nelm; ++j) {
             ((dbr_int_t *)(*data))[j] = (dbr_int_t)strtoll(str[j], &endptr, base);
-            if (endptr == str[j] || *endptr != '\0') {
+            /* if a number before . is found it is also ok */
+            if (endptr == str[j] || !(*endptr == '\0' || *endptr == '.') ) {
                 errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
                 success = false;
             }
@@ -783,7 +711,7 @@ bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, argum
         bool isNumber = true;
         for (j=0; j<*nelm; ++j) {
             ((dbr_enum_t *)(*data))[j] = (dbr_enum_t)strtoul(str[j], &endptr, base);
-            if (endptr == str[j] || *endptr != '\0') {
+            if (endptr == str[j] || !(*endptr == '\0' || *endptr == '.')) {
                 isNumber = false;
             }
         }
@@ -813,6 +741,7 @@ bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, argum
             size_t charsPerStr[*nelm];
             size_t k = 0; /*index*/
             long number = 0;
+            double d = 0;
             for (j=0; j < *nelm; ++j) {
                 charsPerStr[j] = strlen(str[j]);
                 charsInStr += charsPerStr[j];
@@ -821,23 +750,29 @@ bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, argum
 
             if (charsInStr != *nelm) { /*  don't fiddle with memory if we don't have to */
                 free(*data);
-                *data = callocMustSucceed(charsInStr, dbr_size[baseType], "castStrToDBR");
+                *data = callocMustSucceed(charsInStr, dbr_size[baseType], "castStrToDBR"); /* worst case */
             }
 
             charsInStr = 0;
             for (j=0; j<*nelm; ++j) {
-                number = (dbr_enum_t)strtoul(str[j], &endptr, base);
-                if (endptr != str[j] && *endptr == '\0' && number >=0 && number < 256) {
-                    /* is a valid 8 bit number */
-                    ((dbr_char_t *)(*data))[charsInStr] = (dbr_char_t)(char)number;
-                    charsInStr ++;
-                }else{
-                    /*  store all chars to write */
-                    for (size_t k = 0; k < charsPerStr[j]; k++) {
-                        ((dbr_char_t *)(*data))[charsInStr] = (dbr_char_t)str[j][k];
-                        charsInStr++;
-                    }
+                /* parse as integer */
+                if(!arguments->str || arguments->num){
+                    number = (dbr_enum_t)strtoul(str[j], &endptr, base);
+                    if (endptr != str[j] && *endptr == '\0'  && number >=0 && number < 256) {
+                        /* is a valid 8 bit number */
+                        ((dbr_char_t *)(*data))[charsInStr] = (dbr_char_t)(char)number;
+                        charsInStr ++;
+                        continue;
+                    }else if(arguments->num || base != 0)
+                        warnPeriodicPrint("%s can not be parsed as an 8 bit integer\n", str[j]);
+
                 }
+                /*  handle as string, store all chars to write */
+                for (size_t k = 0; k < charsPerStr[j]; k++) {
+                    ((dbr_char_t *)(*data))[charsInStr] = (dbr_char_t)str[j][k];
+                    charsInStr++;
+                }
+
             }
             *nelm = charsInStr;
         }
@@ -846,7 +781,8 @@ bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, argum
     case DBR_LONG:
         for (j=0; j<*nelm; ++j) {
             ((dbr_long_t *)(*data))[j] = (dbr_long_t)strtoll(str[j], &endptr, base);
-            if (endptr == str[j] || *endptr != '\0') {
+            /* if a number before . is found it is also ok */
+            if (endptr == str[j] || !(*endptr == '\0' || *endptr == '.')) {
                 errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
                 success = false;
             }
@@ -867,6 +803,79 @@ bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, argum
         errPrint("Can not print %s DBR type (DBR numeric type code: %"PRId32"). \n", dbr_type_to_text(baseType), baseType);
         success = false;
     }
+
     debugPrint("castStrToDBR() - end\n");
     return success;
+}
+
+/* parses input string and extracts operators and numerals,
+* then saves them to the channel structure.
+* Supported operators: >,<,<=,>=,==,!=,!, ==A...B(in interval), !=A...B(out of interval), !A...B (out of interval). */
+bool cawaitParseCondition(struct channel *channel, char *str)
+{
+    enum operator op;
+    double arg1;
+    double arg2 = 0;
+
+
+    if (removePrefix(&str, "!")) {
+        op = operator_neq;
+        removePrefix(&str, "=");
+    }
+    else if (removePrefix(&str, ">=")) {
+        op = operator_gte;
+    }
+    else if (removePrefix(&str, "<=")) {
+        op = operator_lte;
+    }
+    else if (removePrefix(&str, ">")) {
+        op = operator_gt;
+    }
+    else if (removePrefix(&str, "<")) {
+        op = operator_lt;
+    }
+    else if (removePrefix(&str, "==")) {
+        op = operator_eq;
+    }
+    else {
+        op = operator_eq;
+    }
+
+
+    char *token = strtok(str, "...");
+    char *endptr;
+
+    arg1 = strtod(str, &endptr);
+    if (endptr == token || *endptr != '\0') {
+        errPrint("Invalid operand in condition.\n");
+        return false;
+    }
+
+    token = strtok(NULL, "...");
+    if (op != operator_eq && op != operator_neq && token) {
+        errPrint("Invalid syntax for interval condition.\n");
+        return false;
+    }
+    else if(token) {
+        arg2 = strtod(token, &endptr);
+        if (endptr == str || *endptr) {
+            errPrint("Invalid second operand for interval condition.\n");
+            return false;
+        }
+        /* we have an interval */
+        if(op==operator_eq)  op = operator_in;
+        if(op==operator_neq) op = operator_out;
+    }
+
+    /*  if interval make the first operand allways smaller one*/
+    if( ( op==operator_in || op==operator_out ) && ( arg1 > arg2 ) ){
+        channel->conditionOperands[0] = arg2;
+        channel->conditionOperands[1] = arg1;
+    }else{
+        channel->conditionOperands[0] = arg1;
+        channel->conditionOperands[1] = arg2;
+    }
+    channel->conditionOperator = op;
+
+    return true;
 }

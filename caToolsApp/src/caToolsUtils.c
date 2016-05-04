@@ -113,7 +113,11 @@ bool isPrintable(char * str, size_t n){
         c = str[i];
         if (c == '\0')
             return true;
-        else if(((c & 0x7f) >= 0x20 || c == 0x0a || c == 0x0c) && c != 0x7f)
+        else if(
+                (
+                    (c & 0x7f) >= 0x20 || c == 0x0a || c == 0x0c
+                )
+                && c != 0x7f)
             i++;
         else{
             debugPrint("isPrintable() - Invalid character: %c (%x)\n", c, c);
@@ -123,3 +127,4 @@ bool isPrintable(char * str, size_t n){
     }
     return true;
 }
+

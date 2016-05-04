@@ -27,4 +27,14 @@ void printValue(evargs args, arguments_T *arguments);
  */
 bool getMetadataFromEvArgs(struct channel * ch, evargs args);
 
+int getTimeStamp(size_t i, arguments_T * arguments);
+
+bool cawaitEvaluateCondition(struct channel channel, evargs args);
+
+#define printBits(x) \
+    for (int32_t i = sizeof(x) * 8 - 1; i >= 0; i--) { \
+        fputc('0' + ((x >> i) & 1), stdout); \
+    }
+
+
 #endif
