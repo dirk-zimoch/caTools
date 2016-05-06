@@ -73,3 +73,10 @@ The tools are structured as an EPICS application.
 1. Move to `<top>` folder and run `make`
 1. Find the executable in `<top>/bin/<architecture>/caTools`
 1. Find symbolic links for all the tools in `<top>/bin/<architecture>/` folder.
+
+
+# Authors
+
+-  Rok Vuga       (rok.vuga@cosylab.com)
+-  Tomaz Sustar   (tomaz.sustar@cosylab.com)
+-  Tom Slejko     (tom.slejko@cosylab.com)

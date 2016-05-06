@@ -1,7 +1,5 @@
 /* caToolsMain.c */
-/* Author:  Rok Vuga     Date:    FEB 2016 */
-/* Author:  Tomaz Sustar Date:    FEB 2016 */
-/* Author:  Tom Slejko   Date:    FEB 2016 */
+
 
 
 #include <stdio.h>
