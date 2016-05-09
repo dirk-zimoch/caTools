@@ -21,12 +21,11 @@
 #include "caToolsUtils.h"
 
 
-
+/**
+ * @brief caReadCallback callback called by ca_get or subscription
+ * @param args
+ */
 static void caReadCallback (evargs args){
-/*reads and parses data fetched by calls. First, the global strings holding the output are cleared. Then, depending */
-/*on the type of the returned data, the available information is extracted. The extracted info is then saved to the */
-/*global strings and printed. */
-
     debugPrint("caWriteCallback()\n");
     /*check if status is ok */
     if (args.status != ECA_NORMAL){
@@ -37,7 +36,7 @@ static void caReadCallback (evargs args){
     struct channel *ch = (struct channel *)args.usr;
     debugPrint("ReadCallback() callbacks to process: %i\n", ch->nRequests);
     debugPrint("ReadCallback() type: %s\n", dbr_type_to_text(args.type));
-    ch->nRequests --;
+    ch->nRequests --; /* number of returned callbacks before printing */
 
     /*if we are in monitor or cawait and just waiting for the program to exit, don't proceed. */
     if (g_runMonitor == false){
@@ -49,39 +48,42 @@ static void caReadCallback (evargs args){
      * status, severity, timestamp, precision, units*/
     getMetadataFromEvArgs(ch, args);
 
-    ch->base.done = true;
-
     bool shouldPrint = true;
 
     /* wait for all initial get requests to arrive before printing or further actions */
     if(ch->nRequests > 0){
         shouldPrint = false;
-    }{
+    }
+    else{
+        ch->state = reading;
+
         /* update relative timestamps only after all initial get requests have arived */
         if ((arguments.tool == cawait || arguments.tool == camon) && arguments.timestamp)
             getTimeStamp(ch->i, &arguments);	/*calculate relative timestamps. */
 
         if (arguments.tool == cawait) {
-            /*check stop condition */
+            /* check for timeout */
             if (arguments.timeout!=-1) {
                 epicsTimeStamp timeoutNow;
                 epicsTimeGetCurrent(&timeoutNow);
 
                 if (epicsTimeGreaterThanEqual(&timeoutNow, &g_timeoutTime)) {
-                    /*we are done waiting */
+                    /* we are done waiting */
                     printf("Condition not met in %f seconds - exiting.\n",arguments.timeout);
                     g_runMonitor = false;
                     shouldPrint = false;
                 }
             }
 
-            /*check display condition */
-            if (cawaitEvaluateCondition(*ch, args)) {
+            /* check wait condition */
+            if (cawaitEvaluateCondition(ch, args)) {
                 g_runMonitor = false;
             }else{
                 shouldPrint = false;
             }
         }
+
+        ch->nRequests = 0; /* keep at zero to prevent overroll */
     }
 
     /* finish */
@@ -101,9 +103,11 @@ static void caReadCallback (evargs args){
     ch->base.done = true;
 }
 
+/**
+ * @brief caWriteCallback - callback called by ca_put does nothing special except signals that writing has finished.
+ * @param args
+ */
 static void caWriteCallback (evargs args) {
-/*does nothing except signal that writing is finished. */
-
     debugPrint("caWriteCallback()\n");
     /*check if status is ok */
     if (args.status != ECA_NORMAL){
@@ -115,15 +119,7 @@ static void caWriteCallback (evargs args) {
     debugPrint("caWriteCallback() callbacks to process: %i\n", ch->nRequests);
     ch->nRequests --;
     ch->base.done = true;
-}
-
-void monitorLoop (){
-/*runs monitor loop. Stops after -n updates (camon, cawait) or */
-/*after -timeout is exceeded (cawait). */
-
-    while (g_runMonitor){
-        ca_pend_event(CA_PEND_EVENT_TIMEOUT);
-    }
+    if(ch->nRequests == 0) ch->state = put_done;
 }
 
 /**
@@ -150,19 +146,8 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
         /* check for timeout */
         epicsTimeGetCurrent(&timeoutNow);
 
-        /*
-         * LOWPRIO, no need to chanNEW:TEST_WVF-SHORTge time
-         * This snippet indeed checks for timeouts, but it would make more sense if it would check for a per
-         * channel timeout instead.
-         */
         if (epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
             warnPrint("Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
-
-            /* reset completition flags */
-            for (i=0; i < nChannels; ++i) {
-                channels[i].nRequests = 0;
-            }
-
             break;
         }
 
@@ -179,11 +164,17 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
 
 }
 
+/**
+ * @brief caGenerateWriteRequests - generates write requests for one channel depending on the tool and arguments
+ * @param chnpointer to channel struct
+ * @param arguments pointer to arguments struct
+ * @return true on success
+ */
 bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
     debugPrint("caGenerateWriteRequests() - %s\n", ch->base.name);
     int status;
-    bool success = true;
 
+    ch->state=put_waiting;
     /* request ctrl type */
     int32_t baseType = ca_field_type(ch->base.id);
 
@@ -191,11 +182,12 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
    
    if (arguments->tool == caput || arguments->tool == caputq) {        
 
-        /* if(arguments.bin) base = 2; TODO can be used to select binary input for numbers */
         void * input;
 
         /* parse as array if needed */
         if(!parseAsArray(ch, arguments)) return false;
+
+        /* parse input strings to dbr types */
         if (castStrToDBR(&input, ch->writeStr, &ch->inNelm, baseType, arguments)) {
             if (ch->inNelm > ch->count){
                 warnPrint("Number of input elements is: %i, but channel can accept only %i.\n", ch->inNelm, ch->count);
@@ -203,6 +195,7 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
             }
             debugPrint("nelm: %i\n", ch->inNelm);
             ch->nRequests++;
+            /* dont wait for callback in case of caputq */
             if(arguments->tool == caputq) status = ca_array_put(baseType, ch->inNelm, ch->base.id, input);
             else status = ca_array_put_callback(baseType, ch->inNelm, ch->base.id, input, caWriteCallback, ch);
             free(input);
@@ -214,11 +207,13 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
         }
     }
     else if((arguments->tool == cagets) && ch->proc.created) {
+        /* in case of cagets put 1 to the proc field */
         ch->nRequests++;
         dbr_char_t input=1;
         status = ca_array_put_callback(DBF_CHAR, 1, ch->proc.id, &input, caWriteCallback, ch);
     }
     else if(arguments->tool == cado) {
+       /* in case of cado put 1 to the proc field, don't wait for callback */
         ch->nRequests++;
         dbr_char_t input = 1;
         status = ca_array_put(DBF_CHAR, 1, ch->proc.id, &input);
@@ -232,16 +227,26 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
     return true;
 }
 
+/**
+ * @brief caGenerateReadRequests - generate read requests for one channel depending on tool and arguments
+ *          Sets dbrtype and sibling or base channel to read from, depending or arguments and channel properties.
+ *          If no other type is specified, dbr_ctrl type is used for the first request, if we need
+ *          timestamp, second request is issued using dbr_time type. In case of camon or cawait,
+ *          subscription is created to the appropriate channel with appropriate type.
+ *          Returned data is handled in caReadCallback
+ * @param ch pointer to channel struct
+ * @param arguments pointer to arguments struct
+ * @return true on success
+ */
 bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     debugPrint("caGenerateRequests() - %s\n", ch->base.name);
-    int status;    
-
+    int status;
 
     /*request ctrl type */
     int32_t baseType = ca_field_type(ch->base.id);
-    int32_t reqType = dbf_type_to_DBR_CTRL(baseType);
+    int32_t reqType = dbf_type_to_DBR_CTRL(baseType); /* use ctrl type by default */
     chid    reqChid = ch->base.id;
-
+    ch->state = read_waiting;
 
     /* check number of elements. arguments->outNelm is 0 by default.
      * calling ca_create_subscription or ca_request with COUNT 0
@@ -252,7 +257,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         warnPeriodicPrint("Invalid number of requested elements to read (%"PRId64") from %s - reading maximum number of elements (%lu).\n", arguments->outNelm, ch->base.name, ch->count);
     }
 
-    /* long strings */
+    /* if string, connect to long string sibling channel if connected and number of characters is longer than MAX_STRING_SIZE */
     if (baseType==DBF_STRING &&
         ch->lstr.connectionState==CA_OP_CONN_UP &&
         ca_element_count(ch->lstr.id) > MAX_STRING_SIZE &&
@@ -261,12 +266,12 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         reqChid = ch->lstr.id;
         reqType = DBR_CTRL_CHAR;
     }
-    /* requested dbrtype*/
+    /* use dbrtype that has been specified as command line argument */
     if (arguments->dbrRequestType!=-1){
         reqType = arguments->dbrRequestType;
     }
 
-    /* first request */
+    /* if no other type specified issue first request with ctrl type or with the type that was specified. */
     debugPrint("caGenerateRequests() - outNelm: %i\n", ch->outNelm);
     debugPrint("caGenerateRequests() - reqType: %s\n", dbr_type_to_text(reqType));
     ch->nRequests ++;
@@ -277,7 +282,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         return;
     }
 
-    /* second request - get timestamp if needed */
+    /* if needed issue second request using time type */
     if ((arguments->time || arguments->date || arguments->timestamp) &&
             arguments->dbrRequestType == -1 )
     {
@@ -297,7 +302,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         }
     }
 
-    /* subscribtion if needed*/
+    /* create subscribtion in case of camon or cawait */
     if( arguments->tool == camon || arguments->tool == cawait ){
         ch->nRequests=ch->nRequests+1;
         status = ca_create_subscription(reqType, ch->outNelm, reqChid, DBE_VALUE | DBE_ALARM | DBE_LOG, caReadCallback, ch, 0);
@@ -311,8 +316,13 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     return true;
 }
 
+/**
+ * @brief cainfoRequest - this spaghetti function does all the work for caInfo tool. Reads channel data using ca_get and then prints.
+ * @param channels - array of channel structs
+ * @param nChannels - number of channels in array
+ * @return true on success
+ */
 bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
-/*this function does all the work for caInfo tool. Reads channel data using ca_get and then prints. */
     int status;
     u_int32_t i, j;
 
@@ -427,7 +437,8 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
             fputc('\n',stdout);
             printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_float *)data)->precision);
             printf("\tRISC alignment: %"PRId16"\n",((struct dbr_ctrl_float *)data)->RISC_pad);
-            break;
+
+            /* */    break;
         case DBR_CTRL_ENUM:
             fputc('\n',stdout);
             printf("\tAlarm status: %s, severity: %s\n",
@@ -514,11 +525,14 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
     return true;
 }
 
-
+/**
+ * @brief caRequest - calls caGenerateWriteRequests and caGenerateReadRequests for each channel depending on tool
+ * @param channels - array of channel structs
+ * @param nChannels - number of channel structs
+ * @return true on success
+ */
 bool caRequest(struct channel *channels, u_int32_t nChannels) {
-/*sends get or put requests. ca_get or ca_put are called multiple times, depending on the tool. The reading, */
-/*parsing and printing of returned data is performed in callbacks. */
-    int status = -1;
+    bool success = true;
     u_int32_t i;
 
     /* generate write requests  */
@@ -531,13 +545,15 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
             if (channels[i].base.connectionState != CA_OP_CONN_UP) {/*skip disconnected channels */
                 continue;
             }            
-            caGenerateWriteRequests(&channels[i], &arguments);
+            success = caGenerateWriteRequests(&channels[i], &arguments);
         }
-        if(arguments.tool == cado || arguments.tool == caputq) return true;
+        /* if cado or caputq exit right away */
+        if(arguments.tool == cado || arguments.tool == caputq) return success;
+        /* wait for callbacks to finish before issuing read requests */
         waitForCallbacks(channels, nChannels);
 
     }
-    /* generate read requests caTools-TEST:SECONDS */
+    /* generate read requests */
     if (arguments.tool == caget || 
         arguments.tool == cagets || 
         arguments.tool == caput  ||
@@ -549,47 +565,52 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
                 continue;
             }
 
-            caGenerateReadRequests(&channels[i], &arguments);
+            success = caGenerateReadRequests(&channels[i], &arguments);
         }
-
-        waitForCallbacks(channels, nChannels);
     }
 
+    /* call the spaghetti function if cainfo */
     if (arguments.tool == cainfo)
     {
-        cainfoRequest(channels, nChannels);
+        success = cainfoRequest(channels, nChannels);
     }
 
-    return true;    
+    return success;
 }
 
-
-
-
-
+/**
+ * @brief channelInitCallback - callback for initField. Is executed whenever a base or sibling channel connects or disconnects.
+ *                              Sets proper flags and extracts initial data such as count from the response.
+ * @param args
+ */
 void channelInitCallback(struct connection_handler_args args){
-    /*Fix desc */
-    /*callback for ca_create_channel. Is executed whenever a channel connects or */
-    /*disconnects. It is used for field channels in caInfo tool. */
-    /*When a field for a channel that exist cannot be created, we clear the channel for the field. */
-    debugPrint("channelFieldStatusCallback()\n");
+    debugPrint("channelInitCallback()\n");
 
     struct field   *field = ( struct field * ) ca_puser ( args.chid );
     struct channel *ch = field->ch;
-    debugPrint("channelFieldStatusCallback() callbacks to process: %i\n", ch->nRequests);
-    ch->nRequests=ch->nRequests-1; /*Used to notify waitForCallbacks about finished request */
+    debugPrint("channelInitCallback() callbacks to process: %i\n", ch->nRequests);
+    ch->nRequests --; /* Used to notify waitForCallbacks about finished request */
 
     if (field->connectionState == CA_OP_OTHER) {
+        /* first callback */
         field->done = true;   /* set field to done only on first connection, not when connection goes up / down */
+        if (&ch->base == field){
+            ch->state = base_created;
+            debugPrint("channelInitCallback() ch->state: %i\n", ch->state);
+        }else{
+            if(ch->nRequests == 0) ch->state = sibl_created; /* all sibling channels connected - not a necesarry condition for the program to continue */
+        }
+
     }
 
+    /* update the connection state */
     field->connectionState = args.op;
 
-    debugPrint("channelFieldStatusCallback() - %s\n", field->name);
+    debugPrint("channelInitCallback() - %s\n", field->name);
 
     if(args.op == CA_OP_CONN_UP){ /* connected */
-        debugPrint("channelFieldStatusCallback() - connected\n");
-        debugPrint("channelFieldStatusCallback() - COUNT: %i\n", ca_element_count(field->id));
+        debugPrint("channelInitCallback() - connected\n");
+        debugPrint("channelInitCallback() - COUNT: %i\n", ca_element_count(field->id));
         if (&ch->base == field){
             /* base channel */
             ch->count = ca_element_count(field->id);
@@ -597,15 +618,21 @@ void channelInitCallback(struct connection_handler_args args){
 
     }
     else{ /* disconected */
-        debugPrint("channelFieldStatusCallback() - not connected\n");
+        debugPrint("channelInitCallback() - not connected\n");
         if (&ch->base == field){
             /* base channel */
             printf(" %s DISCONNECTED!\n", ch->base.name);
         }
     }
+    debugPrint("channelInitCallback() ch->state: %i\n", ch->state);
+
 }
 
-
+/**
+ * @brief checkStatus and print an error message if th status is not indicating success
+ * @param status
+ * @return true for status indicating success
+ */
 bool checkStatus(int status){
 /*checks status of channel create_ and clear_ */
     if (status != ECA_NORMAL){
@@ -616,6 +643,10 @@ bool checkStatus(int status){
     return true;
 }
 
+/**
+ * @brief caCustomExceptionHandler
+ * @param args
+ */
 void caCustomExceptionHandler( struct exception_handler_args args) {
     char buf[512];
     const char *pName;
@@ -643,7 +674,7 @@ void caCustomExceptionHandler( struct exception_handler_args args) {
 }
 
 /**
- * @brief initField - creates ca_channel and sets some flags on channel and field structure
+ * @brief initField - creates ca_channel and sets initial flags for channel and field structure
  * @param ch - poiter to the channel structure
  * @param field - pointer to the field structure
  * @return returns true if the channel was created succesfully
@@ -654,17 +685,24 @@ bool initField(struct channel *ch, struct field * field)
     field->connectionState = CA_OP_OTHER; /* ca connection state - is updated in initCallback */
     field->done = false;                  /* indicates wether the first callback arrived */
     field->ch = ch;                       /* pointer back to channel structure */
-    ch->nRequests=ch->nRequests+1;        /* indicates number of issued requests. Callback functions substract one from this field and take corresponding actions on ch->nRequests==0 */
+    ch->nRequests ++;        /* indicates number of issued requests. Callback functions substract one from this field and take corresponding actions on ch->nRequests==0 */
     int status = ca_create_channel(field->name, channelInitCallback, field, CA_PRIORITY, &field->id);
     field->created = checkStatus(status);    /* error if the channels are not created */
     return field->created;
 }
 
+/**
+ * @brief initSiblings call initField to create sibling channells depending on arguments and channel properties
+ * @param ch pointer to the channel struct
+ * @param arguments pointer to the arguments struct
+ * @return true if any siblings were created
+ */
 bool initSiblings(struct channel *ch, arguments_T *arguments){
     debugPrint("caInitSiblings()\n");
     bool hasSiblings = false;
+    ch->state=sibl_waiting;
 
-    /*if tool = cagets, each channel has a sibling connecting to the proc field */
+    /*if tool = cagets or cado, each channel has a sibling connecting to the proc field */
     if (arguments->tool == cagets || arguments->tool == cado) {
         ch->proc.name = callocMustSucceed (LEN_FQN_NAME, sizeof(char), "main");/*2 spaces for .(field name) + null termination */
         strcpy(ch->proc.name, ch->base.name); /*Consider using strn_xxxx everywhere */
@@ -672,6 +710,7 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
         strncat(ch->proc.name, ".PROC",LEN_FQN_NAME);
         hasSiblings = initField(ch, &ch->proc);  
     }
+
     /* open sibling channel for long strings */
     if(ca_field_type(ch->base.id)==DBF_STRING && 
         !isValField(ch->base.name) &&
@@ -687,6 +726,8 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
         strcat(ch->lstr.name, "$");
         hasSiblings = initField(ch, &ch->lstr);
     }
+
+    /* open all sibling channels for cainfo */
     if (arguments->tool == cainfo) {
         size_t nFields = noFields;  /* so we don't calculate in each loop */
         size_t j;
@@ -703,7 +744,12 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
     return hasSiblings;
 }
 
-
+/**
+ * @brief caInit open base channels by calling initField() for each channel, calls initSiblings() to open sibling channels for each channel
+ * @param channels array of channel structs
+ * @param nChannels number of channels
+ * @return true on success
+ */
 bool caInit(struct channel *channels, u_int32_t nChannels){
     /*creates contexts and channels. */
     int status;
@@ -718,14 +764,15 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
     /* open base channels */
     for(i=0; i < nChannels; i++) {
         channels[i].nRequests = 0;
+        channels[i].state=base_waiting;
         initField(&channels[i], &channels[i].base);
     }
 
+    /* wait for all base channels to connect or timeout */
     waitForCallbacks(channels, nChannels);
     debugPrint("caInit() - First Connections completed\n");
 
     /* open silbling channels if needed (in case of cainfo, cagets or long string) */
-    /* check if at least one chanel connected */
     bool siblings = false;
     for (i=0; i < nChannels; ++i) {
         if (channels[i].base.connectionState == CA_OP_CONN_UP)
@@ -734,6 +781,7 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
             printf("Process variable %s not connected.\n", channels[i].base.name);
     }
     if (siblings){
+        /* if there are siblings, wait for them to connect or timeout*/
         waitForCallbacks(channels, nChannels);
         debugPrint("caInit() - Siblings connected\n");
     }
@@ -741,8 +789,36 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
     return true;
 }
 
+/**
+ * @brief monitorLoop - keeps the main thread alive for camon or cawait
+ *                      also connects to the channels that were not connected at the start of the program,
+ *                      but they became alive.
+ * @param channels - array of channel structs
+ * @param nChannels - number of channels
+ * @param arguments - pointer to the arguments struct
+ */
+void monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arguments){
+/*runs monitor loop. Stops after -n updates (camon, cawait) or */
+/*after -timeout is exceeded (cawait). */
+    size_t i = 0;
 
+    while (g_runMonitor){
+        ca_pend_event(CA_PEND_EVENT_TIMEOUT);
+        /* connect channels that were not connected at the start of the program in caInit */
+        for(i = 0; i < nChannels; i++){
+            if(channels[i].state==base_created){
+                caGenerateReadRequests(&channels[i], arguments);
+            }
+        }
+    }
+}
 
+/**
+ * @brief caDisconnect - disconnect all connected fields
+ * @param channels - array of channel structs
+ * @param nChannels - number of channels
+ * @return true on success
+ */
 bool caDisconnect(struct channel * channels, u_int32_t nChannels){
     int status;
     u_int32_t i;
@@ -779,7 +855,10 @@ bool caDisconnect(struct channel * channels, u_int32_t nChannels){
 }
 
 
-
+/**
+ * @brief allocateStringBuffers - allocates global string buffers
+ * @param nChannels - number of channels
+ */
 void allocateStringBuffers(u_int32_t nChannels){
     /*allocate memory for output strings */
     g_errorTimestamp = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"errorTimestamp");
@@ -811,12 +890,18 @@ void allocateStringBuffers(u_int32_t nChannels){
     }
 }
 
+/**
+ * @brief freeChannels - free global channels array
+ * @param channels - array of channel structs
+ * @param nChannels - number of channels
+ */
 void freeChannels(struct channel * channels, u_int32_t nChannels){
     /* free channels */
     for (size_t i=0 ;i < nChannels; ++i) {
         free(channels[i].writeStr); /* elements of writeStr point to parts of **argv */
-        /* if (arguments.tool == cagets) */
-        free(channels[i].proc.name);
+
+        if ( arguments.tool == cagets || arguments.tool == cado )
+            free(channels[i].proc.name);
 
         if (arguments.tool == cainfo) {
             size_t nFields = noFields;  /* so we don't calculate in each loop */
@@ -828,6 +913,10 @@ void freeChannels(struct channel * channels, u_int32_t nChannels){
     free(channels);
 }
 
+/**
+ * @brief freeStringBuffers free global string buffers
+ * @param nChannels
+ */
 void freeStringBuffers(u_int32_t nChannels){
     /*free output strings */
     for(int i = 0; i < nChannels; i++) {
@@ -857,8 +946,13 @@ void freeStringBuffers(u_int32_t nChannels){
     free(g_errorTimestamp);
 }
 
-int main ( int argc, char ** argv )
-{/* main function: reads arguments, allocates memory, calls ca* functions, frees memory and exits. */
+/**
+ * @brief main reads arguments, allocates memory, calls ca* functions, frees memory and exits.
+ * @param argc
+ * @param argv
+ * @return exit status
+ */
+int main ( int argc, char ** argv ){
 
     u_int32_t nChannels=0;              /* Number of channels */
     struct channel *channels;
@@ -909,7 +1003,7 @@ int main ( int argc, char ** argv )
     /* wait for monitor or cawait to finish */
     if( arguments.tool == camon || arguments.tool == cawait ) {
         debugPrint("main() - enter monitor loop\n");
-        monitorLoop();
+        monitorLoop(channels, nChannels, &arguments);
     }
 
     /* cleanup */

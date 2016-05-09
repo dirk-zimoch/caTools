@@ -153,15 +153,25 @@ enum operator { /* possible conditions for cawait */
     operator_out
 };
 
+/* enum describing the "state machine" state of each channel during the execution of catools applocation */
+enum state{
+    base_waiting,
+    base_created,
+    sibl_waiting,
+    sibl_created,
+    put_waiting,
+    put_done,
+    read_waiting,
+    reading,
+};
+
 struct channel {
     struct field    base;       /* the name of the channel */
     struct field    proc;       /* sibling channel for writing to proc field */
     struct field    lstr;       /* sibling channel for reading string as an array of chars  */
     char           *name;       /* the name of the channel */
-    struct field    fields[23]; /* sibling channels for fields (description, severities, ...) Used only by caInfo */
-
-    short           type;       /* dbr type This should probably be a short? Double check before though...  */
-    int      		precision;
+    struct field    fields[23]; /* sibling channels for fields (description, severities, long strings...)  */
+    short           type;       /* dbr type */
     size_t          count;      /* element count */
     size_t          inNelm;     /* requested number of elements for writing */
     size_t          outNelm;    /* requested number of elements for reading */
@@ -173,9 +183,9 @@ struct channel {
     int             status;          /*  status */
     int      		severity; 		 /*  severity */
     int             prec;            /* precision */
+    enum state      state;          /* state of the channel within catools application */
 
 };
-
 
 /* global strings see caToolsGlobals.c */
 extern char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outLocalDate, **g_outLocalTime, **g_outTimestamp;

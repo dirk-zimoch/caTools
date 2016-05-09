@@ -325,7 +325,7 @@ bool getMetadataFromEvArgs(struct channel * ch, evargs args){
 
     ch->status=0;
     ch->severity=0;
-    ch->precision = 6; /* default precision if none obtained from the IOC*/
+    ch->prec = 6; /* default precision if none obtained from the IOC*/
 
     /* read requested data */
     switch (args.type) {
@@ -471,7 +471,7 @@ bool getMetadataFromEvArgs(struct channel * ch, evargs args){
     }
 }
 
-int getTimeStamp(size_t i, arguments_T * arguments) {
+void getTimeStamp(size_t i, arguments_T * arguments) {
 /*calculates timestamp for monitor tool, formats it and saves it into the global string. */
 
     epicsTimeStamp elapsed;
@@ -514,12 +514,10 @@ int getTimeStamp(size_t i, arguments_T * arguments) {
         char cSign = negative ? '-' : ' ';
         sprintf(g_outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
     }
-
-    return 0;
 }
 
 
-bool cawaitEvaluateCondition(struct channel channel, evargs args){
+bool cawaitEvaluateCondition(struct channel * ch, evargs args){
     /*evaluates output of channel i against the corresponding condition. */
     /*returns 1 if matching, 0 otherwise, and -1 if error. */
     /*Before evaluation, channel output is converted to double. If this is */
@@ -548,7 +546,7 @@ bool cawaitEvaluateCondition(struct channel channel, evargs args){
     case DBR_CHAR:
     case DBR_STRING:
         if (sscanf(nativeValue, "%lf", &dblValue) <= 0){        /* TODO: is this always null-terminated? */
-            errPeriodicPrint("Record %s value %s cannot be converted to double.\n", channel.base.name, (char*)nativeValue);
+            errPeriodicPrint("Record %s value %s cannot be converted to double.\n", ch->base.name, (char*)nativeValue);
             return false;
         }
         break;
@@ -561,26 +559,26 @@ bool cawaitEvaluateCondition(struct channel channel, evargs args){
         break;
     }
 
-    debugPrint("cawaitEvaluateCondition() - operator: %i, a0: %f, a1: %f, value: %f\n", channel.conditionOperator, channel.conditionOperands[0], channel.conditionOperands[1], dblValue);
+    debugPrint("cawaitEvaluateCondition() - operator: %i, a0: %f, a1: %f, value: %f\n", ch->conditionOperator, ch->conditionOperands[0], ch->conditionOperands[1], dblValue);
 
     /*evaluate and exit */
-    switch (channel.conditionOperator){
+    switch (ch->conditionOperator){
     case operator_gt:
-        return dblValue > channel.conditionOperands[0];
+        return dblValue > ch->conditionOperands[0];
     case operator_gte:
-        return dblValue >= channel.conditionOperands[0];
+        return dblValue >= ch->conditionOperands[0];
     case operator_lt:
-        return dblValue < channel.conditionOperands[0];
+        return dblValue < ch->conditionOperands[0];
     case operator_lte:
-        return dblValue <= channel.conditionOperands[0];
+        return dblValue <= ch->conditionOperands[0];
     case operator_eq:
-        return dblValue == channel.conditionOperands[0];
+        return dblValue == ch->conditionOperands[0];
     case operator_neq:
-        return dblValue != channel.conditionOperands[0];
+        return dblValue != ch->conditionOperands[0];
     case operator_in:
-        return (dblValue >= channel.conditionOperands[0]) && (dblValue <= channel.conditionOperands[1]);
+        return (dblValue >= ch->conditionOperands[0]) && (dblValue <= ch->conditionOperands[1]);
     case operator_out:
-        return !((dblValue >= channel.conditionOperands[0]) && (dblValue <= channel.conditionOperands[1]));
+        return !((dblValue >= ch->conditionOperands[0]) && (dblValue <= ch->conditionOperands[1]));
     }
 
     return false;
