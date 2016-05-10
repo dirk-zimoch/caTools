@@ -616,6 +616,8 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
     return success;
 }
 
+// Consider renaming (parse input value? )
+// When does it fail?
 bool parseAsArray(struct channel * ch, arguments_T * arguments){
     debugPrint("parseAsArray()\n");
     /**
@@ -670,7 +672,7 @@ bool parseAsArray(struct channel * ch, arguments_T * arguments){
     return true;
 }
 
-
+//Add some docs
 bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, arguments_T * arguments){
     debugPrint("castStrToDBR() - start\n");
     /* convert input string to the baseType */

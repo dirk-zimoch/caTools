@@ -188,7 +188,7 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
         if(!parseAsArray(ch, arguments)) return false;
 
         /* parse input strings to dbr types */
-        if (castStrToDBR(&input, ch->writeStr, &ch->inNelm, baseType, arguments)) {
+        if (casStrToDBR(&input, ch->writeStr, &ch->inNelm, baseType, arguments)) {
             if (ch->inNelm > ch->count){
                 warnPrint("Number of input elements is: %i, but channel can accept only %i.\n", ch->inNelm, ch->count);
                 ch->inNelm = ch->count;
@@ -277,6 +277,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     ch->nRequests ++;
     status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
     if (status != ECA_NORMAL) {
+        //Why is this periodic? Consider moving to default error level
         errPeriodicPrint("Problem creating get request for process variable %s: %s\n",ch->base.name, ca_message(status));
         ch->nRequests --;
         return false;
@@ -286,9 +287,10 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     if ((arguments->time || arguments->date || arguments->timestamp) &&
             arguments->dbrRequestType == -1 )
     {
+        // Do test ENUM behaviour
         if (arguments->str && ca_field_type(reqChid) == DBF_ENUM){
             /* if enum && s, use time_string */
-            reqType = DBR_TIME_STRING;
+            reqType = DBR_TIME_STRING; //Do we really need to make a special request for ENUMs?
         }
         else{ /* else use time_native */
             reqType = dbf_type_to_DBR_TIME(dbr_type_to_DBF(reqType));
@@ -296,6 +298,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         ch->nRequests=ch->nRequests+1;
         status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
         if (status != ECA_NORMAL) {
+            //Consider bumping error level
             errPeriodicPrint("Problem creating get_request for process variable %s: %s\n",ch->base.name, ca_message(status));
             ch->nRequests --;
             return false;
@@ -305,6 +308,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     /* create subscribtion in case of camon or cawait */
     if( arguments->tool == camon || arguments->tool == cawait ){
         ch->nRequests=ch->nRequests+1;
+        // Do we need to subscribe to log?
         status = ca_create_subscription(reqType, ch->outNelm, reqChid, DBE_VALUE | DBE_ALARM | DBE_LOG, caReadCallback, ch, 0);
         if (status != ECA_NORMAL) {
             errPrint("Problem creating subscription for process variable %s: %s.\n",ch->base.name, ca_message(status));
@@ -548,8 +552,11 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
             success = caGenerateWriteRequests(&channels[i], &arguments);
         }
         /* if cado or caputq exit right away */
+        // so why does this work? do explain
         if(arguments.tool == cado || arguments.tool == caputq) return success;
+
         /* wait for callbacks to finish before issuing read requests */
+        //What happens if the operation is only partially succsesfull? E.g if out of 5 puts only 3 succeed?
         waitForCallbacks(channels, nChannels);
 
     }
@@ -565,6 +572,7 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
                 continue;
             }
 
+            //Return value is not checked as it is ought to be
             success = caGenerateReadRequests(&channels[i], &arguments);
         }
     }
@@ -575,6 +583,7 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
     /* call the spaghetti function if cainfo */
     if (arguments.tool == cainfo)
     {
+        //Review cainfo codebase
         success = cainfoRequest(channels, nChannels);
     }
 
@@ -787,6 +796,9 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
         /* if there are siblings, wait for them to connect or timeout*/
         waitForCallbacks(channels, nChannels);
         debugPrint("caInit() - Siblings connected\n");
+        //Note: it is valid that not all siblings get connected (e.g. logn string channel [$])
+
+        //Perhaps check if all siblings got connected...
     }
     
     return true;
@@ -810,9 +822,12 @@ void monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arg
         /* connect channels that were not connected at the start of the program in caInit */
         for(i = 0; i < nChannels; i++){
             if(channels[i].state==base_created){
+                //Return value is not checked as it is ought to be
                 caGenerateReadRequests(&channels[i], arguments);
             }
         }
+
+        //Consider exiting monitor loop in case no channels are connected...
     }
 }
 
@@ -988,11 +1003,12 @@ int main ( int argc, char ** argv ){
         goto clear_global_strings;
     }
 
-    /* set timeout time from now */
+
+
+    /* set cawait timeout time from now */
     if (arguments.timeout!=-1){
         /* set first */
         epicsTimeGetCurrent(&g_timeoutTime);
-
         epicsTimeAddSeconds(&g_timeoutTime, arguments.timeout);
     }
 
@@ -1017,7 +1033,7 @@ int main ( int argc, char ** argv ){
         freeStringBuffers(nChannels);
     clear_channels:
         freeChannels(channels, nChannels);
-    the_very_end:
+    the_very_end: //tut prow!
         if (success) return EXIT_SUCCESS;
         else return EXIT_FAILURE;
 }
