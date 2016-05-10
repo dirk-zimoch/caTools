@@ -239,7 +239,7 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
  * @return true on success
  */
 bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
-    debugPrint("caGenerateRequests() - %s\n", ch->base.name);
+    debugPrint("caGenerateReadRequests() - %s\n", ch->base.name);
     int status;
 
     /*request ctrl type */
@@ -272,14 +272,14 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     }
 
     /* if no other type specified issue first request with ctrl type or with the type that was specified. */
-    debugPrint("caGenerateRequests() - outNelm: %i\n", ch->outNelm);
-    debugPrint("caGenerateRequests() - reqType: %s\n", dbr_type_to_text(reqType));
+    debugPrint("caGenerateReadRequests() - outNelm: %i\n", ch->outNelm);
+    debugPrint("caGenerateReadRequests() - reqType: %s\n", dbr_type_to_text(reqType));
     ch->nRequests ++;
     status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
     if (status != ECA_NORMAL) {
         errPeriodicPrint("Problem creating get request for process variable %s: %s\n",ch->base.name, ca_message(status));
         ch->nRequests --;
-        return;
+        return false;
     }
 
     /* if needed issue second request using time type */
@@ -298,7 +298,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         if (status != ECA_NORMAL) {
             errPeriodicPrint("Problem creating get_request for process variable %s: %s\n",ch->base.name, ca_message(status));
             ch->nRequests --;
-            return;
+            return false;
         }
     }
 
@@ -568,6 +568,9 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
             success = caGenerateReadRequests(&channels[i], &arguments);
         }
     }
+
+    /* wait for callbacks to finish before ending the program */
+    waitForCallbacks(channels, nChannels);
 
     /* call the spaghetti function if cainfo */
     if (arguments.tool == cainfo)
