@@ -50,7 +50,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
             fputs("Writes value(s) to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
         }
         fputs("Array handling:\n", stream);
-        fputs(  "- When -a option is set, input separator (-inSep argument) is used to parse elements in an array.\n"\
+        fputs(  "- When -a option is set, input separator (-inSep argumOctadecimalent) is used to parse elements in an array.\n"\
                 "- When input separator (-inSep argument) is explicitly defined, -a option is automatically used."
                 " See following examples which produce the same result,"\
                 " namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
@@ -119,6 +119,13 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -inSep <separator>   Separator used between array elements in <value>.\n", stream);
         fputs("                       If not specified, space is used.\n", stream);
         fputs("                       If specified, '-a' option is automatically used. \n", stream);
+        fputs("  -bin                 Sets the numeric base for integers to 2.\n"
+              "                       Binary input without any prefix or suffix.\n", stream);
+        fputs("  -hex                 Sets the numeric base for integers to 16.\n"
+              "                       Hexadcimal input, 0x, or 0X prefix is optional\n", stream);
+        fputs("  -oct                 Sets the numeric base for integers to \n
+              "                       Octal input without any prefix or suffix.\n", stream);
+        fputs("  -s                   Interpret value as one long string.\n", stream);
     }
 
     /*  flags associated with monitoring */
@@ -126,7 +133,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Monitoring options\n", stream);
         fputs("  -n <number>          Exit the program after <number> updates.\n", stream);
         fputs("  -timestamp <option>  Display relative timestamps. Options:\n", stream);
-        fputs("                            r: server time relative to the start of the program,\n", stream);
+        fputs("                            r: server timestamp relative to the start of the program,\n", stream);
         fputs("                            u: time elapsed since last update of any PV,\n", stream);
         fputs("                            c: time elapsed since last update separately for each PV.\n", stream);
     }
@@ -626,7 +633,7 @@ bool parseAsArray(struct channel * ch, arguments_T * arguments){
     /* check if the connected channel has more than one elements or if -a
      * and not -s argument. If -s interpret as one long string
      */
-    if((ch->count > 1 || arguments->parseArray) && !arguments->str)
+    if((ch->count > 1 && !arguments->str) || arguments->parseArray)
     {
         char inSep[2] = {arguments->inputSeparator, 0};
         size_t j;
