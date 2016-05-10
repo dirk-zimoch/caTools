@@ -314,7 +314,7 @@ ch->severity = ((struct T *)args.dbr)->severity;
 
 bool getMetadataFromEvArgs(struct channel * ch, evargs args){
     /* clear global output strings; the purpose of this callback is to overwrite them */
-    /* the exception are units, which we may be getting from elsewhere; we only clear them if we can write them */
+    /* the exception are units and precision, which we may be getting from elsewhere; we only clear them if we can write them */
     debugPrint("getMetadataFromEvArgs() - %s\n", ch->base.name);
     clearStr(g_outDate[ch->i]);
     clearStr(g_outTime[ch->i]);
@@ -325,7 +325,6 @@ bool getMetadataFromEvArgs(struct channel * ch, evargs args){
 
     ch->status=0;
     ch->severity=0;
-    ch->prec = 6; /* default precision if none obtained from the IOC*/
 
     /* read requested data */
     switch (args.type) {

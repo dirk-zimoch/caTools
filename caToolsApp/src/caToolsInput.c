@@ -578,6 +578,7 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
     /* Copy PV names from command line */
     for (i = 0; optind < argc; i++, optind++) {
         channels[i].base.name = argv[optind];
+        channels[i].prec = 6; /* default precision if none obtained from the IOC*/
 
         if(strlen(channels[i].base.name) > LEN_RECORD_NAME + LEN_RECORD_FIELD + 1) { /* worst case scenario: longest name + longest field + '.' that separates name and field */
             errPrint("Record name over %d characters: %s - aborting", LEN_RECORD_NAME + LEN_RECORD_FIELD + 1, channels[i].base.name);
