@@ -42,7 +42,6 @@ void getBaseChannelName(char *name) {
 
 
 bool isValField(char *name) {
-    char *s;
 
     if (endsWith(name, ".VAL")){
     	return true;

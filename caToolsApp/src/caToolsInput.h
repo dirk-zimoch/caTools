@@ -38,7 +38,7 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
  * @param channel pointer to the channel structure
  * @return true if everything went ok
  */
-bool cawaitParseCondition(struct channel *channel, char *str);
+bool cawaitParseCondition(struct channel *channel, char **str, arguments_T * argument);
 
 /**
  * @brief castStrToDBR convert command line argument string to epics DBR type

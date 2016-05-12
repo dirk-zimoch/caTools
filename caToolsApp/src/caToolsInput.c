@@ -50,7 +50,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
             fputs("Writes value(s) to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
         }
         fputs("Array handling:\n", stream);
-        fputs(  "- When -a option is set, input separator (-inSep argument) is used to parse elements in an array.\n"\
+        fputs(  "- When -a option is set, input separator (-inSep argumOctadecimalent) is used to parse elements in an array.\n"\
                 "- When input separator (-inSep argument) is explicitly defined, -a option is automatically used."
                 " See following examples which produce the same result,"\
                 " namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
@@ -113,19 +113,23 @@ void usage(FILE *stream, enum tool tool, char *programName){
 
     /* flags associated with writing */
     if (tool == caput || tool == caputq) {
-        fputs("Formating input : Array format options\n", stream);
-        fputs("  -a                   Input separator (-inSep argument) is used to parse\n"
+        fputs("Parsing input : Array format options \n", stream);
+        fputs("  -a                   Force parsing as array separator (-inSep argument) is used to parse\n"
               "                       elements in an array.\n", stream);
         fputs("  -inSep <separator>   Separator used between array elements in <value>.\n", stream);
         fputs("                       If not specified, space is used.\n", stream);
         fputs("                       If specified, '-a' option is automatically used. \n", stream);
+    }
+    if (tool == caput || tool == caputq || tool == cawait) {
+        fputs("Parsing input : Other format specifiers \n", stream);
+        fputs("  -num                 Interpret value(s) as numbers\n", stream);
         fputs("  -bin                 Sets the numeric base for integers to 2.\n"
               "                       Binary input without any prefix or suffix.\n", stream);
         fputs("  -hex                 Sets the numeric base for integers to 16.\n"
               "                       Hexadcimal input, 0x, or 0X prefix is optional\n", stream);
         fputs("  -oct                 Sets the numeric base for integers to \n"
               "                       Octal input without any prefix or suffix.\n", stream);
-        fputs("  -s                   Interpret value as one long string.\n", stream);
+        fputs("  -s                   Interpret value(s) as string.\n", stream);
     }
 
     /*  flags associated with monitoring */
@@ -137,9 +141,9 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("                            u: time elapsed since last update of any PV,\n", stream);
         fputs("                            c: time elapsed since last update separately for each PV.\n", stream);
     }
-    if (tool == cawait) {
-        fputs("Waiting options\n", stream);
-        fputs("  -timeout <number>    Exit the program after <number> seconds without an update.\n", stream);
+    if (tool == cawait || tool == camon) {
+        fputs("Timeout options\n", stream);
+        fputs("  -timeout <number>    Exit the program after <number> seconds.\n", stream);
     }
 
     /* Flags associated with returned values. Used by both reading and writing tools. */
@@ -148,6 +152,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Formating output : General options\n", stream);
         fputs("  -noname              Hide PV name.\n", stream);
         fputs("  -nostat              Never display alarm status and severity.\n", stream);
+        fputs("  -nounit              Never display units.\n", stream);
         fputs("  -stat                Always display alarm status and severity.\n", stream);
         fputs("  -plain               Ignore all formatting switches (displays\n"\
               "                       only PV value) except date/time related.\n", stream);
@@ -182,6 +187,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -int, -num           Display enum/char values as numbers.\n", stream);
 
         fputs("Formating output : Array format options\n", stream);
+        fputs("  -a                   Display as array.\n", stream);
         fputs("  -nord                Display number of array elements before their values.\n", stream);
         fputs("  -outNelm <number>    Number of array elements to read.\n", stream);
         fputs("  -outSep <number>     Separator between array elements.\n", stream);
@@ -568,6 +574,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
             if (arguments->tool == cawait)                            fprintf(stderr, "One of the PVs is missing the condition ('%s -h' for help).\n", argv[0]);
             return false;
         }
+
         *nChannels = (argc - optind) / 2;	/* half of the args are PV names, rest conditions/values */
     }
 
@@ -599,7 +606,7 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
 
         channels[i].i = i;	/* channel number, serves to synchronise pvs and output. */
 
-        if (arguments->tool == caput || arguments->tool == caputq){
+        if (arguments->tool == caput || arguments->tool == caputq || arguments->tool == cawait){
             channels[i].inNelm = 1;
 
              /* store the pointer to correct argv to channels[i].inpStr.
@@ -610,14 +617,6 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
             /* finally advance to the next argument */
             optind++;
 
-        }
-        else if (arguments->tool == cawait) {
-            /* next argument is the condition string */
-            if (!cawaitParseCondition(&channels[i], argv[optind+1])) {
-                success = false;
-                break;
-            }
-            optind++;
         }
     }
 
@@ -700,7 +699,7 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
             ((dbr_int_t *)(*data))[j] = (dbr_int_t)strtoll(str[j], &endptr, base);
             /* if a number before . is found it is also ok */
             if (endptr == str[j] || !(*endptr == '\0' || *endptr == '.') ) {
-                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(*pBaseType));
+                errPrint("Impossible to convert input %s to %s as requested\n",str[j], dbr_type_to_text(*pBaseType));
                 success = false;
             }
         }
@@ -710,7 +709,7 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
         for (j=0; j<ch->inNelm; ++j) {
             ((dbr_float_t *)(*data))[j] = (dbr_float_t)strtof(str[j], &endptr);
             if (endptr == str[j] || *endptr != '\0') {
-                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(*pBaseType));
+                errPrint("Impossible to convert input %s to %s\n",str[j], dbr_type_to_text(*pBaseType));
                 success = false;
             }
         }
@@ -724,7 +723,7 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
                 ((dbr_enum_t *)(*data))[j] = (dbr_enum_t)strtoul(str[j], &endptr, base);
                 if (endptr == str[j] || *endptr ) {
                     if(arguments->num){
-                        errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(*pBaseType));
+                        errPrint("Impossible to convert input %s to %s as requested\n",str[j], dbr_type_to_text(*pBaseType));
                         break;
                     }else{
                         isNumber = false;
@@ -812,7 +811,7 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
             ((dbr_long_t *)(*data))[j] = (dbr_long_t)strtoll(str[j], &endptr, base);
             /* if a number before . is found it is also ok */
             if (endptr == str[j] || !(*endptr == '\0' || *endptr == '.')) {
-                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(*pBaseType));
+                errPrint("Impossible to convert input %s to %s as requested\n",str[j], dbr_type_to_text(*pBaseType));
                 success = false;
             }
         }
@@ -822,7 +821,7 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
         for (j=0; j< ch->inNelm; j++) {
             ((dbr_double_t *)(*data))[j] = (dbr_double_t)strtod(str[j], &endptr);
             if (endptr == str[j] || *endptr != '\0') {
-                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(*pBaseType));
+                errPrint("Impossible to convert input %s to %s\n",str[j], dbr_type_to_text(*pBaseType));
                 success = false;
                 break;
             }
@@ -841,7 +840,7 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
 /* parses input string and extracts operators and numerals,
 * then saves them to the channel structure.
 * Supported operators: >,<,<=,>=,==,!=,!, ==A...B(in interval), !=A...B(out of interval), !A...B (out of interval). */
-bool cawaitParseCondition(struct channel *channel, char *str)
+bool cawaitParseCondition(struct channel *channel, char **str, arguments_T * arguments)
 {
     debugPrint("cawaitParseCondition()\n");
     enum operator op;
@@ -849,36 +848,60 @@ bool cawaitParseCondition(struct channel *channel, char *str)
     double arg2 = 0;
 
 
-    if (removePrefix(&str, "!")) {
+    if (removePrefix(str, "!")) {
         op = operator_neq;
-        removePrefix(&str, "=");
+        removePrefix(str, "=");
     }
-    else if (removePrefix(&str, ">=")) {
+    else if (removePrefix(str, ">=")) {
         op = operator_gte;
     }
-    else if (removePrefix(&str, "<=")) {
+    else if (removePrefix(str, "<=")) {
         op = operator_lte;
     }
-    else if (removePrefix(&str, ">")) {
+    else if (removePrefix(str, ">")) {
         op = operator_gt;
     }
-    else if (removePrefix(&str, "<")) {
+    else if (removePrefix(str, "<")) {
         op = operator_lt;
     }
-    else if (removePrefix(&str, "==")) {
+    else if (removePrefix(str, "==")) {
         op = operator_eq;
     }
     else {
         op = operator_eq;
     }
 
+    if(arguments->str){
+        if (op==operator_eq || op==operator_neq){
+            if(op==operator_eq) op=operator_streq;
+            else op=operator_strneq;
+            channel->conditionOperator = op;
+            return true;
+        }
+        else{
+            errPrint("Only == and != can be used with strings.\n");
+            return false;
+        }
+    }
+
     char *token;
     char *endptr;
 
-    arg1 = strtod(str, &endptr);
-    if (endptr == str) {
-        errPrint("Invalid operand in condition.\n");
-        return false;
+    bool couldBeString = (operator_eq || operator_neq) && !arguments->num &&
+            (channel->type == DBF_CHAR || channel->type == DBF_ENUM || channel->type == DBF_STRING);
+
+    arg1 = strtod(*str, &endptr);
+    if (endptr == *str) {
+        if(couldBeString && strlen(*str)){
+            /*take as str*/
+            if(op==operator_eq) op=operator_streq;
+            else op=operator_strneq;
+            channel->conditionOperator = op;
+            return true;
+        }else{
+            errPrint("Invalid operand in condition.\n");
+            return false;
+        }
     }
     debugPrint("endptr: %s\n", endptr);
     if (removePrefix(&endptr, "...") || removePrefix(&endptr, "..")) {
@@ -890,18 +913,34 @@ bool cawaitParseCondition(struct channel *channel, char *str)
             errPrint("Invalid syntax for interval condition.\n");
             return false;
         }
-        str=endptr;
-        arg2 = strtod(str, &endptr);
-        if (endptr == str || *endptr) {
-            errPrint("Invalid second operand for interval condition.\n");
-            return false;
+        char *tmp = endptr; /* start of the second operand */
+        arg2 = strtod(tmp, &endptr);
+        if (endptr == tmp || *endptr) {
+            if(couldBeString){
+                /*take as str*/
+                if(op==operator_eq) op=operator_streq;
+                else op=operator_strneq;
+                channel->conditionOperator = op;
+                return true;
+            }
+            else{
+                errPrint("Invalid second operand for interval condition.\n");
+                return false;
+            }
         }
         /* we have an interval */
         if(op==operator_eq)  op = operator_in;
         if(op==operator_neq) op = operator_out;
     }else if(*endptr){
-        errPrint("Invalid syntax in condition.\n");
-        return false;
+        if(couldBeString){
+            if(op==operator_eq) op=operator_streq;
+            else op=operator_strneq;
+            channel->conditionOperator = op;
+            return true;
+        }else{
+            errPrint("Invalid syntax in condition.\n");
+            return false;
+        }
     }
 
     /*  if interval make the first operand allways smaller one*/

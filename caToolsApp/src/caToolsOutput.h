@@ -25,7 +25,7 @@ void printValue(evargs args, arguments_T *arguments);
  * @param args - evargs from callback function
  * @return true if everything goes well
  */
-bool getMetadataFromEvArgs(struct channel * ch, evargs args);
+void getMetadataFromEvArgs(struct channel * ch, evargs args);
 
 /**
  * @brief getTimeStamp - calculates the relative timestamp for monitor tool, formats it and saves it into the global string.
@@ -42,11 +42,12 @@ void getTimeStamp(size_t i, arguments_T * arguments);
  * @param args evrargs returned by the read callback function
  * @return true if the condition is fulfilled
  */
-bool cawaitEvaluateCondition(struct channel * ch, evargs args);
+bool cawaitEvaluateCondition(struct channel * ch, evargs args, arguments_T * arguments);
 
 /* print integer as binary number */
 #define printBits(x) \
-    for (int32_t i = sizeof(x) * 8 - 1; i >= 0; i--) { \
+    int32_t i; \
+    for ( i = sizeof(x) * 8 - 1; i >= 0; i--) { \
         fputc('0' + ((x >> i) & 1), stdout); \
     }
 

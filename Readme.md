@@ -24,7 +24,7 @@ The following channel access tools are available:
 
         caputq [flags] <pv> <value> [<pv> <value> ...]
         
-- `cado`: Writes 1 to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs). Usage:
+- `cado`: Processes the PV(s) and exits. Does not have any output (except if an error occurs). Usage:
 
         cado [flags] <pv> [<pv> ...]
         
@@ -62,7 +62,10 @@ caWait tool can be used in scripts, as it will exit upon meeting user specified 
 - Exit when value of caTools-TEST:AI is not between 5 and 10.
 
            cawait caTools-TEST:AI '!5...10'
+
+- Exit when the string value of TEST_MBBO is not "50.00 Hz"
        
+           cawait TEST_MBBO '!50.00 Hz'
 
 ## Build from source
 The tools are structured as an EPICS application.

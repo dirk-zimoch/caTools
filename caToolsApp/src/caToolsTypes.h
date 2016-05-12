@@ -150,7 +150,9 @@ enum operator { /* possible conditions for cawait */
     operator_eq,
     operator_neq,
     operator_in,
-    operator_out
+    operator_out,
+    operator_streq,
+    operator_strneq
 };
 
 /* enum describing the "state machine" state of each channel during the execution of catools applocation */

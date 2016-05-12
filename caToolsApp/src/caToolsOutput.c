@@ -3,12 +3,47 @@
 #include <inttypes.h>
 #include <math.h>
 #include <assert.h>
+#include <strings.h>
+#include <string.h>
 
 #include "epicsTime.h"
 #include "caToolsTypes.h"
 #include "caToolsUtils.h"
 #include "caToolsOutput.h"
 
+
+bool getEnumString(char ** str, evargs * args, size_t j){
+    void * value = dbr_value_ptr((*args).dbr, (*args).type);
+    dbr_enum_t v = ((dbr_enum_t *)value)[j];
+    if (v >= MAX_ENUM_STATES){
+        warnPrint("Illegal enum index: %d\n", v);
+        *str = "\0";
+        return false;
+    }
+    if (dbr_type_is_GR((*args).type)) {
+        if (v >= ((struct dbr_gr_enum *)(*args).dbr)->no_str) {
+            warnPrint("Enum index value %d greater than the number of strings\n", v);
+            *str = "\0";
+            return false;
+        }
+        else{
+            *str = ((struct dbr_gr_enum *)(*args).dbr)->strs[v];
+            return true;
+        }
+    }
+    else if (dbr_type_is_CTRL((*args).type)) {
+        if (v >= ((struct dbr_ctrl_enum *)(*args).dbr)->no_str) {
+            warnPrint("Enum index value %d greater than the number of strings\n", v);
+            *str = "\0";
+            return false;
+        }
+        else{
+            *str = ((struct dbr_ctrl_enum *)(*args).dbr)->strs[v];
+            return true;
+        }
+    }
+    return true;
+}
 
 void printValue(evargs args, arguments_T *arguments){
 /* Parses the data fetched by ca_get callback according to the data type and formatting arguments-> */
@@ -27,11 +62,10 @@ void printValue(evargs args, arguments_T *arguments){
     debugPrint("printValue() - baseType: %s\n", dbr_type_to_text(baseType));
 
     /* handle long strings */
-    if(baseType == DBR_CHAR && !arguments->fieldSeparator &&
-           !(arguments->bin || arguments->hex || arguments->oct || arguments->num) &&   /* no special numeric formating specified */
-                (ca_field_type(ch->base.id)==DBF_STRING ||   /* if base channel is DBF_STRING*/
+    if(baseType == DBR_CHAR && !arguments->fieldSeparator && !arguments->parseArray && !(arguments->num) &&   /* no special numeric formating specified */
+                (ch->type == DBF_STRING ||   /* if base channel is DBF_STRING*/
                  arguments->str ||                           /* if requested string formatting */
-                 args.count > 1 && isPrintable((char *) value, (size_t) args.count))/* if array returned and all characters are printable */
+                 (args.count > 1 && isPrintable((char *) value, (size_t) args.count)))/* if array returned and all characters are printable */
         )
     {  /* print as string */
         printf("\"%.*s\"", (int) args.count, (char *) value); 
@@ -146,35 +180,19 @@ void printValue(evargs args, arguments_T *arguments){
         }
         case DBR_ENUM: {
             debugPrint("printValue() - case DBR_ENUM\n");
-            dbr_enum_t v = ((dbr_enum_t *)value)[j];
-            if (v >= MAX_ENUM_STATES){
-                printf("Illegal enum index: %d", v);
-                break;
-            }
 
-            if (!arguments->num && !arguments->bin && !arguments->hex && !arguments->oct) { /*  if not requested as a number check if we can get string */
-
-
-                if (dbr_type_is_GR(args.type)) {
-                    if (v >= ((struct dbr_gr_enum *)args.dbr)->no_str) {
-                        printf("Enum index value %d greater than the number of strings", v);
-                    }debugPrint("printValue() - case DBR_CHAR - bin\n");
-                    else{
-                        printf("\"%.*s\"", MAX_ENUM_STRING_SIZE, ((struct dbr_gr_enum *)args.dbr)->strs[v]);
-                    }
+            if (!arguments->num) { /*  if not requested as a number check if we can get string */
+                char * str;
+                if(getEnumString(&str, &args, j)){
+                    printf("\"%.*s\"", MAX_ENUM_STRING_SIZE, str);
                     break;
-                }
-                else if (dbr_type_is_CTRL(args.type)) {
-                    if (v >= ((struct dbr_ctrl_enum *)args.dbr)->no_str) {
-                        printf("Enum index value %d greater than the number of strings", v);
-                    }
-                    else{
-                        printf("\"%.*s\"", MAX_ENUM_STRING_SIZE, ((struct dbr_ctrl_enum *)args.dbr)->strs[v]);
-                    }
+                }else if(arguments->str){
+                    errPrint("\nValue can not be converted to corresponding string\n");
                     break;
                 }
             }
             /*  else write value as number. */
+            dbr_enum_t v = ((dbr_enum_t *)value)[j];
             if (arguments->hex){
                 printf("0x%" PRIx16, v);
             }
@@ -305,7 +323,7 @@ void printOutput(evargs args, arguments_T *arguments){
     else if (!isStrEmpty(g_outSev[ch->i])) putc(')', stdout);
 
     putc('\n', stdout);
-    return 0;
+    return;
 }
 
 
@@ -319,7 +337,7 @@ ch->severity = ((struct T *)args.dbr)->severity;
 #define units_get_cb(T) clearStr(g_outUnits[ch->i]); sprintf(g_outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
 #define precision_get(T) ch->prec = (((struct T *)args.dbr)->precision);
 
-bool getMetadataFromEvArgs(struct channel * ch, evargs args){
+void getMetadataFromEvArgs(struct channel * ch, evargs args){
     /* clear global output strings; the purpose of this callback is to overwrite them */
     /* the exception are units and precision, which we may be getting from elsewhere; we only clear them if we can write them */
     debugPrint("getMetadataFromEvArgs() - %s\n", ch->base.name);
@@ -473,7 +491,6 @@ bool getMetadataFromEvArgs(struct channel * ch, evargs args){
         case DBR_DOUBLE: break;
         default :
             errPeriodicPrint("Can not print %s DBR type (DBR numeric type code: %ld). \n", dbr_type_to_text(args.type), args.type);
-            return;
     }
 }
 
@@ -523,7 +540,7 @@ void getTimeStamp(size_t i, arguments_T * arguments) {
 }
 
 
-bool cawaitEvaluateCondition(struct channel * ch, evargs args){
+bool cawaitEvaluateCondition(struct channel * ch, evargs args, arguments_T * arguments){
     /*evaluates output of channel i against the corresponding condition. */
     /*returns 1 if matching, 0 otherwise, and -1 if error. */
     /*Before evaluation, channel output is converted to double. If this is */
@@ -532,9 +549,11 @@ bool cawaitEvaluateCondition(struct channel * ch, evargs args){
 
     /*get value */
     void *nativeValue = dbr_value_ptr(args.dbr, args.type);
+    bool isStrOperator = ch->conditionOperator == operator_streq || ch->conditionOperator == operator_strneq;
 
     /*convert the value to double */
     double dblValue;
+    char * strVal;
     int32_t baseType = args.type % (LAST_TYPE+1);
     switch (baseType){
     case DBR_DOUBLE:
@@ -550,14 +569,28 @@ bool cawaitEvaluateCondition(struct channel * ch, evargs args){
         dblValue = (double) *(dbr_long_t*)nativeValue;
         break;
     case DBR_CHAR:
+        if(!isStrOperator){
+            dblValue = (double) *(dbr_char_t*)nativeValue;
+            break;
+        }else{
+            strVal = (char *) nativeValue;
+        }
     case DBR_STRING:
-        if (sscanf(nativeValue, "%lf", &dblValue) <= 0){        /* TODO: is this always null-terminated? */
-            errPeriodicPrint("Record %s value %s cannot be converted to double.\n", ch->base.name, (char*)nativeValue);
-            return false;
+        if (!isStrOperator){
+            if(sscanf(nativeValue, "%lf", &dblValue) <= 0){        /* TODO: is this always null-terminated? */
+                errPeriodicPrint("Record %s value %s cannot be converted to double.\n", ch->base.name, (char*)nativeValue);
+                return false;
+            }
+        }else{
+            strVal = (char *) nativeValue;
         }
         break;
     case DBR_ENUM:
-        dblValue = (double) *(dbr_enum_t*)nativeValue;
+        if(!isStrOperator){
+            dblValue = (double) *(dbr_enum_t*)nativeValue;
+        }else{
+            getEnumString(&strVal, &args, 0);
+        }
         break;
     default:
         errPrint("Unrecognized DBR type.\n");
@@ -585,6 +618,12 @@ bool cawaitEvaluateCondition(struct channel * ch, evargs args){
         return (dblValue >= ch->conditionOperands[0]) && (dblValue <= ch->conditionOperands[1]);
     case operator_out:
         return !((dblValue >= ch->conditionOperands[0]) && (dblValue <= ch->conditionOperands[1]));
+    case operator_streq:
+        debugPrint("cawaitEvaluateCondition() - streq: \"%s\" ... \"%s\"\n",ch->inpStr, strVal);
+        return (strcmp(ch->inpStr, strVal) == 0);
+    case operator_strneq:
+        debugPrint("cawaitEvaluateCondition() - strneq: \"%s\" ... \"%s\"\n",ch->inpStr, strVal);
+        return (strcmp(ch->inpStr, strVal) != 0);
     }
 
     return false;
