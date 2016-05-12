@@ -292,6 +292,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         ch->nRequests=ch->nRequests+1;
         status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
         if (status != ECA_NORMAL) {
+            //Consider bumping error level
             errPeriodicPrint("Problem creating get_request for process variable %s: %s\n",ch->base.name, ca_message(status));
             ch->nRequests --;
             return false;
@@ -301,6 +302,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     /* create subscribtion in case of camon or cawait */
     if( arguments->tool == camon || arguments->tool == cawait ){
         ch->nRequests=ch->nRequests+1;
+        // Do we need to subscribe to log?
         status = ca_create_subscription(reqType, ch->outNelm, reqChid, DBE_VALUE | DBE_ALARM | DBE_LOG, caReadCallback, ch, 0);
         if (status != ECA_NORMAL) {
             errPrint("Problem creating subscription for process variable %s: %s.\n",ch->base.name, ca_message(status));
@@ -544,8 +546,10 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
             success = caGenerateWriteRequests(&channels[i], &arguments);
         }
         /* if cado or caputq exit right away */
+        // so why does this work? do explain
         if(arguments.tool == cado || arguments.tool == caputq) return success;
         /* wait for callbacks to finish before issuing read requests */
+        //What happens if the operation is only partially succsesfull? E.g if out of 5 puts only 3 succeed?
         waitForCallbacks(channels, nChannels);
 
     }
@@ -561,6 +565,7 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
                 continue;
             }
 
+            //Return value is not checked as it is ought to be
             success = caGenerateReadRequests(&channels[i], &arguments);
         }
     }
@@ -571,6 +576,7 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
     /* call the spaghetti function if cainfo */
     if (arguments.tool == cainfo)
     {
+        //Review cainfo codebase
         success = cainfoRequest(channels, nChannels);
     }
 
@@ -783,6 +789,9 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
         /* if there are siblings, wait for them to connect or timeout*/
         waitForCallbacks(channels, nChannels);
         debugPrint("caInit() - Siblings connected\n");
+        //Note: it is valid that not all siblings get connected (e.g. logn string channel [$])
+
+        //Perhaps check if all siblings got connected...
     }
     
     return true;
@@ -806,9 +815,12 @@ void monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arg
         /* connect channels that were not connected at the start of the program in caInit */
         for(i = 0; i < nChannels; i++){
             if(channels[i].state==base_created){
+                //Return value is not checked as it is ought to be
                 caGenerateReadRequests(&channels[i], arguments);
             }
         }
+
+        //Consider exiting monitor loop in case no channels are connected...
     }
 }
 
@@ -941,7 +953,7 @@ void freeStringBuffers(u_int32_t nChannels){
     free(g_lastUpdate);
     free(g_firstUpdate);
 
-    /*free(g_errorTimestamp);*/
+    free(g_errorTimestamp);
 }
 
 /**
@@ -983,7 +995,9 @@ int main ( int argc, char ** argv ){
         goto clear_global_strings;
     }
 
-    /* set timeout time from now */
+
+
+    /* set cawait timeout time from now */
     if (arguments.timeout!=-1){
         /* set first */
         epicsTimeGetCurrent(&g_timeoutTime);
@@ -1015,8 +1029,8 @@ int main ( int argc, char ** argv ){
     clear_channels:
         debugPrint("main() - clear_channels\n");
         freeChannels(channels, nChannels);
-    the_very_end:
-        debugPrint("main() - the_very_end\n");
+    the_very_end: /* tut prow! */
+		debugPrint("main() - the_very_end\n");
         if (success) return EXIT_SUCCESS;
         else return EXIT_FAILURE;
 }

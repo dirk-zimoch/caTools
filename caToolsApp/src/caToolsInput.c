@@ -50,7 +50,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
             fputs("Writes value(s) to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
         }
         fputs("Array handling:\n", stream);
-        fputs(  "- When -a option is set, input separator (-inSep argumOctadecimalent) is used to parse elements in an array.\n"\
+        fputs(  "- When -a option is set, input separator (-inSep argument) is used to parse elements in an array.\n"\
                 "- When input separator (-inSep argument) is explicitly defined, -a option is automatically used."
                 " See following examples which produce the same result,"\
                 " namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
@@ -568,7 +568,6 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
             if (arguments->tool == cawait)                            fprintf(stderr, "One of the PVs is missing the condition ('%s -h' for help).\n", argv[0]);
             return false;
         }
-
         *nChannels = (argc - optind) / 2;	/* half of the args are PV names, rest conditions/values */
     }
 
