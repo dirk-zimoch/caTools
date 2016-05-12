@@ -132,7 +132,7 @@ record(mbbo, "$(P):TEST_MBBO") {
     field(SXST, "8.33 Hz")
     field(SVST, "5.00 Hz")
     field(EIST, "2.50 Hz")
-    field(NIST, "1.00 Hz")
+    field(NIST, "5")
 }
 record(calcout, "$(P):SECONDS"){
 	field(DESC, "Counting seconds")

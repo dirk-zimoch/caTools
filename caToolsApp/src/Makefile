@@ -41,6 +41,5 @@ links:
 	ln -sf caTools $(INSTALL_BIN)/camon
 	ln -sf caTools $(INSTALL_BIN)/caput
 	ln -sf caTools $(INSTALL_BIN)/caputq
-	ln -sf caTools $(INSTALL_BIN)/caputs
 	ln -sf caTools $(INSTALL_BIN)/cawait
 

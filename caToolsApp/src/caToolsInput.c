@@ -123,7 +123,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
               "                       Binary input without any prefix or suffix.\n", stream);
         fputs("  -hex                 Sets the numeric base for integers to 16.\n"
               "                       Hexadcimal input, 0x, or 0X prefix is optional\n", stream);
-        fputs("  -oct                 Sets the numeric base for integers to \n
+        fputs("  -oct                 Sets the numeric base for integers to \n"
               "                       Octal input without any prefix or suffix.\n", stream);
         fputs("  -s                   Interpret value as one long string.\n", stream);
     }
@@ -345,12 +345,15 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
                 break;
             case 4:   /* hex */
                 arguments->hex = true;
+                arguments->num = true;
                 break;
             case 5:   /* bin */
                 arguments->bin = true;
+                arguments->num = true;
                 break;
             case 6:   /* oct */
                 arguments->oct = true;
+                arguments->num = true;
                 break;
             case 7:   /* plain */
                 arguments->plain = true;
@@ -508,7 +511,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
              || arguments->dbrRequestType != -1 || arguments->prec != -1 || arguments->round != roundType_no_rounding || arguments->plain \
              || arguments->dblFormatType != '\0' || arguments->stat || arguments->nostat || arguments->noname || arguments->nounit \
              || arguments->timestamp != '\0' || arguments->timeout != -1 || arguments->date || arguments->time || arguments->localdate \
-             || arguments->localtime || arguments->fieldSeparator != ' ' || arguments->inputSeparator != ' ' || arguments->numUpdates != -1\
+             || arguments->localtime || arguments->fieldSeparator != 0 || arguments->inputSeparator != ' ' || arguments->numUpdates != -1\
              || arguments->parseArray || arguments->outNelm != -1 || arguments->nord)){
          warnPrint("The only options allowed for cainfo are -w and -v. Ignoring the rest.\n");
      }
@@ -532,6 +535,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
          arguments->nostat = false;
      }
      if (arguments->hex + arguments->bin + arguments->oct > 1 ) {
+         debugPrint("hex:%i,bin:%i,oct:%i", arguments->hex, arguments->bin,arguments->oct);
          arguments->hex = false;
          arguments->bin = false;
          arguments->oct = false;
@@ -564,6 +568,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
             if (arguments->tool == cawait)                            fprintf(stderr, "One of the PVs is missing the condition ('%s -h' for help).\n", argv[0]);
             return false;
         }
+
         *nChannels = (argc - optind) / 2;	/* half of the args are PV names, rest conditions/values */
     }
 
@@ -598,12 +603,9 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
         if (arguments->tool == caput || arguments->tool == caputq){
             channels[i].inNelm = 1;
 
-            /* allocate pointer */
-            channels[i].writeStr = callocMustSucceed (channels[i].inNelm, sizeof(char*), "parseChannels");
-
-            /* store the pointer to correct argv to channels[i].writeStr[0].
-             * We will check for arrays later when we know ic channel is an array */
-            channels[i].writeStr[0] = argv[optind+1];
+             /* store the pointer to correct argv to channels[i].inpStr.
+             * We will check for arrays later when we know if channel is an array */
+            channels[i].inpStr = argv[optind+1];
 
 
             /* finally advance to the next argument */
@@ -623,24 +625,29 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
     return success;
 }
 
-bool parseAsArray(struct channel * ch, arguments_T * arguments){
-    debugPrint("parseAsArray()\n");
-    /**
-     * Checks if IOC channel is an array or if -a argument. If so, parses the string in
-     * ch->writeStr[0] as an array and puts splited strings back to ch->writeStr[].
-     */
 
-    /* check if the connected channel has more than one elements or if -a
-     * and not -s argument. If -s interpret as one long string
-     */
+bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, arguments_T * arguments){
+    /* convert input string to the baseType */
+    debugPrint("castStrToDBR() - start\n");
+
+    int base = 0;   /*  used for number conversion in strto* functions */
+    char *endptr;   /*  used in strto* functions */
+    bool success = true;
+    unsigned long j;
+    char ** str; /* holds pointers to parts of the string in tempstr */
+    char * tempstr;
+
+    /* tokenize in case of an array */
+
+
     if((ch->count > 1 && !arguments->str) || arguments->parseArray)
     {
         char inSep[2] = {arguments->inputSeparator, 0};
         size_t j;
 
-        /* first count the number of arguments */
-        char* tempstr = callocMustSucceed(strlen(ch->writeStr[0])+1, sizeof(char), "parseArray");
-        strcpy(tempstr, ch->writeStr[0]);
+        /* first count the number of values */
+        tempstr = callocMustSucceed(strlen(ch->inpStr)+1, sizeof(char), "parseArray");
+        strcpy(tempstr, ch->inpStr);
         j=0;
         char *token = strtok(tempstr, inSep);
         while(token) {
@@ -648,67 +655,63 @@ bool parseAsArray(struct channel * ch, arguments_T * arguments){
             token = strtok(NULL, inSep);
         }
         ch->inNelm = j;
-        strcpy(tempstr, ch->writeStr[0]); /* points to string allocated in argv*/
-        debugPrint("parseAsArray() - tempstr: %s\n", tempstr);
 
-        /* re-allocate pointer array */
-        ch->writeStr = realloc(ch->writeStr, ch->inNelm * sizeof(char*));
-        if(ch->writeStr==NULL){
+        /* allocate pointer array */
+        str = callocMustSucceed(ch->inNelm, sizeof(char*), "Can't allocate  tokens");
+        if(str==NULL){
             free(tempstr);
             ch->inNelm = 1;
-            cantProceed("Error at reallocating ch->writestr");
+            cantProceed("Error at allocating tokens");
             return false;
         }
-        /* extract arguments */
-        token = strtok(ch->writeStr[0], inSep);
+
+        /* allocate memory at tokens[0] for whole string*/
+        strcpy(tempstr, ch->inpStr);
+        debugPrint("parseAsArray() - tempstr: %s\n", tempstr);
+
+        /* extract string values */
+        token = strtok(tempstr, inSep);
         j=0;
+
         while(token) {
-            truncate(token);
-            debugPrint("parseAsArray() - token: %s\n", token);
-            ch->writeStr[j] = token; /* points to string allocated in argv*/
+            str[j]= token;
+            debugPrint("parseAsArray() - token: %s\n", str[j]);
             j++;
             token = strtok(NULL, inSep);
         }
-        /* cleanup */
-        free(tempstr);
-        return true;
+    }else{
+        debugPrint("parseAsArray() - not an array \n");
+        str = callocMustSucceed(1, sizeof(char*), "Can't allocate str in castStrToDBR");
+        str[0] = ch->inpStr; /* points to somewhere to argv */
     }
 
-    return true;
-}
 
-
-bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, arguments_T * arguments){
-    debugPrint("castStrToDBR() - start\n");
-    /* convert input string to the baseType */
-    *data = callocMustSucceed(*nelm, dbr_size[baseType], "castStrToDBR");
-    int base = 0;   /*  used for number conversion in strto* functions */
-    char *endptr;   /*  used in strto* functions */
-    bool success = true;
-    unsigned long j;
+    /* allocate output buffer */
+    debugPrint("castStrToDBR() - allocate data with baseType %s and nelm %i\n", dbr_type_to_text(*pBaseType), ch->inNelm);
+    *data = callocMustSucceed(ch->inNelm, dbr_size[*pBaseType], "castStrToDBR");
 
     /* set up numeric base for sring conversion */
     if(arguments->bin) base = 2;
     else if(arguments->oct) base = 8;
     else if(arguments->hex) base = 16;
 
-    switch (baseType){
+    switch (*pBaseType){
     case DBR_INT:/* and short */
-        for (j=0; j<*nelm; ++j) {
+        for (j=0; j<ch->inNelm; ++j) {
             ((dbr_int_t *)(*data))[j] = (dbr_int_t)strtoll(str[j], &endptr, base);
             /* if a number before . is found it is also ok */
             if (endptr == str[j] || !(*endptr == '\0' || *endptr == '.') ) {
-                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(*pBaseType));
                 success = false;
             }
         }
         break;
 
     case DBR_FLOAT:
-        for (j=0; j<*nelm; ++j) {
+        for (j=0; j<ch->inNelm; ++j) {
             ((dbr_float_t *)(*data))[j] = (dbr_float_t)strtof(str[j], &endptr);
             if (endptr == str[j] || *endptr != '\0') {
-                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(*pBaseType));
                 success = false;
             }
         }
@@ -717,98 +720,118 @@ bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, argum
     case DBR_ENUM:
         ;/* check if put data is provided as a number */
         bool isNumber = true;
-        for (j=0; j<*nelm; ++j) {
-            ((dbr_enum_t *)(*data))[j] = (dbr_enum_t)strtoul(str[j], &endptr, base);
-            if (endptr == str[j] || !(*endptr == '\0' || *endptr == '.')) {
-                isNumber = false;
+        if(!arguments->str){
+            for (j=0; j<ch->inNelm; ++j) {
+                ((dbr_enum_t *)(*data))[j] = (dbr_enum_t)strtoul(str[j], &endptr, base);
+                if (endptr == str[j] || *endptr ) {
+                    if(arguments->num){
+                        errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(*pBaseType));
+                        break;
+                    }else{
+                        isNumber = false;
+                    }
+                }
             }
+        }else{
+            isNumber = false;
         }
 
         /*  if enum is entered as a string, reallocate memory and go to case DBR_STRING */
         if (!isNumber) {
-            baseType = DBR_STRING;
-
-            free(data);
-            *data = callocMustSucceed(*nelm, dbr_size[baseType], "castStrToDBR");
+            *pBaseType = DBR_STRING;
+            debugPrint("case DBR_ENUM() - string \n");
+            free(*data);
+            *data = callocMustSucceed(ch->inNelm, dbr_size[*pBaseType], "castStrToDBR");
         }
         else {
             break;
         }
 
     case DBR_STRING:
-        for (j=0; j<*nelm; ++j) {
+        for (j=0; j<ch->inNelm; ++j) {
             int length = truncate(str[j]); /* truncate to MAX_STRING_SIZE */
             debugPrint("truncated string: %s\n", str[j]);
             strncpy(((dbr_string_t *)(*data))[j], str[j], length);
         }
         break;
 
-    case DBR_CHAR:{
-            /*  count max possible number of characters to write */
-            size_t charsInStr = 0;
-            size_t charsPerStr[*nelm];
-            size_t k = 0; /*index*/
-            long number = 0;
-            double d = 0;
-            for (j=0; j < *nelm; ++j) {
-                charsPerStr[j] = strlen(str[j]);
-                charsInStr += charsPerStr[j];
-            }
+    case DBR_CHAR:
+        debugPrint("castStrToDBR_CHAR() - start\n");
+        size_t charsInStr = 0;
+        size_t j, k = 0; /*index*/
+        long number = 0;
+        bool isStr = arguments->str;
 
-
-            if (charsInStr != *nelm) { /*  don't fiddle with memory if we don't have to */
-                free(*data);
-                *data = callocMustSucceed(charsInStr, dbr_size[baseType], "castStrToDBR"); /* worst case */
-            }
-
-            charsInStr = 0;
-            for (j=0; j<*nelm; ++j) {
-                /* parse as integer */
-                if(!arguments->str || arguments->num){
-                    number = (dbr_enum_t)strtoul(str[j], &endptr, base);
-                    if (endptr != str[j] && *endptr == '\0'  && number >=0 && number < 256) {
-                        /* is a valid 8 bit number */
-                        ((dbr_char_t *)(*data))[charsInStr] = (dbr_char_t)(char)number;
-                        charsInStr ++;
-                        continue;
-                    }else if(arguments->num || base != 0)
-                        warnPeriodicPrint("%s can not be parsed as an 8 bit integer\n", str[j]);
-
+        charsInStr = 0;
+        for (j=0; j < ch->inNelm; j++) {
+            debugPrint("castStrToDBR_CHAR() - try to parse %s\n", str[j]);
+            /* try to parse all as 8 bit integer */
+            if(!isStr || arguments->num || base != 0){
+                number = (dbr_enum_t)strtoul(str[j], &endptr, base);
+                if (endptr != str[j] && *endptr == '\0'  && number >=0 && number < 256) {
+                    /* is a valid 8 bit number */
+                    ((dbr_char_t *)(*data))[j] = (dbr_char_t)(char)number;
+                    charsInStr ++;
+                    continue;
+                }else{
+                    if(arguments->num || base != 0){
+                        errPrint("%s can not be parsed as an 8 bit integer\n", str[j]);
+                        return false; /* break if one element can not be parsed */
+                    }else if (arguments->parseArray){
+                        /* array specified - if the element can not be parsed as number just take the first character from it as it is*/
+                        ((dbr_char_t *)(*data))[j] = (dbr_char_t)str[j][0];
+                    }
+                    else{
+                        isStr = true;
+                        break; /* break if one element can not be parsed */
+                    }
                 }
-                /*  handle as string, store all chars to write */
-                for (size_t k = 0; k < charsPerStr[j]; k++) {
-                    ((dbr_char_t *)(*data))[charsInStr] = (dbr_char_t)str[j][k];
-                    charsInStr++;
-                }
-
+            }else if(isStr && arguments->parseArray){
+                /* string and array specified - take the first character from each token as it is*/
+                ((dbr_char_t *)(*data))[j] = str[j][0];
             }
-            *nelm = charsInStr;
+        }
+
+        /*  handle as string if string */
+        if(isStr && !arguments->parseArray){
+            debugPrint("castStrToDBR_CHAR() - is long string %s\n", ch->inpStr);
+            /* reallocate data */
+            free(*data);
+            size_t charsInStr = strlen(ch->inpStr)+1; /* worst case */
+            *data = callocMustSucceed(charsInStr , dbr_size[DBR_CHAR], "Can not allocate data buffer in castStrToDBR_CHAR");
+
+            for (k = 0; k < charsInStr; k++) {
+                ((dbr_char_t *)(*data))[k] = (dbr_char_t)ch->inpStr[k];
+            }
+
+            ch->inNelm = charsInStr;
         }
         break;
 
     case DBR_LONG:
-        for (j=0; j<*nelm; ++j) {
+        for (j=0; j<ch->inNelm; ++j) {
             ((dbr_long_t *)(*data))[j] = (dbr_long_t)strtoll(str[j], &endptr, base);
             /* if a number before . is found it is also ok */
             if (endptr == str[j] || !(*endptr == '\0' || *endptr == '.')) {
-                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(*pBaseType));
                 success = false;
             }
         }
         break;
 
     case DBR_DOUBLE:
-        for (j=0; j<*nelm; ++j) {
+        for (j=0; j< ch->inNelm; j++) {
             ((dbr_double_t *)(*data))[j] = (dbr_double_t)strtod(str[j], &endptr);
             if (endptr == str[j] || *endptr != '\0') {
-                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(baseType));
+                errPrint("Impossible to convert input %s to format %s\n",str[j], dbr_type_to_text(*pBaseType));
                 success = false;
+                break;
             }
         }
         break;
 
     default:
-        errPrint("Can not print %s DBR type (DBR numeric type code: %"PRId32"). \n", dbr_type_to_text(baseType), baseType);
+        errPrint("Can not print %s DBR type (DBR numeric type code: %"PRId32"). \n", dbr_type_to_text(*pBaseType), *pBaseType);
         success = false;
     }
 
@@ -821,6 +844,7 @@ bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, argum
 * Supported operators: >,<,<=,>=,==,!=,!, ==A...B(in interval), !=A...B(out of interval), !A...B (out of interval). */
 bool cawaitParseCondition(struct channel *channel, char *str)
 {
+    debugPrint("cawaitParseCondition()\n");
     enum operator op;
     double arg1;
     double arg2 = 0;
@@ -849,23 +873,26 @@ bool cawaitParseCondition(struct channel *channel, char *str)
         op = operator_eq;
     }
 
-
-    char *token = strtok(str, "...");
+    char *token;
     char *endptr;
 
     arg1 = strtod(str, &endptr);
-    if (endptr == token || *endptr != '\0') {
+    if (endptr == str) {
         errPrint("Invalid operand in condition.\n");
         return false;
     }
-
-    token = strtok(NULL, "...");
-    if (op != operator_eq && op != operator_neq && token) {
-        errPrint("Invalid syntax for interval condition.\n");
-        return false;
-    }
-    else if(token) {
-        arg2 = strtod(token, &endptr);
+    debugPrint("endptr: %s\n", endptr);
+    if (removePrefix(&endptr, "...") || removePrefix(&endptr, "..")) {
+        if (!*endptr){ /*if end of the string something is missing*/
+             errPrint("Second operand is missing.\n");
+             return false;
+        }
+        if (op != operator_eq && op != operator_neq) {
+            errPrint("Invalid syntax for interval condition.\n");
+            return false;
+        }
+        str=endptr;
+        arg2 = strtod(str, &endptr);
         if (endptr == str || *endptr) {
             errPrint("Invalid second operand for interval condition.\n");
             return false;
@@ -873,6 +900,9 @@ bool cawaitParseCondition(struct channel *channel, char *str)
         /* we have an interval */
         if(op==operator_eq)  op = operator_in;
         if(op==operator_neq) op = operator_out;
+    }else if(*endptr){
+        errPrint("Invalid syntax in condition.\n");
+        return false;
     }
 
     /*  if interval make the first operand allways smaller one*/

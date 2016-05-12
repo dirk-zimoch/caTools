@@ -110,15 +110,14 @@ static void caReadCallback (evargs args){
 static void caWriteCallback (evargs args) {
     debugPrint("caWriteCallback()\n");
     /*check if status is ok */
-    if (args.status != ECA_NORMAL){
-        errPrint("Error in write callback. %s.\n", ca_message(args.status));
-        return;
-    }
-
     struct channel *ch = (struct channel *)args.usr;
     debugPrint("caWriteCallback() callbacks to process: %i\n", ch->nRequests);
     ch->nRequests --;
     ch->base.done = true;
+    if (args.status != ECA_NORMAL){
+        errPrint("Error in write callback. %s.\n", ca_message(args.status));
+        return;
+    }
     if(ch->nRequests == 0) ch->state = put_done;
 }
 
@@ -176,7 +175,7 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
 
     ch->state=put_waiting;
     /* request ctrl type */
-    int32_t baseType = ca_field_type(ch->base.id);
+    short baseType = ca_field_type(ch->base.id);
 
     ch->nRequests=0;
    
@@ -184,11 +183,8 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
 
         void * input;
 
-        /* parse as array if needed */
-        if(!parseAsArray(ch, arguments)) return false;
-
         /* parse input strings to dbr types */
-        if (castStrToDBR(&input, ch->writeStr, &ch->inNelm, baseType, arguments)) {
+        if (castStrToDBR(&input, ch, &baseType, arguments)) {
             if (ch->inNelm > ch->count){
                 warnPrint("Number of input elements is: %i, but channel can accept only %i.\n", ch->inNelm, ch->count);
                 ch->inNelm = ch->count;
@@ -286,7 +282,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     if ((arguments->time || arguments->date || arguments->timestamp) &&
             arguments->dbrRequestType == -1 )
     {
-        if (arguments->str && ca_field_type(reqChid) == DBF_ENUM){
+        if (ca_field_type(reqChid) == DBF_ENUM && !(arguments->num)){
             /* if enum && s, use time_string */
             reqType = DBR_TIME_STRING;
         }
@@ -901,7 +897,6 @@ void allocateStringBuffers(u_int32_t nChannels){
 void freeChannels(struct channel * channels, u_int32_t nChannels){
     /* free channels */
     for (size_t i=0 ;i < nChannels; ++i) {
-        free(channels[i].writeStr); /* elements of writeStr point to parts of **argv */
 
         if ( arguments.tool == cagets || arguments.tool == cado )
             free(channels[i].proc.name);
@@ -946,7 +941,7 @@ void freeStringBuffers(u_int32_t nChannels){
     free(g_lastUpdate);
     free(g_firstUpdate);
 
-    free(g_errorTimestamp);
+    /*free(g_errorTimestamp);*/
 }
 
 /**
@@ -1011,13 +1006,17 @@ int main ( int argc, char ** argv ){
 
     /* cleanup */
     ca_disconnect:
+        debugPrint("main() - ca_disconnect\n");
         success = caDisconnect(channels, nChannels);
         ca_context_destroy();
     clear_global_strings:
+        debugPrint("main() - clear_global_strings\n");
         freeStringBuffers(nChannels);
     clear_channels:
+        debugPrint("main() - clear_channels\n");
         freeChannels(channels, nChannels);
     the_very_end:
+        debugPrint("main() - the_very_end\n");
         if (success) return EXIT_SUCCESS;
         else return EXIT_FAILURE;
 }

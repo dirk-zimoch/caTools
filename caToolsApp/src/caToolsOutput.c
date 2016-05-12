@@ -27,7 +27,7 @@ void printValue(evargs args, arguments_T *arguments){
     debugPrint("printValue() - baseType: %s\n", dbr_type_to_text(baseType));
 
     /* handle long strings */
-    if(baseType == DBR_CHAR &&
+    if(baseType == DBR_CHAR && !arguments->fieldSeparator &&
            !(arguments->bin || arguments->hex || arguments->oct || arguments->num) &&   /* no special numeric formating specified */
                 (ca_field_type(ch->base.id)==DBF_STRING ||   /* if base channel is DBF_STRING*/
                  arguments->str ||                           /* if requested string formatting */
@@ -45,6 +45,7 @@ void printValue(evargs args, arguments_T *arguments){
     for (j=0; j<args.count; ++j){
 
         if (j){
+            if(arguments->fieldSeparator==0)arguments->fieldSeparator=' '; /* use space as default separator */
             printf ("%c", arguments->fieldSeparator); /* insert element separator */
         }
 
@@ -157,7 +158,7 @@ void printValue(evargs args, arguments_T *arguments){
                 if (dbr_type_is_GR(args.type)) {
                     if (v >= ((struct dbr_gr_enum *)args.dbr)->no_str) {
                         printf("Enum index value %d greater than the number of strings", v);
-                    }
+                    }debugPrint("printValue() - case DBR_CHAR - bin\n");
                     else{
                         printf("\"%.*s\"", MAX_ENUM_STRING_SIZE, ((struct dbr_gr_enum *)args.dbr)->strs[v]);
                     }
@@ -191,18 +192,24 @@ void printValue(evargs args, arguments_T *arguments){
         }
         case DBR_CHAR:{
            debugPrint("printValue() - case DBR_CHAR\n");
-           if (arguments->hex){
+            if (arguments->hex && !arguments->str){
+                debugPrint("printValue() - case DBR_CHAR - hex\n");
                 printf("0x%" PRIx8, ((u_int8_t*) value)[j]);
             }
-            else if (arguments->oct){
+            else if (arguments->oct && !arguments->str){
+                debugPrint("printValue() - case DBR_CHAR - oct\n");
                 printf("0o%" PRIo8, ((u_int8_t*) value)[j]);
             }
-            else if (arguments->bin){
+            else if (arguments->bin && !arguments->str){
+                debugPrint("printValue() - case DBR_CHAR - bin\n");
                 printf("0b");
                 printBits(((u_int8_t*) value)[j]);
             }
-            else{    /* output as a number */
+            else if (!arguments->str){    /* output as a number */
+                debugPrint("printValue() - case DBR_CHAR - num\n");
                 printf("%" PRIu8, ((u_int8_t*) value)[j]);
+            }else{ /*print as char*/
+               fputc(((u_int8_t*) value)[j],stdout);
             }
             break;
         }

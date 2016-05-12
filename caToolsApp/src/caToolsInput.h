@@ -43,20 +43,10 @@ bool cawaitParseCondition(struct channel *channel, char *str);
 /**
  * @brief castStrToDBR convert command line argument string to epics DBR type
  * @param data pointer to the data pointer
- * @param str (array of string) line argument values for one channel
- * @param nelm number of elements to write
- * @param baseType base dbr type of the epics channel
+ * @param ch pointer to the channel struct
  * @param arguments - arguments struct
  * @return true if everything went ok
  */
-bool castStrToDBR(void ** data, char **str, size_t * nelm, short baseType, arguments_T * arguments);
-
-/**
- * @brief parseAsArray - Checks if input value should be parsed as an array and fills up ch->writeStr
- * @param ch pointer to the channel struct
- * @param arguments pointer to the arguments struct
- * @return true on success
- */
-bool parseAsArray(struct channel * ch, arguments_T * arguments);
+bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, arguments_T * arguments);
 
 #endif

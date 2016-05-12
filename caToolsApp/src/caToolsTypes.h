@@ -177,7 +177,7 @@ struct channel {
     size_t          outNelm;    /* requested number of elements for reading */
     int             i;          /* process variable id */
     int             nRequests;  /* holds the number of requests to finish */
-    char          **writeStr;   /* value(s) to be written */
+    char            *inpStr;      /* pointer to the input in argv for this chanel */
     enum operator   conditionOperator;    /* cawait operator */
     double          conditionOperands[2]; /* cawait operands */
     int             status;          /*  status */
