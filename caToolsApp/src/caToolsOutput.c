@@ -210,15 +210,15 @@ void printValue(evargs args, arguments_T *arguments){
         }
         case DBR_CHAR:{
            debugPrint("printValue() - case DBR_CHAR\n");
-            if (arguments->hex && !arguments->str){
+            if (arguments->hex){
                 debugPrint("printValue() - case DBR_CHAR - hex\n");
                 printf("0x%" PRIx8, ((u_int8_t*) value)[j]);
             }
-            else if (arguments->oct && !arguments->str){
+            else if (arguments->oct){
                 debugPrint("printValue() - case DBR_CHAR - oct\n");
                 printf("0o%" PRIo8, ((u_int8_t*) value)[j]);
             }
-            else if (arguments->bin && !arguments->str){
+            else if (arguments->bin){
                 debugPrint("printValue() - case DBR_CHAR - bin\n");
                 printf("0b");
                 printBits(((u_int8_t*) value)[j]);
@@ -227,7 +227,7 @@ void printValue(evargs args, arguments_T *arguments){
                 debugPrint("printValue() - case DBR_CHAR - num\n");
                 printf("%" PRIu8, ((u_int8_t*) value)[j]);
             }else{ /*print as char*/
-               fputc(((u_int8_t*) value)[j],stdout);
+               printf("\'%c\'", ((char*) value)[j]);
             }
             break;
         }

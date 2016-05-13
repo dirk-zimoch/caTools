@@ -549,7 +549,9 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
          warnPrint("Options -hex and -bin and -oct are mutually exclusive. Ignoring.\n");
      }
      if (arguments->num && arguments->str){
-         warnPrint("Options -num and -s are mutually exclusive.\n");
+         warnPrint("Options -num (-int, -bin, -hex, -oct) and -s are mutually exclusive.\n"
+                   "         Ignoring -s.\n");
+         arguments->str = false;
      }
      if (arguments->plain || arguments->tool == cainfo) {
          if (arguments->tool != cainfo) warnPrint("-plain option overrides all formatting switches.\n");
@@ -598,6 +600,7 @@ bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *ar
     for (i = 0; optind < argc; i++, optind++) {
         channels[i].base.name = argv[optind];
         channels[i].prec = 6; /* default precision if none obtained from the IOC*/
+
 
         if(strlen(channels[i].base.name) > LEN_RECORD_NAME + LEN_RECORD_FIELD + 1) { /* worst case scenario: longest name + longest field + '.' that separates name and field */
             errPrint("Record name over %d characters: %s - aborting", LEN_RECORD_NAME + LEN_RECORD_FIELD + 1, channels[i].base.name);
