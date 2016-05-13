@@ -39,6 +39,8 @@ Following operators are supported:  `>, <, <=, >=, ==, !=, ==A...B, !=A...B`.
 
         cainfo [flags] <pv> [<pv> ...]
 
+## Default parsing and formatting
+If no flags are set catools will allways try to parse the input as number(s). If number(s) could not be found the input will be interpreted as string where possible (enum and char field types). Similarly catools will check for char arrays if the output can be printed as ascii. I this case it will be printed as string or a n array of numbers otherwise. To force parsing and formating as strings use `-s` flag, and use `-num`, `-bin`, `-hex` or `-oct` to force numeric parsing and formatting.
 
 ## caWait examples
 caWait tool can be used in scripts, as it will exit upon meeting user specified condition. Here are a few examples:

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <string.h>
+#include "cantProceed.h"
 #include "caToolsTypes.h"
 #include "caToolsUtils.h"
 #include "caToolsInput.h"
@@ -58,7 +59,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  caput -inSep ; pvA '1;2;3' pvB '4;5;6'\n", stream);
     }
     if (tool == cado) {
-        fputs("Writes 1 to PROC, but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
+        fputs("Writes 1 to PROC field, does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
     }
     if (tool == camon) {
         fputs("Monitors the PV(s).\n", stream);
@@ -67,7 +68,8 @@ void usage(FILE *stream, enum tool tool, char *programName){
          fputs("Monitors the PV(s), but only displays the values when they match the provided conditions. When at least one of the conditions is true, the program exits." \
                "The conditions are specified as a string containing the operator together with the values.\n", stream);
         fputs("Following operators are supported:  >, <, <=, >=, ==, !=, !, ==A...B(in interval), !=A...B or !A...B (out of interval). For example, "\
-                "cawait pv '==1...5' exits after pv value is inside the interval [1,5].\n", stream);
+                "cawait pv '==1...5' exits after pv value is inside the interval [1,5]."
+              "For string values only ==, != and ! operators are supported\n", stream);
     }
     if (tool == cainfo) {
         fputs("Displays detailed information about the provided records.\n", stream);
@@ -114,22 +116,23 @@ void usage(FILE *stream, enum tool tool, char *programName){
     /* flags associated with writing */
     if (tool == caput || tool == caputq) {
         fputs("Parsing input : Array format options \n", stream);
-        fputs("  -a                   Force parsing as array separator (-inSep argument) is used to parse\n"
-              "                       elements in an array.\n", stream);
+        fputs("  -a                   Force parsing as array.\n", stream);
         fputs("  -inSep <separator>   Separator used between array elements in <value>.\n", stream);
         fputs("                       If not specified, space is used.\n", stream);
         fputs("                       If specified, '-a' option is automatically used. \n", stream);
     }
-    if (tool == caput || tool == caputq || tool == cawait) {
+    if (tool == caput || tool == caputq ||tool == cawait) {
         fputs("Parsing input : Other format specifiers \n", stream);
         fputs("  -num                 Interpret value(s) as numbers\n", stream);
-        fputs("  -bin                 Sets the numeric base for integers to 2.\n"
-              "                       Binary input without any prefix or suffix.\n", stream);
-        fputs("  -hex                 Sets the numeric base for integers to 16.\n"
-              "                       Hexadcimal input, 0x, or 0X prefix is optional\n", stream);
-        fputs("  -oct                 Sets the numeric base for integers to \n"
-              "                       Octal input without any prefix or suffix.\n", stream);
-        fputs("  -s                   Interpret value(s) as string.\n", stream);
+        fputs("  -s                   Interpret value(s) as string or chars.\n", stream);
+        if(tool != cawait){
+            fputs("  -bin                 Sets the numeric base for integers to 2.\n"
+                  "                       Binary input without any prefix or suffix.\n", stream);
+            fputs("  -hex                 Sets the numeric base for integers to 16.\n"
+                  "                       Hexadcimal input, 0x, or 0X prefix is optional\n", stream);
+            fputs("  -oct                 Sets the numeric base for integers to \n"
+                  "                       Octal input without any prefix or suffix.\n", stream);
+        }
     }
 
     /*  flags associated with monitoring */
@@ -167,6 +170,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -bin                 Display integer values in binary format.\n", stream);
         fputs("  -hex                 Display integer values in hexadecimal format.\n", stream);
         fputs("  -oct                 Display integer values in octal format.\n", stream);
+        fputs("  -int, -num           Display enum/char values as numbers.\n", stream);
         fputs("  -s                   Interpret value(s) as char (number to ascii).\n", stream);
 
         fputs("Formating output : Floating point format options\n", stream);
@@ -182,9 +186,6 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("                                 round: round to nearest (default).\n", stream);
         fputs("                                 ceil: round up,\n", stream);
         fputs("                                 floor: round down,\n", stream);
-
-        fputs("Formating output : Enum/char format options\n", stream);
-        fputs("  -int, -num           Display enum/char values as numbers.\n", stream);
 
         fputs("Formating output : Array format options\n", stream);
         fputs("  -a                   Display as array.\n", stream);
@@ -532,7 +533,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
      else if ((arguments->parseArray || arguments->inputSeparator !=' ') && (arguments->tool != caput && arguments->tool != caputq)){
          warnPrint("Option -a and -inSep can only be specified with caput or caputq.\n");
      }
-     if ((arguments->outNelm != -1 || arguments->num !=false || arguments->hex !=false || arguments->bin !=false || arguments->oct !=false)\
+     if ((arguments->outNelm > 0 || arguments->num !=false || arguments->hex !=false || arguments->bin !=false || arguments->oct !=false)\
              && (arguments->tool == cado || arguments->tool == caputq)){
          warnPrint("Option -outNelm, -num, -hex, -bin and -oct cannot be specified with cado or caputq, because they have no output.\n");
      }
@@ -591,7 +592,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
 
 bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *arguments, struct channel *channels){
     debugPrint("parseChannels()\n");
-    u_int32_t i,j;                      /* counter */
+    u_int32_t i;                      /* counter */
 	bool success = true;
     /* Copy PV names from command line */
     for (i = 0; optind < argc; i++, optind++) {
@@ -833,6 +834,13 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
         success = false;
     }
 
+    /* cleanup */
+
+    if(str[0] != ch->inpStr){
+        free(tempstr);
+    }
+    free(str);
+
     debugPrint("castStrToDBR() - end\n");
     return success;
 }
@@ -884,7 +892,6 @@ bool cawaitParseCondition(struct channel *channel, char **str, arguments_T * arg
         }
     }
 
-    char *token;
     char *endptr;
 
     bool couldBeString = (operator_eq || operator_neq) && !arguments->num &&
