@@ -637,12 +637,12 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
     bool success = true;
     unsigned long j;
     char ** str; /* holds pointers to parts of the string in tempstr */
-    char * tempstr;
+    char * tempstr = NULL;
 
     /* tokenize in case of an array */
+    bool tokenize = (ch->count > 1 && !arguments->str) || arguments->parseArray;
 
-
-    if((ch->count > 1 && !arguments->str) || arguments->parseArray)
+    if(tokenize)
     {
         char inSep[2] = {arguments->inputSeparator, 0};
         size_t j;
@@ -689,7 +689,7 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
 
 
     /* allocate output buffer */
-    debugPrint("castStrToDBR() - allocate data with baseType %s and nelm %i\n", dbr_type_to_text(*pBaseType), ch->inNelm);
+    debugPrint("castStrToDBR() - allocate data with baseType %s and nelm %zu\n", dbr_type_to_text(*pBaseType), ch->inNelm);
     *data = callocMustSucceed(ch->inNelm, dbr_size[*pBaseType], "castStrToDBR");
 
     /* set up numeric base for sring conversion */
@@ -839,7 +839,7 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
 
     /* cleanup */
 
-    if(str[0] != ch->inpStr){
+    if(tokenize && tempstr != NULL){
         free(tempstr);
     }
     free(str);

@@ -182,7 +182,7 @@ void printValue(evargs args, arguments_T *arguments){
             debugPrint("printValue() - case DBR_ENUM\n");
 
             if (!arguments->num) { /*  if not requested as a number check if we can get string */
-                char * str;
+                char * str = NULL;
                 if(getEnumString(&str, &args, j)){
                     printf("\"%.*s\"", MAX_ENUM_STRING_SIZE, str);
                     break;
@@ -553,7 +553,7 @@ bool cawaitEvaluateCondition(struct channel * ch, evargs args, arguments_T * arg
 
     /*convert the value to double */
     double dblValue;
-    char * strVal;
+    char * strVal = NULL;
     int32_t baseType = args.type % (LAST_TYPE+1);
     switch (baseType){
     case DBR_DOUBLE:

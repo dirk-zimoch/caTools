@@ -602,7 +602,7 @@ void channelInitCallback(struct connection_handler_args args){
 
     if(args.op == CA_OP_CONN_UP){ /* connected */
         debugPrint("channelInitCallback() - connected\n");
-        debugPrint("channelInitCallback() - COUNT: %i\n", ca_element_count(field->id));
+        debugPrint("channelInitCallback() - COUNT: %lu\n", ca_element_count(field->id));
         if (&ch->base == field){
             /* base channel */
             ch->count = ca_element_count(field->id);
