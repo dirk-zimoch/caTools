@@ -1,4 +1,4 @@
-/* This file contains declaration of global variables. 
+/* This file contains declaration of global variables.
 This is included from caToolsMain.c only. */
 
 #include "caToolsTypes.h"
