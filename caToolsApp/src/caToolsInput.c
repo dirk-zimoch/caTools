@@ -954,7 +954,7 @@ bool cawaitParseCondition(struct channel *channel, char **str, arguments_T * arg
         }
     }
 
-    /*  if interval make the first operand allways smaller one*/
+    /*  if interval make the first operand always smaller one*/
     if( ( op==operator_in || op==operator_out ) && ( arg1 > arg2 ) ){
         channel->conditionOperands[0] = arg2;
         channel->conditionOperands[1] = arg1;
