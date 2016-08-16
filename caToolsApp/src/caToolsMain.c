@@ -161,8 +161,8 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
     short baseType = ca_field_type(ch->base.id);
 
     ch->nRequests=0;
-   
-   if (arguments->tool == caput || arguments->tool == caputq) {        
+
+   if (arguments->tool == caput || arguments->tool == caputq) {
 
         void * input;
 
@@ -515,15 +515,15 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
     u_int32_t i;
 
     /* generate write requests  */
-    if (arguments.tool == caput || 
-        arguments.tool == caputq || 
+    if (arguments.tool == caput ||
+        arguments.tool == caputq ||
         arguments.tool == cado ||
         arguments.tool == cagets)
     {
         for(i=0; i < nChannels; i++) {
             if (channels[i].base.connectionState != CA_OP_CONN_UP) {/*skip disconnected channels */
                 continue;
-            }            
+            }
             success &= caGenerateWriteRequests(&channels[i], &arguments);
         }
         /* if cado or caputq flush and exit right away */
@@ -538,7 +538,7 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
     /* generate read requests */
     if (success &&
         (arguments.tool == caget ||
-        arguments.tool == cagets || 
+        arguments.tool == cagets ||
         arguments.tool == caput  ||
         arguments.tool == camon ||
         arguments.tool == cawait)
@@ -554,10 +554,11 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
             if(success)
                 success &= caGenerateReadRequests(&channels[i], &arguments);
         }
+
+        /* wait for callbacks to finish before ending the program */
+        waitForCallbacks(channels, nChannels);
     }
 
-    /* wait for callbacks to finish before ending the program */
-    waitForCallbacks(channels, nChannels);
 
     /* call the spaghetti function if cainfo */
     if (arguments.tool == cainfo)
@@ -700,11 +701,11 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
         strcpy(ch->proc.name, ch->base.name); /*Consider using strn_xxxx everywhere */
         getBaseChannelName(ch->proc.name); /*append .PROC */
         strncat(ch->proc.name, ".PROC",LEN_FQN_NAME);
-        hasSiblings = initField(ch, &ch->proc);  
+        hasSiblings = initField(ch, &ch->proc);
     }
 
     /* open sibling channel for long strings */
-    if(ca_field_type(ch->base.id)==DBF_STRING && 
+    if(ca_field_type(ch->base.id)==DBF_STRING &&
         !isValField(ch->base.name) &&
             (arguments->tool == caget ||
             arguments->tool == cagets ||
@@ -730,7 +731,7 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
             strcpy(ch->fields[j].name, ch->base.name);
             getBaseChannelName(ch->fields[j].name);
             strcat(ch->fields[j].name, fields[j]);
-            hasSiblings = initField(ch, &ch->fields[j]);            
+            hasSiblings = initField(ch, &ch->fields[j]);
         }
     }
     return hasSiblings;
@@ -773,13 +774,18 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
         else
             printf("Process variable %s not connected.\n", channels[i].base.name);
     }
+
     if (siblings){
         /* if there are siblings, wait for them to connect or timeout*/
+        /* we also supress warning messages here. */
+        int temp_verbosity = g_verbosity;
+        g_verbosity = 0;
         waitForCallbacks(channels, nChannels);
+        g_verbosity = temp_verbosity;
         debugPrint("caInit() - Siblings connected\n");
         /* Note: it is valid that not all siblings get connected (e.g. logn string channel [$]) */
     }
-    
+
     return success;
 }
 
@@ -1013,8 +1019,6 @@ int main ( int argc, char ** argv ){
         goto clear_global_strings;
     }
 
-
-
     /* set cawait timeout time from now */
     if (arguments.timeout!=-1){
         /* set first */
@@ -1048,7 +1052,7 @@ int main ( int argc, char ** argv ){
         debugPrint("main() - clear_channels\n");
         freeChannels(channels, nChannels);
     the_very_end: /* tut prow! */
-		debugPrint("main() - the_very_end\n");
+        debugPrint("main() - the_very_end\n");
         if (success) return EXIT_SUCCESS;
         else return EXIT_FAILURE;
 }
