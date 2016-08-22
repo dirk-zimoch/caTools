@@ -57,7 +57,7 @@ void printValue(evargs args, arguments_T *arguments){
     value = dbr_value_ptr(args.dbr, args.type);
     baseType = dbr_type_to_DBF(args.type);   /*  convert appropriate TIME, GR, CTRL,... type to basic one */
     struct channel *ch = (struct channel *)args.usr;
-    
+
 
     debugPrint("printValue() - baseType: %s\n", dbr_type_to_text(baseType));
 
@@ -68,7 +68,7 @@ void printValue(evargs args, arguments_T *arguments){
                  (args.count > 1 && isPrintable((char *) value, (size_t) args.count)))/* if array returned and all characters are printable */
         )
     {  /* print as string */
-        printf("\"%.*s\"", (int) args.count, (char *) value); 
+        printf("\"%.*s\"", (int) args.count, (char *) value);
         return;
     }
 
@@ -114,7 +114,7 @@ void printValue(evargs args, arguments_T *arguments){
                     precision = -ch->prec;
                 }
                 if (arguments->plain) {
-                    /* print raw when -plain is used or no precision defined */
+                    /* print raw when -plain is used */
                     printf("%-f", valueDbl);
                 }else{
                     if (arguments->dblFormatType != '\0'){  /* if formatting arguments were used */

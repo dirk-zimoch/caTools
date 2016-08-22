@@ -207,7 +207,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
     int opt;                    /*  getopt() current option */
     int opt_long;               /*  getopt_long() current long option */
 
-	if (endsWith(argv[0],"caget")) arguments->tool = caget;
+    if (endsWith(argv[0],"caget")) arguments->tool = caget;
     if (endsWith(argv[0],"caput")) arguments->tool = caput;
     if (endsWith(argv[0],"cagets")) arguments->tool = cagets;
     if (endsWith(argv[0],"caputq")) arguments->tool = caputq;
@@ -515,11 +515,12 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
          return EXIT_FAILURE;
      }
      if(arguments->tool == cainfo && (arguments->str || arguments->num || arguments->bin  || arguments->hex || arguments->oct \
-             || arguments->dbrRequestType != -1 || arguments->prec != -1 || arguments->round != roundType_no_rounding || arguments->plain \
+             || arguments->dbrRequestType != -1 || arguments->round != roundType_no_rounding || arguments->plain \
              || arguments->dblFormatType != '\0' || arguments->stat || arguments->nostat || arguments->noname || arguments->nounit \
              || arguments->timestamp != '\0' || arguments->timeout != -1 || arguments->date || arguments->time || arguments->localdate \
              || arguments->localtime || arguments->fieldSeparator != 0 || arguments->inputSeparator != ' ' || arguments->numUpdates != -1\
-             || arguments->parseArray || arguments->outNelm != -1 || arguments->nord)){
+             || arguments->parseArray || arguments->outNelm > 0 || arguments->nord)){
+         /* arguments->prec is not checked here, since checking arguments->dblFormatType is also set when arguments->prec is set. */
          warnPrint("The only options allowed for cainfo are -w and -v. Ignoring the rest.\n");
      }
      else if (arguments->tool != camon){
@@ -556,7 +557,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
      if (arguments->plain || arguments->tool == cainfo) {
          if (arguments->tool != cainfo) warnPrint("-plain option overrides all formatting switches.\n");
          arguments->num =false; arguments->hex =false; arguments->bin = false; arguments->oct =false; arguments->str =false;
-         arguments->prec = -1;   /*  prec is also handled in printValue() */
+         /* arguments->prec is not checked here, since checking arguments->dblFormatType is also set when arguments->prec is set. */
          arguments->round = roundType_no_rounding;
          arguments->dblFormatType = '\0';
          arguments->fieldSeparator = ' ' ;
@@ -595,7 +596,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
 bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *arguments, struct channel *channels){
     debugPrint("parseChannels()\n");
     u_int32_t i;                      /* counter */
-	bool success = true;
+    bool success = true;
     /* Copy PV names from command line */
     for (i = 0; optind < argc; i++, optind++) {
         channels[i].base.name = argv[optind];
@@ -953,7 +954,7 @@ bool cawaitParseCondition(struct channel *channel, char **str, arguments_T * arg
         }
     }
 
-    /*  if interval make the first operand allways smaller one*/
+    /*  if interval make the first operand always smaller one*/
     if( ( op==operator_in || op==operator_out ) && ( arg1 > arg2 ) ){
         channel->conditionOperands[0] = arg2;
         channel->conditionOperands[1] = arg1;

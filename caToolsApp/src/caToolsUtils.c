@@ -1,14 +1,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h> 
+#include <ctype.h>
+#include <stdbool.h>
 #include "caToolsTypes.h"
 #include "caToolsUtils.h"
 
 
 
 bool removePrefix (char **data, char const *prefix) {
+    /* NOTE: data and prefix must be null terminated! */
     size_t pos = 0;
+
+    /* remove spaces before searching for prefix in data*/
+    while((*data)[0] != '\0' && isspace((*data)[0])) {
+        (*data)++;
+    }
+
     while (prefix[pos] != '\0') {
         if ((*data)[pos] != prefix[pos]) {
             return false;
@@ -44,12 +52,12 @@ void getBaseChannelName(char *name) {
 bool isValField(char *name) {
 
     if (endsWith(name, ".VAL")){
-    	return true;
+        return true;
     }
-	if (strchr(name, '.') == NULL){
-		return true;
-	}
-	return false;    
+    if (strchr(name, '.') == NULL){
+        return true;
+    }
+    return false;
 }
 
 size_t truncate(char *argument) {
