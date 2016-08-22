@@ -7,8 +7,10 @@ include $(TOP)/configure/CONFIG
 #=============================
 # Build the IOC application
 
+ifeq ($(OS_CLASS),Linux)
 PROD = caTools
 #caTools_PROD_VERSION += 1
+endif
 
 # Build the main IOC entry point on workstation OSs.
 caTools_SRCS += caToolsMain.c
@@ -28,8 +30,7 @@ include $(TOP)/configure/RULES
 #----------------------------------------
 #  ADD RULES AFTER THIS LINE
 
-
-ifneq ($(T_A),)
+ifeq ($(OS_CLASS),Linux)
 install: links
 endif
 
@@ -42,4 +43,3 @@ links:
 	ln -sf caTools $(INSTALL_BIN)/caput
 	ln -sf caTools $(INSTALL_BIN)/caputq
 	ln -sf caTools $(INSTALL_BIN)/cawait
-
