@@ -898,7 +898,7 @@ bool cawaitParseCondition(struct channel *channel, char **str, arguments_T * arg
 
     char *endptr;
 
-    bool couldBeString = (operator_eq || operator_neq) && !arguments->num &&
+    bool couldBeString = (op == operator_eq || op == operator_neq) && !arguments->num &&
             (channel->type == DBF_CHAR || channel->type == DBF_ENUM || channel->type == DBF_STRING);
 
     arg1 = strtod(*str, &endptr);
