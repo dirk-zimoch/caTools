@@ -910,7 +910,13 @@ bool cawaitParseCondition(struct channel *channel, char **str, arguments_T * arg
             channel->conditionOperator = op;
             return true;
         }else{
-            errPrint("Invalid operand in condition.\n");
+            if(couldBeString) {
+                errPrint("Invalid operand in condition.\n");
+            }
+            else {
+                errPrint("Invalid operator in condition. Only == and != can be used with string operands.\n");
+            }
+
             return false;
         }
     }
