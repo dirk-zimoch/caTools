@@ -281,7 +281,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         }
     }
 
-    /* create subscribtion in case of camon or cawait */
+    /* create subscription in case of camon or cawait */
     if( arguments->tool == camon || arguments->tool == cawait ){
         ch->nRequests=ch->nRequests+1;
         status = ca_create_subscription(reqType, ch->outNelm, reqChid, DBE_VALUE | DBE_ALARM , caReadCallback, ch, 0);
@@ -545,11 +545,12 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
        )
     {
         for(i=0; i < nChannels; i++) {
+            if(arguments.tool==cawait)
+                success &= cawaitParseCondition(&channels[i], &channels[i].inpStr, &arguments);
+
             if (channels[i].base.connectionState != CA_OP_CONN_UP) {/*skip disconnected channels */
                 continue;
             }
-            if(arguments.tool==cawait)
-                success &= cawaitParseCondition(&channels[i], &channels[i].inpStr, &arguments);
 
             if(success)
                 success &= caGenerateReadRequests(&channels[i], &arguments);
@@ -802,19 +803,6 @@ bool monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arg
 /*after -timeout is exceeded (cawait). */
     size_t i = 0;
 
-    /* exit monitor loop in case no channels are connected */
-    bool allDisconnected = true;
-    for(i = 0; i < nChannels; i++){
-        if(channels[i].state!=base_waiting){
-            allDisconnected = false;
-        }
-    }
-    if(allDisconnected){
-        g_runMonitor = false;
-        errPrint("Nothing to monitor - exiting.\n");
-        return false;
-    }
-
     while (g_runMonitor){
         ca_pend_event(CA_PEND_EVENT_TIMEOUT);
         /* connect channels that were not connected at the start of the program in caInit */
@@ -822,9 +810,6 @@ bool monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arg
             if(channels[i].state==base_created){
                 //Return value is not checked as it is ought to be
                 caGenerateReadRequests(&channels[i], arguments);
-            }
-            if(channels[i].state!=base_waiting){
-                allDisconnected = false;
             }
         }
 
