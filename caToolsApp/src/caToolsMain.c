@@ -1027,6 +1027,12 @@ int main ( int argc, char ** argv ){
     for(i=0; i < nChannels; i++) {
         if (channels[i].base.connectionState != CA_OP_CONN_UP) {
             nNotConnectedChannels++;
+#ifdef __linux__
+            /* Out of range exit values can result in unexpected exit codes. An exit value greater than 255 returns an exit code modulo 256. For example, exit 3809 gives an exit code of 225 (3809 % 256 = 225). */
+            if (nNotConnectedChannels == 255) {
+                break;
+            }
+#endif
         }
     }
 
