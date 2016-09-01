@@ -502,7 +502,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
             break;
         case 'h':               /* Print usage */
             usage(stdout, arguments->tool, argv[0]);
-            exit(EXIT_SUCCESS);
+            return true;
         default:
             usage(stderr, arguments->tool, argv[0]);
             return false;
@@ -512,7 +512,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
      /* check mutually exclusive arguments (without taking dbr type into account) */
      if (arguments->tool == tool_unknown){
          usage(stderr, arguments->tool,argv[0]);
-         return EXIT_FAILURE;
+         return false;
      }
      if(arguments->tool == cainfo && (arguments->str || arguments->num || arguments->bin  || arguments->hex || arguments->oct \
              || arguments->dbrRequestType != -1 || arguments->round != roundType_no_rounding || arguments->plain \

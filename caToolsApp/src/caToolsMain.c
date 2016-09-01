@@ -129,7 +129,7 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
         epicsTimeGetCurrent(&timeoutNow);
 
         if (epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
-            warnPrint("Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
+            debugPrint("waitForCallbacks - Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
             break;
         }
 
@@ -773,16 +773,12 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
         if (channels[i].base.connectionState == CA_OP_CONN_UP)
             siblings = initSiblings(&channels[i], &arguments);
         else
-            printf("Process variable %s not connected.\n", channels[i].base.name);
+            printf("Process variable not connected. (timed-out after %f second(s)): %s\n", arguments.caTimeout, channels[i].base.name);
     }
 
     if (siblings){
         /* if there are siblings, wait for them to connect or timeout*/
-        /* we also supress warning messages here. */
-        int temp_verbosity = g_verbosity;
-        g_verbosity = 0;
         waitForCallbacks(channels, nChannels);
-        g_verbosity = temp_verbosity;
         debugPrint("caInit() - Siblings connected\n");
         /* Note: it is valid that not all siblings get connected (e.g. logn string channel [$]) */
     }
@@ -969,11 +965,13 @@ void freeStringBuffers(u_int32_t nChannels){
  * @brief main reads arguments, allocates memory, calls ca* functions, frees memory and exits.
  * @param argc
  * @param argv
- * @return exit status
+ * @return exit status (the number of not connected channels, if any, otherwise EXIT_SUCCESS/EXIT_FAILURE)
  */
 int main ( int argc, char ** argv ){
 
     u_int32_t nChannels=0;              /* Number of channels */
+    u_int32_t nNotConnectedChannels=0;  /* Number of not connected channels at the end of program execution */
+    u_int32_t i;                        /* counter */
     struct channel *channels;
 
     g_runMonitor = true;
@@ -1012,7 +1010,7 @@ int main ( int argc, char ** argv ){
         epicsTimeAddSeconds(&g_timeoutTime, arguments.timeout);
     }
 
-    /* issue ca requests and subscribtions */
+    /* issue ca requests and subscriptions */
     if(!(success = caRequest(channels, nChannels))){
         debugPrint("main() - no succes with caRequest\n");
         goto ca_disconnect;
@@ -1023,6 +1021,13 @@ int main ( int argc, char ** argv ){
     if(arguments.tool == camon || arguments.tool == cawait ) {
         debugPrint("main() - enter monitor loop\n");
         monitorLoop(channels, nChannels, &arguments);
+    }
+
+    /* count the number of not connected channels */
+    for(i=0; i < nChannels; i++) {
+        if (channels[i].base.connectionState != CA_OP_CONN_UP) {
+            nNotConnectedChannels++;
+        }
     }
 
     /* cleanup */
@@ -1038,6 +1043,11 @@ int main ( int argc, char ** argv ){
         freeChannels(channels, nChannels);
     the_very_end: /* tut prow! */
         debugPrint("main() - the_very_end\n");
-        if (success) return EXIT_SUCCESS;
-        else return EXIT_FAILURE;
+        if (nNotConnectedChannels == 0) {
+            if (success) return EXIT_SUCCESS;
+            else return EXIT_FAILURE;
+        }
+        else {
+            return nNotConnectedChannels;
+        }
 }
