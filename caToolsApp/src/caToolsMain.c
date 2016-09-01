@@ -415,7 +415,6 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
                     ((struct dbr_ctrl_float *)data)->upper_disp_limit, ((struct dbr_ctrl_float *)data)->lower_disp_limit);
             fputc('\n',stdout);
             printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_float *)data)->precision);
-            printf("\tRISC alignment: %"PRId16"\n",((struct dbr_ctrl_float *)data)->RISC_pad);
 
             /* */    break;
         case DBR_CTRL_ENUM:
@@ -478,7 +477,6 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
                     ((struct dbr_ctrl_double *)data)->lower_disp_limit);
             fputc('\n',stdout);
             printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_double *)data)->precision);
-            printf("\tRISC alignment: %"PRId16"\n",((struct dbr_ctrl_double *)data)->RISC_pad0);
             break;
         }
 
