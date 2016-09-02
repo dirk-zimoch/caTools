@@ -771,7 +771,7 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
         if (channels[i].base.connectionState == CA_OP_CONN_UP)
             siblings = initSiblings(&channels[i], &arguments);
         else
-            printf("Process variable not connected. (timed-out after %f second(s)): %s\n", arguments.caTimeout, channels[i].base.name);
+            printf("Process variable not connected: %s\n", channels[i].base.name);
     }
 
     if (siblings){
@@ -791,11 +791,13 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
  * @param channels - array of channel structs
  * @param nChannels - number of channels
  * @param arguments - pointer to the arguments struct
+ * @return success - false if caWait times-out, true otherwise
  */
 bool monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arguments){
 /*runs monitor loop. Stops after -n updates (camon, cawait) or */
 /*after -timeout is exceeded (cawait). */
     size_t i = 0;
+    bool success = true;
 
     while (g_runMonitor){
         ca_pend_event(CA_PEND_EVENT_TIMEOUT);
@@ -816,11 +818,14 @@ bool monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arg
                 /* we are done waiting */
                 printf("Timeout of %f seconds reached - exiting.\n",arguments->timeout);
                 g_runMonitor = false;
-                break;
+                if (arguments->tool == cawait) {
+                    success = false;
+                }
             }
         }
     }
-    return true;
+
+    return success;
 }
 
 /**
@@ -1018,7 +1023,7 @@ int main ( int argc, char ** argv ){
     /* wait for monitor or cawait to finish */
     if(arguments.tool == camon || arguments.tool == cawait ) {
         debugPrint("main() - enter monitor loop\n");
-        monitorLoop(channels, nChannels, &arguments);
+        success &= monitorLoop(channels, nChannels, &arguments);
     }
 
     /* count the number of not connected channels */
@@ -1037,7 +1042,7 @@ int main ( int argc, char ** argv ){
     /* cleanup */
     ca_disconnect:
         debugPrint("main() - ca_disconnect\n");
-        success = caDisconnect(channels, nChannels);
+        success &= caDisconnect(channels, nChannels);
         ca_context_destroy();
     clear_global_strings:
         debugPrint("main() - clear_global_strings\n");
@@ -1047,6 +1052,9 @@ int main ( int argc, char ** argv ){
         freeChannels(channels, nChannels);
     the_very_end: /* tut prow! */
         debugPrint("main() - the_very_end\n");
+        /* Number of connected channels is only checked at the end, so any other failures
+         * will return EXIT_FAILURE. Only when all channels were connected and there were
+         * no other errors (eg. parsing of arguments) will the exit be successfull */
         if (nNotConnectedChannels == 0) {
             if (success) return EXIT_SUCCESS;
             else return EXIT_FAILURE;
