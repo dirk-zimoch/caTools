@@ -129,7 +129,7 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
         epicsTimeGetCurrent(&timeoutNow);
 
         if (epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
-            warnPrint("Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
+            debugPrint("waitForCallbacks - Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
             break;
         }
 
@@ -281,7 +281,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         }
     }
 
-    /* create subscribtion in case of camon or cawait */
+    /* create subscription in case of camon or cawait */
     if( arguments->tool == camon || arguments->tool == cawait ){
         ch->nRequests=ch->nRequests+1;
         status = ca_create_subscription(reqType, ch->outNelm, reqChid, DBE_VALUE | DBE_ALARM , caReadCallback, ch, 0);
@@ -415,7 +415,6 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
                     ((struct dbr_ctrl_float *)data)->upper_disp_limit, ((struct dbr_ctrl_float *)data)->lower_disp_limit);
             fputc('\n',stdout);
             printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_float *)data)->precision);
-            printf("\tRISC alignment: %"PRId16"\n",((struct dbr_ctrl_float *)data)->RISC_pad);
 
             /* */    break;
         case DBR_CTRL_ENUM:
@@ -478,7 +477,6 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
                     ((struct dbr_ctrl_double *)data)->lower_disp_limit);
             fputc('\n',stdout);
             printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_double *)data)->precision);
-            printf("\tRISC alignment: %"PRId16"\n",((struct dbr_ctrl_double *)data)->RISC_pad0);
             break;
         }
 
@@ -545,11 +543,12 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
        )
     {
         for(i=0; i < nChannels; i++) {
+            if(arguments.tool==cawait)
+                success &= cawaitParseCondition(&channels[i], &channels[i].inpStr, &arguments);
+
             if (channels[i].base.connectionState != CA_OP_CONN_UP) {/*skip disconnected channels */
                 continue;
             }
-            if(arguments.tool==cawait)
-                success &= cawaitParseCondition(&channels[i], &channels[i].inpStr, &arguments);
 
             if(success)
                 success &= caGenerateReadRequests(&channels[i], &arguments);
@@ -772,16 +771,12 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
         if (channels[i].base.connectionState == CA_OP_CONN_UP)
             siblings = initSiblings(&channels[i], &arguments);
         else
-            printf("Process variable %s not connected.\n", channels[i].base.name);
+            printf("Process variable not connected: %s\n", channels[i].base.name);
     }
 
     if (siblings){
         /* if there are siblings, wait for them to connect or timeout*/
-        /* we also supress warning messages here. */
-        int temp_verbosity = g_verbosity;
-        g_verbosity = 0;
         waitForCallbacks(channels, nChannels);
-        g_verbosity = temp_verbosity;
         debugPrint("caInit() - Siblings connected\n");
         /* Note: it is valid that not all siblings get connected (e.g. logn string channel [$]) */
     }
@@ -796,24 +791,13 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
  * @param channels - array of channel structs
  * @param nChannels - number of channels
  * @param arguments - pointer to the arguments struct
+ * @return success - false if caWait times-out, true otherwise
  */
 bool monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arguments){
 /*runs monitor loop. Stops after -n updates (camon, cawait) or */
 /*after -timeout is exceeded (cawait). */
     size_t i = 0;
-
-    /* exit monitor loop in case no channels are connected */
-    bool allDisconnected = true;
-    for(i = 0; i < nChannels; i++){
-        if(channels[i].state!=base_waiting){
-            allDisconnected = false;
-        }
-    }
-    if(allDisconnected){
-        g_runMonitor = false;
-        errPrint("Nothing to monitor - exiting.\n");
-        return false;
-    }
+    bool success = true;
 
     while (g_runMonitor){
         ca_pend_event(CA_PEND_EVENT_TIMEOUT);
@@ -822,9 +806,6 @@ bool monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arg
             if(channels[i].state==base_created){
                 //Return value is not checked as it is ought to be
                 caGenerateReadRequests(&channels[i], arguments);
-            }
-            if(channels[i].state!=base_waiting){
-                allDisconnected = false;
             }
         }
 
@@ -837,11 +818,14 @@ bool monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arg
                 /* we are done waiting */
                 printf("Timeout of %f seconds reached - exiting.\n",arguments->timeout);
                 g_runMonitor = false;
-                break;
+                if (arguments->tool == cawait) {
+                    success = false;
+                }
             }
         }
     }
-    return true;
+
+    return success;
 }
 
 /**
@@ -984,11 +968,13 @@ void freeStringBuffers(u_int32_t nChannels){
  * @brief main reads arguments, allocates memory, calls ca* functions, frees memory and exits.
  * @param argc
  * @param argv
- * @return exit status
+ * @return exit status (the number of not connected channels, if any, otherwise EXIT_SUCCESS/EXIT_FAILURE)
  */
 int main ( int argc, char ** argv ){
 
     u_int32_t nChannels=0;              /* Number of channels */
+    u_int32_t nNotConnectedChannels=0;  /* Number of not connected channels at the end of program execution */
+    u_int32_t i;                        /* counter */
     struct channel *channels;
 
     g_runMonitor = true;
@@ -1027,7 +1013,7 @@ int main ( int argc, char ** argv ){
         epicsTimeAddSeconds(&g_timeoutTime, arguments.timeout);
     }
 
-    /* issue ca requests and subscribtions */
+    /* issue ca requests and subscriptions */
     if(!(success = caRequest(channels, nChannels))){
         debugPrint("main() - no succes with caRequest\n");
         goto ca_disconnect;
@@ -1037,13 +1023,26 @@ int main ( int argc, char ** argv ){
     /* wait for monitor or cawait to finish */
     if(arguments.tool == camon || arguments.tool == cawait ) {
         debugPrint("main() - enter monitor loop\n");
-        monitorLoop(channels, nChannels, &arguments);
+        success &= monitorLoop(channels, nChannels, &arguments);
+    }
+
+    /* count the number of not connected channels */
+    for(i=0; i < nChannels; i++) {
+        if (channels[i].base.connectionState != CA_OP_CONN_UP) {
+            nNotConnectedChannels++;
+#ifdef __linux__
+            /* Out of range exit values can result in unexpected exit codes. An exit value greater than 255 returns an exit code modulo 256. For example, exit 3809 gives an exit code of 225 (3809 % 256 = 225). */
+            if (nNotConnectedChannels == 255) {
+                break;
+            }
+#endif
+        }
     }
 
     /* cleanup */
     ca_disconnect:
         debugPrint("main() - ca_disconnect\n");
-        success = caDisconnect(channels, nChannels);
+        success &= caDisconnect(channels, nChannels);
         ca_context_destroy();
     clear_global_strings:
         debugPrint("main() - clear_global_strings\n");
@@ -1053,6 +1052,14 @@ int main ( int argc, char ** argv ){
         freeChannels(channels, nChannels);
     the_very_end: /* tut prow! */
         debugPrint("main() - the_very_end\n");
-        if (success) return EXIT_SUCCESS;
-        else return EXIT_FAILURE;
+        /* Number of connected channels is only checked at the end, so any other failures
+         * will return EXIT_FAILURE. Only when all channels were connected and there were
+         * no other errors (eg. parsing of arguments) will the exit be successfull */
+        if (nNotConnectedChannels == 0) {
+            if (success) return EXIT_SUCCESS;
+            else return EXIT_FAILURE;
+        }
+        else {
+            return nNotConnectedChannels;
+        }
 }
