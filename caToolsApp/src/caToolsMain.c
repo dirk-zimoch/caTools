@@ -47,6 +47,20 @@ static void caReadCallback (evargs args){
 
     bool shouldPrint = true;
 
+    /* if the response is from long string request, don't update the metadata */
+    if (args.chid != ch->lstr.id) {
+        /* if long string chanel is not connected and others are, it will never be connected */
+        /* this can happen if EPICS version is too old (eg. 3.13*) */
+        if(ch->lstr.created && ch->lstr.connectionState != CA_OP_CONN_UP) {
+            ca_clear_channel(ch->lstr.id);
+            ch->nRequests--;
+        }
+    }
+    else {
+        debugPrint("ReadCallback() processing long string channel\n");
+        clearStr(g_outUnits[ch->i]);
+    }
+
     /* wait for all initial get requests to arrive before printing or further actions */
     if(ch->nRequests > 0){
         shouldPrint = false;
@@ -229,7 +243,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
 
     /* check number of elements. arguments->outNelm is 0 by default.
      * calling ca_create_subscription or ca_request with COUNT 0
-     * returns defaultnumber of elements NORD in R3.14.21 or NELM in R3.13.10 */
+     * returns default number of elements NORD in R3.14.21 or NELM in R3.13.10 */
     if((unsigned long) arguments->outNelm < ch->count) ch->outNelm = (unsigned long) arguments->outNelm;
     else{
         ch->outNelm = ch->count;
@@ -245,6 +259,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         reqChid = ch->lstr.id;
         reqType = DBR_CTRL_CHAR;
     }
+
     /* use dbrtype that has been specified as command line argument */
     if (arguments->dbrRequestType!=-1){
         reqType = arguments->dbrRequestType;
@@ -260,6 +275,8 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         ch->nRequests --;
         return false;
     }
+
+
 
     /* if needed issue second request using time type */
     if ((arguments->time || arguments->date || arguments->timestamp) &&
@@ -325,6 +342,7 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
 
 
         /*general ctrl data */
+        /* TODO: handle long strings too */
         status = ca_array_get(channels[i].type, channels[i].count, channels[i].base.id, data);
         if (status != ECA_NORMAL) {
             errPrint("CA error %s occurred while trying to create ca_get request for record %s.\n", ca_message(status), channels[i].base.name);
@@ -700,7 +718,7 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
         strcpy(ch->proc.name, ch->base.name); /*Consider using strn_xxxx everywhere */
         getBaseChannelName(ch->proc.name); /*append .PROC */
         strncat(ch->proc.name, ".PROC",LEN_FQN_NAME);
-        hasSiblings = initField(ch, &ch->proc);
+        hasSiblings |= initField(ch, &ch->proc);
     }
 
     /* open sibling channel for long strings */
@@ -711,12 +729,12 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
             arguments->tool == cainfo ||
             arguments->tool == camon  ||
             arguments->tool == cawait )){
-        debugPrint("caInitSiblings() - string chanel\n");
+        debugPrint("caInitSiblings() - open sibling for long string channel\n");
         debugPrint("caInitSiblings() - dbftype: %s\n", dbf_type_to_text(ca_field_type(ch->base.id)));
         ch->lstr.name = callocMustSucceed (strlen(ch->base.name) + 2, sizeof(char), "main"); /*2 spaces for $ + null termination */
         strcpy(ch->lstr.name, ch->base.name);
         strcat(ch->lstr.name, "$");
-        hasSiblings = initField(ch, &ch->lstr);
+        hasSiblings |= initField(ch, &ch->lstr);
     }
 
     /* open all sibling channels for cainfo */
@@ -730,7 +748,7 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
             strcpy(ch->fields[j].name, ch->base.name);
             getBaseChannelName(ch->fields[j].name);
             strcat(ch->fields[j].name, fields[j]);
-            hasSiblings = initField(ch, &ch->fields[j]);
+            hasSiblings |= initField(ch, &ch->fields[j]);
         }
     }
     return hasSiblings;
@@ -769,7 +787,7 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
     bool siblings = false;
     for (i=0; i < nChannels; ++i) {
         if (channels[i].base.connectionState == CA_OP_CONN_UP)
-            siblings = initSiblings(&channels[i], &arguments);
+            siblings |= initSiblings(&channels[i], &arguments);
         else
             printf("Process variable not connected: %s\n", channels[i].base.name);
     }
