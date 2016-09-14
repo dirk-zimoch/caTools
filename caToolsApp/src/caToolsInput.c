@@ -81,8 +81,8 @@ void usage(FILE *stream, enum tool tool, char *programName){
     fputs("\n", stream);
     fputs("  -h                   Help: Print this message\n", stream);
     fputs("  -v                   Verbosity. Options:\n", stream);
-    fprintf(stream,"                       Print error messages: %d (default)\n", VERBOSITY_ERR);
-    fprintf(stream,"                       Also print warning messages: %d\n", VERBOSITY_WARN);
+    fprintf(stream,"                       Print error messages: %d\n", VERBOSITY_ERR);
+    fprintf(stream,"                       Also print warning messages: %d (default)\n", VERBOSITY_WARN);
     fprintf(stream,"                       Also print error messages that occur periodically: %d\n", VERBOSITY_ERR_PERIODIC);
     fprintf(stream,"                       Also print warning messages that occur periodically: %d\n\n", VERBOSITY_WARN_PERIODIC);
 
