@@ -502,7 +502,9 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
             break;
         case 'h':               /* Print usage */
             usage(stdout, arguments->tool, argv[0]);
-            return true;
+            exit(EXIT_SUCCESS); /* do not return here, exit strainght away */
+            /* If we just return from the function, main program will not know that only help was printed
+             * and that now it hsould exit. Since it only sees success, it will still run camon/cawait loops, etc... */
         default:
             usage(stderr, arguments->tool, argv[0]);
             return false;
