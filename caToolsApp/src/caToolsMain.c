@@ -23,9 +23,10 @@
  * @param args
  */
 static void caReadCallback (evargs args){
-    debugPrint("caWriteCallback()\n");
+    debugPrint("caReadCallback()\n");
     /*check if status is ok */
-    if (args.status != ECA_NORMAL){
+    if (args.status != ECA_NORMAL) {
+        /* TODO: when does this happen? do we need to recuce nRequest variable? */
         errPrint("Error in read callback. %s.\n", ca_message(args.status));
         return;
     }
@@ -41,25 +42,44 @@ static void caReadCallback (evargs args){
         return;
     }
 
-    /* get metadata from args and fill the global strings and channel properties:
-     * status, severity, timestamp, precision, units*/
-    getMetadataFromEvArgs(ch, args);
+    /* Only read metadata and issue long string requests
+     * if this is not long string request */
+    if(ch->lstr.id != args.chid) {
+        /* get metadata from args and fill the global strings and channel properties:
+         * status, severity, timestamp, precision, units*/
+        getMetadataFromEvArgs(ch, args);
 
-    bool shouldPrint = true;
-
-    /* if the response is from long string request, don't update the metadata */
-    if (args.chid != ch->lstr.id) {
-        /* if long string chanel is not connected and others are, it will never be connected */
-        /* this can happen if EPICS version is too old (eg. 3.13*) */
+        /* if long string chanel is not connected and others are, it will never be connected.
+         * This can happen if EPICS version is too old (eg. 3.13*) */
         if(ch->lstr.created && ch->lstr.connectionState != CA_OP_CONN_UP) {
             ca_clear_channel(ch->lstr.id);
+            ch->lstr.created = false;
             ch->nRequests--;
         }
+
+        /* check if long string support is needed and issue another request for it */
+        if(     ch->nRequests <= 0 &&   /* last request was handled. */
+                ch->lstr.created &&     /* long string channel was created and connected */
+                arguments.dbrRequestType == -1 &&   /* there is no special dbr type requested */
+                ca_element_count(ch->lstr.id) >= MAX_STRING_SIZE-1) /* the field supports more than 40 characters */
+        {
+            char* value = dbr_value_ptr(args.dbr, args.type);
+            value[MAX_STRING_SIZE-1] = '\0'; /* null terminate string, in case it is not... */
+            if(strlen(value) >= MAX_STRING_SIZE-1 ) {   /* string is full. Let's do the long string request */
+                debugPrint("ReadCallback() Starting request for long strings\n");
+                int status = ca_array_get_callback(DBR_CTRL_CHAR, ch->outNelm, ch->lstr.id, caReadCallback, ch);
+                if (status == ECA_NORMAL) {
+                    debugPrint("ReadCallback() Request for long strings completed successfully.\n");
+                    ch->nRequests++;
+                }
+                else {
+                    debugPrint("ReadCallback() Request for long strings failed.\n");
+                }
+            }
+        }
     }
-    else {
-        debugPrint("ReadCallback() processing long string channel\n");
-        clearStr(g_outUnits[ch->i]);
-    }
+
+    bool shouldPrint = true;
 
     /* wait for all initial get requests to arrive before printing or further actions */
     if(ch->nRequests > 0){
@@ -250,15 +270,6 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         warnPeriodicPrint("Invalid number of requested elements to read (%"PRId64") from %s - reading maximum number of elements (%zu).\n", arguments->outNelm, ch->base.name, ch->count);
     }
 
-    /* if string, connect to long string sibling channel if connected and number of characters is longer than MAX_STRING_SIZE */
-    if (baseType==DBF_STRING &&
-        ch->lstr.connectionState==CA_OP_CONN_UP &&
-        ca_element_count(ch->lstr.id) > MAX_STRING_SIZE &&
-        arguments->dbrRequestType==-1)
-    {
-        reqChid = ch->lstr.id;
-        reqType = DBR_CTRL_CHAR;
-    }
 
     /* use dbrtype that has been specified as command line argument */
     if (arguments->dbrRequestType!=-1){

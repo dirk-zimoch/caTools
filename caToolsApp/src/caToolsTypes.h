@@ -186,8 +186,6 @@ struct channel {
     int      		severity; 		 /*  severity */
     int             prec;            /* precision */
     enum state      state;          /* state of the channel within catools application */
-    bool            alreadyPrinted; /* for use with long strings. This is an indicator weather value from long string response should be used or not */
-
 };
 
 /* global strings see caToolsGlobals.c */
