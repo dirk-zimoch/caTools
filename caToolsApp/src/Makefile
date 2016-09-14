@@ -30,7 +30,7 @@ include $(TOP)/configure/RULES
 #----------------------------------------
 #  ADD RULES AFTER THIS LINE
 
-ifeq ($(OS_CLASS),Linux)
+ifeq ($(EPICS_HOST_ARCH),$(T_A))
 install: links
 endif
 
