@@ -324,6 +324,25 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
 }
 
 /**
+ * @brief cainfoPendIO issues CA pend IO request and handles error
+ * @return true on success
+ */
+bool cainfoPendIO(){
+    int status = ca_pend_io(arguments.caTimeout);
+    if (status != ECA_NORMAL) {
+        if (status == ECA_TIMEOUT) {
+            errPrint("All issued requests for record fields did not complete.\n");
+        }
+        else {
+            errPrint("All issued requests for record fields did not complete.\n");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
  * @brief cainfoRequest - this spaghetti function does all the work for caInfo tool. Reads channel data using ca_get and then prints.
  * @param channels - array of channel structs
  * @param nChannels - number of channels in array
@@ -333,12 +352,11 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
     int status;
     u_int32_t i, j;
 
-    bool readAccess, writeAccess;
+    bool readAccess, writeAccess, success = true;
     u_int32_t nFields = noFields;
     const char *delimeter = "-------------------------------";
 
     for(i=0; i < nChannels; i++){
-
         if (channels[i].base.connectionState != CA_OP_CONN_UP) continue; /* skip unconnected channels */
 
         channels[i].count = ca_element_count ( channels[i].base.id );
@@ -346,25 +364,31 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         channels[i].type = dbf_type_to_DBR_CTRL(ca_field_type(channels[i].base.id));
 
         /*allocate data for all caget returns */
-        void *data;
+        void *data = NULL, *dataLstr = NULL;
         struct dbr_sts_string *fieldData[nFields];
 
         data = callocMustSucceed(1, dbr_size_n(channels[i].type, channels[i].count), "caInfoRequest");
 
 
         /*general ctrl data */
-        /* TODO: handle long strings too */
         status = ca_array_get(channels[i].type, channels[i].count, channels[i].base.id, data);
         if (status != ECA_NORMAL) {
             errPrint("CA error %s occurred while trying to create ca_get request for record %s.\n", ca_message(status), channels[i].base.name);
-            return false;
+            success = false;
+            goto cleanup;
         }
 
+
+        /* get field data */
         for(j=0; j < nFields; j++) {
             if(channels[i].fields[j].connectionState == CA_OP_CONN_UP) {
                 fieldData[j] = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest: field");
                 status = ca_array_get(DBR_STS_STRING, 1, channels[i].fields[j].id, fieldData[j]);
-                if (status != ECA_NORMAL) errPrint("Problem reading %s field of record %s: %s.\n", fields[j], channels[i].base.name, ca_message(status));
+                if (status != ECA_NORMAL) {
+                    errPrint("Problem reading %s field of record %s: %s.\n", fields[j], channels[i].base.name, ca_message(status));
+                    free(fieldData[j]);
+                    fieldData[j] = NULL;
+                }
             }
             else {
                 fieldData[j] = NULL;
@@ -372,35 +396,75 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         }
 
 
-        status = ca_pend_io(arguments.caTimeout);
-        if (status != ECA_NORMAL) {
-            if (status == ECA_TIMEOUT) {
-                errPrint("All issued requests for record fields did not complete.\n");
-            }
-            else {
-                errPrint("All issued requests for record fields did not complete.\n");
-                return false;
+        if(!cainfoPendIO()) {
+            success = false;
+            goto cleanup;
+        }
+
+        /* Handle long strings */
+        if(channels[i].lstr.connectionState == CA_OP_CONN_UP &&   /* long string channel is connected. */
+           ca_element_count(channels[i].lstr.id) >= MAX_STRING_SIZE-1)    /* the requested field supports more than 40 characters */
+        {
+            char* value = dbr_value_ptr(data, channels[i].type);
+            value[MAX_STRING_SIZE-1] = '\0'; /* null terminate string, in case it is not... */
+            if(strlen(value) >= MAX_STRING_SIZE-1 ) {   /* string is full. Let's do the long string request */
+                debugPrint("cainfoRequest() Starting request for long strings\n");
+                dataLstr = callocMustSucceed(1, dbr_size_n(DBR_CTRL_CHAR, ca_element_count(channels[i].lstr.id)), "caInfoRequest: long string");
+                status = ca_array_get(DBR_CTRL_CHAR, ca_element_count(channels[i].lstr.id), channels[i].lstr.id, dataLstr);
+                if (status == ECA_NORMAL) {
+                    if(!cainfoPendIO()) {
+                        success = false;
+                        goto cleanup;
+                    }
+                }
+                else {
+                    errPrint("Request for long strings failed.\n");
+                    free(dataLstr);
+                    dataLstr = NULL;
+                }
             }
         }
 
+        /* check if request is done to the base channel or to it's fields */
+        bool isBaseChannel = false;
+        if(isValField(channels[i].base.name)) {
+            isBaseChannel = true;
+        }
 
         /*start printing */
         fputc('\n',stdout);
         fputc('\n',stdout);
-        printf("%s\n%s\n", delimeter, channels[i].base.name);                                          /*name */
-        if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);          /*description */
-        printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].base.id)));                     /*field type */
-        printf("\tNumber of elements: %zu\n", channels[i].count);                                               /*number of elements */
+        printf("%s\n%.*s\n", delimeter, MAX_STRING_SIZE, channels[i].base.name);                            /*name */
+        if(isBaseChannel) {
+            if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);  /*description */
+        }
+        else {
+            getBaseChannelName(channels[i].base.name);
+            printf("\tBase channel name: %s\n", channels[i].base.name);                                     /* base channel name */
+        }
+        printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].base.id)));            /*field type */
+        printf("\tNumber of elements: %zu\n", channels[i].count);                                           /*number of elements */
+
 
 
         evargs args;
-        args.chid = channels[i].base.id;
-        args.count = ca_element_count ( channels[i].base.id );
-        args.dbr = data;
-        args.status = ECA_NORMAL;
-        args.type = channels[i].type; /*ca_field_type(channels[i].base.id); */
-        args.usr = &channels[i];
+        /* handle long strings */
+        if(dataLstr == NULL) {
+            args.chid = channels[i].base.id;
+            args.count = ca_element_count ( channels[i].base.id );
+            args.dbr = data;
+            args.type = channels[i].type;
+        }
+        else {
+            args.chid = channels[i].lstr.id;
+            args.count = ca_element_count ( channels[i].lstr.id );
+            args.dbr = dataLstr;
+            args.type = DBR_CTRL_CHAR;
+        }
         printf("\tValue: ");
+        args.status = ECA_NORMAL;
+        args.usr = &channels[i];
+
         printValue(args, &arguments);
         fputc('\n',stdout);
 
@@ -510,13 +574,21 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         }
 
         fputc('\n',stdout);
+        if(!isBaseChannel) {
+            printf("\tBase channel fields:\n");
+
+            if(!isBaseChannel) {
+                if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);
+            }
+        }
         for(j=field_hhsv; j < nFields; j++) {
             if (fieldData[j] != NULL) {
                 printf("\t%s alarm severity: %s\n", fields[j], fieldData[j]->value);
-                free(fieldData[j]);
             }
         }
+
         fputc('\n',stdout);
+
 
         readAccess = ca_read_access(channels[i].base.id);
         writeAccess = ca_write_access(channels[i].base.id);
@@ -526,9 +598,14 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         printf("\tWrite access: "); if(writeAccess) printf("yes\n"); else printf("no\n");
         printf("%s\n", delimeter);
 
-        free(data);
+        cleanup:
+        if(data != NULL) free(data);
+        if(dataLstr != NULL) free(dataLstr);
+        for(j=0; j < nFields; j++) {
+            if(fieldData[j] != NULL) free(fieldData[j]);
+        }
     }
-    return true;
+    return success;
 }
 
 /**
