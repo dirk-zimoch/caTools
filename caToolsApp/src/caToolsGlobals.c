@@ -42,6 +42,7 @@ arguments_T arguments = {
 
 const char * fields[] = {
     ".DESC",
+    ".RTYP",
     ".HHSV",
     ".HSV",
     ".LSV",

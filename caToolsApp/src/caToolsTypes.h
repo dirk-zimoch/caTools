@@ -70,6 +70,7 @@ typedef struct {
 
 enum channelField {
     field_desc = 0,
+    field_rtyp,
     field_hhsv,
     field_hsv,
     field_lsv,
@@ -172,7 +173,7 @@ struct channel {
     struct field    proc;       /* sibling channel for writing to proc field */
     struct field    lstr;       /* sibling channel for reading string as an array of chars  */
     char           *name;       /* the name of the channel */
-    struct field    fields[23]; /* sibling channels for fields (description, severities, long strings...)  */
+    struct field    fields[24]; /* sibling channels for fields (description, severities, long strings...)  */
     short           type;       /* dbr type */
     size_t          count;      /* maximum array element count in the server. Zero is returned if the channel is disconnected */
     size_t          inNelm;     /* requested number of elements for writing */

@@ -434,13 +434,10 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         /*start printing */
         fputc('\n',stdout);
         fputc('\n',stdout);
-        printf("%s\n%.*s\n", delimeter, MAX_STRING_SIZE, channels[i].base.name);                            /*name */
+        printf("%s\n%s\n", delimeter, channels[i].base.name);                            /*name */
         if(isBaseChannel) {
             if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);  /*description */
-        }
-        else {
-            getBaseChannelName(channels[i].base.name);
-            printf("\tBase channel name: %s\n", channels[i].base.name);                                     /* base channel name */
+            if(fieldData[field_rtyp] != NULL) printf("\tRecord type: %s\n", fieldData[field_rtyp]->value);  /*record type */
         }
         printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].base.id)));            /*field type */
         printf("\tNumber of elements: %zu\n", channels[i].count);                                           /*number of elements */
@@ -575,10 +572,12 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
 
         fputc('\n',stdout);
         if(!isBaseChannel) {
-            printf("\tBase channel fields:\n");
+            getBaseChannelName(channels[i].base.name);
+            printf("\t%s info:\n", channels[i].base.name);
 
             if(!isBaseChannel) {
                 if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);
+                if(fieldData[field_rtyp] != NULL) printf("\tRecord type: %s\n", fieldData[field_rtyp]->value);
             }
         }
         for(j=field_hhsv; j < nFields; j++) {
@@ -830,7 +829,7 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
         size_t nFields = noFields;  /* so we don't calculate in each loop */
         size_t j;
         for (j=0; j < nFields; j++) {
-            debugPrint("caInit() - If caInfo for j=%zu\n", j);
+            debugPrint("caInit() - caInfo for fields[%zu]: %s\n", j, fields[j]);
             ch->fields[j].created = true;
             ch->fields[j].name = callocMustSucceed(LEN_FQN_NAME, sizeof(char), fields[j]);
             strcpy(ch->fields[j].name, ch->base.name);
