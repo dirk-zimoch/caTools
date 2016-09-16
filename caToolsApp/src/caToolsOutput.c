@@ -95,7 +95,7 @@ void printValue(evargs args, arguments_T *arguments){
             else valueDbl = ((dbr_double_t*)value)[j];
 
             /* round if desired or will be writen as hex oct, bin or string */
-            if (arguments->round == roundType_round || arguments->hex || arguments->oct || arguments->bin || arguments->str) {
+            if (arguments->round == roundType_round || arguments->hex || arguments->oct || arguments->bin) {
                 valueDbl = round(valueDbl);
             }
             else if(arguments->round == roundType_ceil) {

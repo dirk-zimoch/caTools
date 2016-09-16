@@ -139,7 +139,6 @@ struct field {
     chid id;                /* the id of the ca channel */
     long connectionState;   /* channel connected/disconnected  */
     bool created;           /* channel creation for the field was successfull */
-    bool done;              /* indicates if callback has finished processing this channel */
     struct channel * ch;	/* reference to the channel */
 };
 
@@ -172,7 +171,6 @@ struct channel {
     struct field    base;       /* the name of the channel */
     struct field    proc;       /* sibling channel for writing to proc field */
     struct field    lstr;       /* sibling channel for reading string as an array of chars  */
-    char           *name;       /* the name of the channel */
     struct field    fields[24]; /* sibling channels for fields (description, severities, long strings...)  */
     short           type;       /* dbr type */
     size_t          count;      /* maximum array element count in the server. Zero is returned if the channel is disconnected */

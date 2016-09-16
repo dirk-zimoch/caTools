@@ -67,7 +67,9 @@ static void caReadCallback (evargs args){
             value[MAX_STRING_SIZE-1] = '\0'; /* null terminate string, in case it is not... */
             if(strlen(value) >= MAX_STRING_SIZE-1 ) {   /* string is full. Let's do the long string request */
                 debugPrint("ReadCallback() Starting request for long strings\n");
-                int status = ca_array_get_callback(DBR_CTRL_CHAR, ch->outNelm, ch->lstr.id, caReadCallback, ch);
+
+                /* This is string request, so we read entire string. No.of.elements has no meaning here */
+                int status = ca_array_get_callback(DBR_CTRL_CHAR, 0, ch->lstr.id, caReadCallback, ch);
                 if (status == ECA_NORMAL) {
                     debugPrint("ReadCallback() Request for long strings completed successfully.\n");
                     ch->nRequests++;
@@ -118,7 +120,6 @@ static void caReadCallback (evargs args){
         /* print out */
         printOutput(args, &arguments);
     }
-    ch->base.done = true;
 }
 
 /**
@@ -131,7 +132,6 @@ static void caWriteCallback (evargs args) {
     struct channel *ch = (struct channel *)args.usr;
     debugPrint("caWriteCallback() callbacks to process: %i\n", ch->nRequests);
     ch->nRequests --;
-    ch->base.done = true;
     if (args.status != ECA_NORMAL){
         debugPrint("caWriteCallback() error status returned");
         errPrint("%s.\n", ca_message(args.status));
@@ -437,8 +437,8 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         printf("%s\n%s\n", delimeter, channels[i].base.name);                            /*name */
         if(isBaseChannel) {
             if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);  /*description */
-            if(fieldData[field_rtyp] != NULL) printf("\tRecord type: %s\n", fieldData[field_rtyp]->value);  /*record type */
         }
+        if(fieldData[field_rtyp] != NULL) printf("\tRecord type: %s\n", fieldData[field_rtyp]->value);  /*record type */
         printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].base.id)));            /*field type */
         printf("\tNumber of elements: %zu\n", channels[i].count);                                           /*number of elements */
 
@@ -495,13 +495,13 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
                     epicsAlarmConditionStrings[((struct dbr_ctrl_float *)data)->status],
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_float *)data)->severity]);
             printf("\n");
-            printf("\tWarning\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tWarning\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_float *)data)->upper_warning_limit, ((struct dbr_ctrl_float *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tAlarm\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_float *)data)->upper_alarm_limit, ((struct dbr_ctrl_float *)data)->lower_alarm_limit);
-            printf("\tControl\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tControl\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_float *)data)->upper_ctrl_limit, ((struct dbr_ctrl_float *)data)->lower_ctrl_limit);
-            printf("\tDisplay\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tDisplay\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_float *)data)->upper_disp_limit, ((struct dbr_ctrl_float *)data)->lower_disp_limit);
             fputc('\n',stdout);
             printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_float *)data)->precision);
@@ -557,13 +557,13 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
                     epicsAlarmConditionStrings[((struct dbr_ctrl_double *)data)->status],
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_double *)data)->severity]);
             fputc('\n',stdout);
-            printf("\tWarning\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tWarning\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_double *)data)->upper_warning_limit, ((struct dbr_ctrl_double *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tAlarm\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_double *)data)->upper_alarm_limit, ((struct dbr_ctrl_double *)data)->lower_alarm_limit);
-            printf("\tControl\tupper limit: %f\n\t\tlower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_ctrl_limit,\
+            printf("\tControl\tupper limit: %g\n\t\tlower limit: %g\n", ((struct dbr_ctrl_double *)data)->upper_ctrl_limit,\
                     ((struct dbr_ctrl_double *)data)->lower_ctrl_limit);
-            printf("\tDisplay\tupper limit: %f\n\t\tlower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_disp_limit,\
+            printf("\tDisplay\tupper limit: %g\n\t\tlower limit: %g\n", ((struct dbr_ctrl_double *)data)->upper_disp_limit,\
                     ((struct dbr_ctrl_double *)data)->lower_disp_limit);
             fputc('\n',stdout);
             printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_double *)data)->precision);
@@ -577,7 +577,6 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
 
             if(!isBaseChannel) {
                 if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);
-                if(fieldData[field_rtyp] != NULL) printf("\tRecord type: %s\n", fieldData[field_rtyp]->value);
             }
         }
         for(j=field_hhsv; j < nFields; j++) {
@@ -637,6 +636,19 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
         /* wait for callbacks to finish before issuing read requests */
         waitForCallbacks(channels, nChannels);
 
+        /* something went wrong with the write request,
+         * inform the user and return */
+        for (i=0; i < nChannels; ++i) {
+            if (channels[i].state == put_waiting) {
+                if(arguments.tool == cagets) {
+                    errPrint("%s write response timed-out\n", channels[i].proc.name);
+                } else {
+                    errPrint("%s write response timed-out\n", channels[i].base.name);
+                }
+                channels[i].nRequests--;
+                channels[i].state = put_done;
+            }
+        }
     }
     /* generate read requests */
     if (success &&
@@ -689,7 +701,6 @@ void channelInitCallback(struct connection_handler_args args){
 
     if (field->connectionState == CA_OP_OTHER) {
         /* first callback */
-        field->done = true;   /* set field to done only on first connection, not when connection goes up / down */
         if (&ch->base == field){
             ch->type = ca_field_type(args.chid);
             ch->state = base_created;
@@ -780,7 +791,6 @@ bool initField(struct channel *ch, struct field * field)
 {
     debugPrint("initField() - %s\n", field->name);
     field->connectionState = CA_OP_OTHER; /* ca connection state - is updated in initCallback */
-    field->done = false;                  /* indicates wether the first callback arrived */
     field->ch = ch;                       /* pointer back to channel structure */
     ch->nRequests ++;        /* indicates number of issued requests. Callback functions substract one from this field and take corresponding actions on ch->nRequests==0 */
     int status = ca_create_channel(field->name, channelInitCallback, field, CA_PRIORITY, &field->id);

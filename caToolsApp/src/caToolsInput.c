@@ -51,7 +51,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
             fputs("Writes value(s) to PV(s), but does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
         }
         fputs("Array handling:\n", stream);
-        fputs(  "- When -a option is set, input separator (-inSep argumOctadecimalent) is used to parse elements in an array.\n"\
+        fputs(  "- When -a option is set, input separator (-inSep argument) is used to parse elements in an array.\n"\
                 "- When input separator (-inSep argument) is explicitly defined, -a option is automatically used."
                 " See following examples which produce the same result,"\
                 " namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
@@ -493,7 +493,12 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
             }
             break;
         case '?':
-            fprintf(stderr, "Unrecognized option: '-%c'. ('%s -h' for help.). Exiting.\n", optopt, argv[0]);
+            /* TODO: this doesn't seem to work OK. Using the following example, optopt is empty:
+             * ./caget -y
+             * The output is: Unrecognized option: '-'. ('./caget -h' for help.). Exiting.
+             * Need to inspect why... */
+            /*fprintf(stderr, "Unrecognized option: '-%c'. ('%s -h' for help.). Exiting.\n", optopt, argv[0]);*/
+            fprintf(stderr, "Unrecognized option. Issue command '%s -h' for help. Exiting.\n", argv[0]);
             return false;
             break;
         case ':':
@@ -541,7 +546,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
          warnPrint("Option -outNelm, -num, -hex, -bin and -oct cannot be specified with cado or caputq, because they have no output.\n");
      }
      if (arguments->nostat != false && arguments->stat != false){
-         warnPrint("Options -stat and -nostat are mutually exclusive.\n");
+         warnPrint("Options -stat and -nostat are mutually exclusive. Using -stat.\n");
          arguments->nostat = false;
      }
      if (arguments->hex + arguments->bin + arguments->oct > 1 ) {
@@ -780,7 +785,7 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
                     continue;
                 }else{
                     if(arguments->num || base != 0){
-                        errPrint("%s can not be parsed as an 8 bit integer\n", str[j]);
+                        errPrint("%s can not be parsed as an 8 bit integer in requested numeric base\n", str[j]);
                         return false; /* break if one element can not be parsed */
                     }else if (arguments->parseArray){
                         /* array specified - if the element can not be parsed as number just take the first character from it as it is*/
