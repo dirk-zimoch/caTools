@@ -528,9 +528,11 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
              || arguments->dblFormatType != '\0' || arguments->stat || arguments->nostat || arguments->noname || arguments->nounit \
              || arguments->timestamp != '\0' || arguments->timeout != -1 || arguments->date || arguments->time || arguments->localdate \
              || arguments->localtime || arguments->fieldSeparator != 0 || arguments->inputSeparator != ' ' || arguments->numUpdates != -1\
-             || arguments->parseArray || arguments->outNelm > 0 || arguments->nord)){
+             || arguments->parseArray || arguments->outNelm > 0 || arguments->nord || arguments->stat || arguments->nostat\
+             || arguments->noname || arguments->nounit)){
          /* arguments->prec is not checked here, since checking arguments->dblFormatType is also set when arguments->prec is set. */
          warnPrint("The only options allowed for cainfo are -w and -v. Ignoring the rest.\n");
+         arguments->dbrRequestType = -1;
      }
      else if (arguments->tool != camon){
          if (arguments->timestamp != 0){
@@ -564,7 +566,6 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
          arguments->str = false;
      }
      if (arguments->plain || arguments->tool == cainfo) {
-         if (arguments->tool != cainfo) warnPrint("-plain option overrides all formatting switches.\n");
          arguments->num =false; arguments->hex =false; arguments->bin = false; arguments->oct =false; arguments->str =false;
          /* arguments->prec is not checked here, since checking arguments->dblFormatType is also set when arguments->prec is set. */
          arguments->round = roundType_no_rounding;
@@ -574,9 +575,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
          arguments->nostat = true;
          arguments->stat = false;
          arguments->nounit = true;
-         /* TODO: reset everything, or allow output formatting for value? */
      }
-
 
     /* Remaining arg list refers to PVs */
     if (arguments->tool == caget || arguments->tool == camon || arguments->tool == cagets || arguments->tool == cado || arguments->tool == cainfo){
@@ -603,7 +602,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
 }
 
 
-bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *arguments, struct channel *channels){
+bool parseChannels(int argc, char ** argv, arguments_T *arguments, struct channel *channels){
     debugPrint("parseChannels()\n");
     u_int32_t i;                      /* counter */
     bool success = true;

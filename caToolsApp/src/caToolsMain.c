@@ -99,7 +99,7 @@ static void caReadCallback (evargs args){
 
         if (arguments.tool == cawait) {
             /* check wait condition */
-            if (cawaitEvaluateCondition(ch, args, &arguments)) {
+            if (cawaitEvaluateCondition(ch, args)) {
                 g_runMonitor = false;
             }else{
                 shouldPrint = false;
@@ -438,11 +438,11 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         /*start printing */
         fputc('\n',stdout);
         fputc('\n',stdout);
-        printf("%s\n%s\n", delimeter, channels[i].base.name);                            /*name */
+        printf("%s\n%s\n", delimeter, channels[i].base.name);                                               /*name */
         if(isBaseChannel) {
             if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);  /*description */
         }
-        if(fieldData[field_rtyp] != NULL) printf("\tRecord type: %s\n", fieldData[field_rtyp]->value);  /*record type */
+        if(fieldData[field_rtyp] != NULL) printf("\tRecord type: %s\n", fieldData[field_rtyp]->value);      /*record type */
         printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].base.id)));            /*field type */
         printf("\tNumber of elements: %zu\n", channels[i].count);                                           /*number of elements */
 
@@ -816,9 +816,9 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
     /*if tool = cagets or cado, each channel has a sibling connecting to the proc field */
     if (arguments->tool == cagets || arguments->tool == cado) {
         ch->proc.name = callocMustSucceed (LEN_FQN_NAME, sizeof(char), "main");/*2 spaces for .(field name) + null termination */
-        strcpy(ch->proc.name, ch->base.name); /*Consider using strn_xxxx everywhere */
-        getBaseChannelName(ch->proc.name); /*append .PROC */
-        strncat(ch->proc.name, ".PROC",LEN_FQN_NAME);
+        strcpy(ch->proc.name, ch->base.name);   /* ch->base.name is always null-terminated */
+        getBaseChannelName(ch->proc.name); /* remove field name */
+        strcat(ch->proc.name, ".PROC"); /*append .PROC */
         hasSiblings |= initField(ch, &ch->proc);
     }
 
@@ -832,7 +832,7 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
             arguments->tool == cawait )){
         debugPrint("caInitSiblings() - open sibling for long string channel\n");
         debugPrint("caInitSiblings() - dbftype: %s\n", dbf_type_to_text(ca_field_type(ch->base.id)));
-        ch->lstr.name = callocMustSucceed (strlen(ch->base.name) + 2, sizeof(char), "main"); /*2 spaces for $ + null termination */
+        ch->lstr.name = callocMustSucceed (strlen(ch->base.name) + 2, sizeof(char), "main");   /*2 spaces for $ + null termination */
         strcpy(ch->lstr.name, ch->base.name);
         strcat(ch->lstr.name, "$");
         hasSiblings |= initField(ch, &ch->lstr);
@@ -1111,7 +1111,7 @@ int main ( int argc, char ** argv ){
     channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "Could not allocate channels"); /*Consider adding more descriptive error message. */
 
     /* parse command line and fill up the channel structures*/
-    if(!(success = parseChannels(argc, argv, nChannels, &arguments, channels))){
+    if(!(success = parseChannels(argc, argv, &arguments, channels))){
         debugPrint("main() - no succes with parseChannels\n");
         goto clear_channels;
     }

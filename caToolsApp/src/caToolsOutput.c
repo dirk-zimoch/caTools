@@ -86,7 +86,7 @@ void printValue(evargs args, arguments_T *arguments){
         switch (baseType) {
         case DBR_STRING:
             debugPrint("printValue() - case DBR_STRING - print as normal string\n");
-            printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);    /*  TODO: is this always null-terminated? */
+            printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);
             break;
         case DBR_FLOAT:
         case DBR_DOUBLE:{
@@ -541,7 +541,7 @@ void getTimeStamp(size_t i, arguments_T * arguments) {
 }
 
 
-bool cawaitEvaluateCondition(struct channel * ch, evargs args, arguments_T * arguments){
+bool cawaitEvaluateCondition(struct channel * ch, evargs args){
     /*evaluates output of channel i against the corresponding condition. */
     /*returns 1 if matching, 0 otherwise, and -1 if error. */
     /*Before evaluation, channel output is converted to double. If this is */
