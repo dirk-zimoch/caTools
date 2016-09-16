@@ -62,7 +62,7 @@ void printValue(evargs args, arguments_T *arguments){
     debugPrint("printValue() - baseType: %s\n", dbr_type_to_text(baseType));
 
     /* handle long strings */
-    if(baseType == DBR_CHAR && (!arguments->fieldSeparator || arguments->fieldSeparator == ' ') && !arguments->parseArray && !(arguments->num) &&   /* no special numeric formating specified */
+    if(baseType == DBR_CHAR && !arguments->fieldSeparator && !arguments->parseArray && !(arguments->num) &&   /* no special numeric formating specified */
                 (ch->type == DBF_STRING || ch->type == DBR_CTRL_STRING ||  /* if base channel type is string*/
                  arguments->str ||                           /* if requested string formatting */
                  (args.count > 1 && isPrintable((char *) value, (size_t) args.count)))/* if array returned and all characters are printable */
@@ -246,7 +246,7 @@ void printOutput(evargs args, arguments_T *arguments){
 /*  prints global output strings corresponding to i-th channel. */
 
     struct channel *ch = (struct channel *)args.usr;
-    bool isTimeType = args.type >= DBR_TIME_STRING && args.type <= DBR_TIME_DOUBLE; /* otherwise we don't have time */
+    bool isTimeType = arguments->dbrRequestType >= DBR_TIME_STRING && arguments->dbrRequestType <= DBR_TIME_DOUBLE;
 
     /* do formating */
 
@@ -259,12 +259,9 @@ void printOutput(evargs args, arguments_T *arguments){
         else sprintf(g_outSev[ch->i],"UNKNOWN: %u",ch->status);
     }
 
-    if (isTimeType){/* otherwise we don't have it */
-        /* we assume that manually specifying dbr_time implies -time or -date. */
-        if (arguments->date || arguments->dbrRequestType != -1) epicsTimeToStrftime(g_outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &g_timestampRead[ch->i]);
-        if (arguments->time || arguments->dbrRequestType != -1) epicsTimeToStrftime(g_outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &g_timestampRead[ch->i]);
-    }
-
+    /* we assume that manually specifying dbr_time implies -time and -date. */
+    if (arguments->date || isTimeType) epicsTimeToStrftime(g_outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &g_timestampRead[ch->i]);
+    if (arguments->time || isTimeType) epicsTimeToStrftime(g_outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &g_timestampRead[ch->i]);
 
     /* show local date or time? */
     if (arguments->localdate || arguments->localtime){
@@ -277,8 +274,8 @@ void printOutput(evargs args, arguments_T *arguments){
     }
 
     /* if both local and server times are requested, clarify which is which */
-    bool doubleTime = (arguments->localdate || arguments->localtime) && (arguments->date || arguments->time);
-    if (doubleTime && isTimeType){
+    bool doubleTime = (arguments->localdate || arguments->localtime) && (arguments->date || arguments->time || isTimeType);
+    if (doubleTime){
         fputs("server time: ",stdout);
     }
 
@@ -297,9 +294,13 @@ void printOutput(evargs args, arguments_T *arguments){
     if (!isStrEmpty(g_outLocalTime[ch->i]))   printf("%s ",g_outLocalTime[ch->i]);
 
 
-    /* timestamp if monitor and if requested and if isTimeType */
-    if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp && isTimeType)
+    /* timestamp if monitor*/
+    if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp) {
+        if(arguments->localdate || arguments->localtime || arguments->date || arguments->time || isTimeType) {
+            fputs("timestamp: ", stdout);
+        }
         printf("%s ", g_outTimestamp[ch->i]);
+    }
 
     /* channel name */
     if (!arguments->noname)  printf("%s ",ch->base.name);
@@ -511,7 +512,7 @@ void getTimeStamp(size_t i, arguments_T * arguments) {
         /*timestamps separate for each channel, otherwise use lastUpdate[0] */
         /*for all channels (commonI). */
 
-        /* firstUpodate var is set at the end of caReadCallback, just before printing results. */
+        /* firstUpdate var is set at the end of caReadCallback, just before printing results. */
         if (g_firstUpdate[i]) {
             negative = epicsTimeDiffFull(&elapsed, &g_timestampRead[i], &g_lastUpdate[commonI]);
         }

@@ -420,6 +420,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
                     warnPrint("Invalid argument '%s' "
                             "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
                 }
+                if(arguments->fieldSeparator == ' ') arguments->fieldSeparator = 0;
                 break;
             case 19:   /* field separator for input */
                 if (sscanf(optarg, "%c", &arguments->inputSeparator) != 1){
@@ -484,11 +485,12 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
                         dbr_text_to_type(str, arguments->dbrRequestType);
                     }
                 }
-                if (arguments->dbrRequestType < DBR_STRING    || arguments->dbrRequestType > DBR_CTRL_DOUBLE){
+                if (arguments->dbrRequestType < DBR_STRING || arguments->dbrRequestType > DBR_CTRL_DOUBLE) {
                     warnPrint("Requested dbr type out of range "
                             "or invalid - ignored. ('%s -h' for help.)\n", argv[0]);
                     arguments->dbrRequestType = -1;
                 }
+
                 break;
             }
             break;
@@ -567,11 +569,12 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
          /* arguments->prec is not checked here, since checking arguments->dblFormatType is also set when arguments->prec is set. */
          arguments->round = roundType_no_rounding;
          arguments->dblFormatType = '\0';
-         arguments->fieldSeparator = ' ' ;
+         arguments->fieldSeparator = 0;
          arguments->noname = true;
          arguments->nostat = true;
          arguments->stat = false;
          arguments->nounit = true;
+         /* TODO: reset everything, or allow output formatting for value? */
      }
 
 
@@ -711,7 +714,12 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
             ((dbr_int_t *)(*data))[j] = (dbr_int_t)strtoll(str[j], &endptr, base);
             /* if a number before . is found it is also ok */
             if (endptr == str[j] || !(*endptr == '\0' || *endptr == '.') ) {
-                errPrint("Impossible to convert input %s to %s as requested\n",str[j], dbr_type_to_text(*pBaseType));
+                if(base) {
+                    errPrint("Impossible to convert input %s to %s using numeric base %d\n",str[j], dbr_type_to_text(*pBaseType), base);
+                }
+                else {
+                    errPrint("Impossible to convert input %s to %s as requested\n",str[j], dbr_type_to_text(*pBaseType));
+                }
                 success = false;
             }
         }
@@ -735,7 +743,12 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
                 ((dbr_enum_t *)(*data))[j] = (dbr_enum_t)strtoul(str[j], &endptr, base);
                 if (endptr == str[j] || *endptr ) {
                     if(arguments->num){
-                        errPrint("Impossible to convert input %s to %s as requested\n",str[j], dbr_type_to_text(*pBaseType));
+                        if(base) {
+                            errPrint("Impossible to convert input %s to %s using numeric base %d\n",str[j], dbr_type_to_text(*pBaseType), base);
+                        }
+                        else {
+                            errPrint("Impossible to convert input %s to %s as requested\n",str[j], dbr_type_to_text(*pBaseType));
+                        }
                         break;
                     }else{
                         isNumber = false;
@@ -785,7 +798,12 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
                     continue;
                 }else{
                     if(arguments->num || base != 0){
-                        errPrint("%s can not be parsed as an 8 bit integer in requested numeric base\n", str[j]);
+                        if(base){
+                            errPrint("%s can not be parsed as an 8 bit integer using numeric base %d\n", str[j], base);
+                        }
+                        else {
+                            errPrint("%s can not be parsed as an 8 bit integer\n", str[j]);
+                        }
                         return false; /* break if one element can not be parsed */
                     }else if (arguments->parseArray){
                         /* array specified - if the element can not be parsed as number just take the first character from it as it is*/
@@ -823,7 +841,12 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
             ((dbr_long_t *)(*data))[j] = (dbr_long_t)strtoll(str[j], &endptr, base);
             /* if a number before . is found it is also ok */
             if (endptr == str[j] || !(*endptr == '\0' || *endptr == '.')) {
-                errPrint("Impossible to convert input %s to %s as requested\n",str[j], dbr_type_to_text(*pBaseType));
+                if(base) {
+                    errPrint("Impossible to convert input %s to %s using numeric base %d\n",str[j], dbr_type_to_text(*pBaseType), base);
+                }
+                else {
+                    errPrint("Impossible to convert input %s to %s as requested\n",str[j], dbr_type_to_text(*pBaseType));
+                }
                 success = false;
             }
         }

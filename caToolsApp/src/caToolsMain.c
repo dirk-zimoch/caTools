@@ -60,7 +60,6 @@ static void caReadCallback (evargs args){
         /* check if long string support is needed and issue another request for it */
         if(     ch->nRequests <= 0 &&   /* last request was handled. */
                 ch->lstr.created &&     /* long string channel was created and connected */
-                arguments.dbrRequestType == -1 &&   /* there is no special dbr type requested */
                 ca_element_count(ch->lstr.id) >= MAX_STRING_SIZE-1) /* the field supports more than 40 characters */
         {
             char* value = dbr_value_ptr(args.dbr, args.type);
@@ -291,7 +290,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
 
     /* if needed issue second request using time type */
     if ((arguments->time || arguments->date || arguments->timestamp) &&
-            arguments->dbrRequestType == -1 )
+            !(DBR_TIME_STRING <= arguments->dbrRequestType && arguments->dbrRequestType <= DBR_TIME_DOUBLE) )
     {
         if (ca_field_type(reqChid) == DBF_ENUM && !(arguments->num)){
             /* if enum && s, use time_string */
@@ -300,6 +299,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         else{ /* else use time_native */
             reqType = dbf_type_to_DBR_TIME(dbr_type_to_DBF(reqType));
         }
+        debugPrint("caGenerateReadRequests() - Issued second request using time type: %s\n", dbr_type_to_text(reqType));
         ch->nRequests=ch->nRequests+1;
         status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
         if (status != ECA_NORMAL) {
