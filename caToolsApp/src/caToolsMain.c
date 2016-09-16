@@ -24,17 +24,21 @@
  */
 static void caReadCallback (evargs args){
     debugPrint("caReadCallback()\n");
-    /*check if status is ok */
-    if (args.status != ECA_NORMAL) {
-        /* TODO: when does this happen? do we need to recuce nRequest variable? */
-        errPrint("Error in read callback. %s.\n", ca_message(args.status));
-        return;
-    }
 
     struct channel *ch = (struct channel *)args.usr;
     debugPrint("ReadCallback() callbacks to process: %i\n", ch->nRequests);
     debugPrint("ReadCallback() type: %s\n", dbr_type_to_text(args.type));
     ch->nRequests --; /* number of returned callbacks before printing */
+
+    /*check if status is ok */
+    if (args.status != ECA_NORMAL) {
+        /* When does this happen?
+         * One case is, if the channel disconnects before a ca_get_callback() request can be completed.
+         *
+         * In this case nRequests need to be reduced. */
+        errPrint("Error in read callback. %s.\n", ca_message(args.status));
+        return;
+    }
 
     /*if we are in monitor or cawait and just waiting for the program to exit, don't proceed. */
     if (g_runMonitor == false){
