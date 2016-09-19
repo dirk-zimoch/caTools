@@ -566,6 +566,13 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
          arguments->str = false;
      }
      if (arguments->plain || arguments->tool == cainfo) {
+         if(arguments->plain && (arguments->num || arguments->hex || arguments->bin || arguments->oct || arguments->str\
+                              || arguments->round != roundType_no_rounding || arguments->dblFormatType != '\0'\
+                              || arguments->fieldSeparator != 0 || arguments->noname || arguments->nostat\
+                              || arguments->stat || arguments->nounit\
+                              || arguments->inputSeparator != ' ' || arguments->parseArray)) {
+             warnPrint("-plain option overrides all output formatting switches (except date/time related).\n");
+         }
          arguments->num =false; arguments->hex =false; arguments->bin = false; arguments->oct =false; arguments->str =false;
          /* arguments->prec is not checked here, since checking arguments->dblFormatType is also set when arguments->prec is set. */
          arguments->round = roundType_no_rounding;
