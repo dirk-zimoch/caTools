@@ -54,9 +54,10 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs(  "- When -a option is set, input separator (-inSep argument) is used to parse elements in an array.\n"\
                 "- When input separator (-inSep argument) is explicitly defined, -a option is automatically used."
                 " See following examples which produce the same result,"\
-                " namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB:\n", stream);
-        fputs("  caput -a pvA '1 2 3' pvB '4 5 6'\n", stream);
-        fputs("  caput -inSep ; pvA '1;2;3' pvB '4;5;6'\n", stream);
+                " namely write 1, 2 and 3 into record pvA and 4, 5, 6 into pvB.\n Let records pvA and pvB be waveforms of chars:\n", stream);
+        fputs("  caput pvA 'abc' pvB 'def'\n", stream);
+        fputs("  caput -a pvA 'aa bb cc' pvB 'dd ee ff'\n", stream);
+        fputs("  caput -inSep ';' pvA 'a;b;c' pvB 'a;b;c'\n", stream);
     }
     if (tool == cado) {
         fputs("Writes 1 to PROC field, does not wait for the processing to finish. Does not have any output (except if an error occurs).\n", stream);
@@ -188,7 +189,6 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("                                 floor: round down,\n", stream);
 
         fputs("Formating output : Array format options\n", stream);
-        fputs("  -a                   Display as array.\n", stream);
         fputs("  -nord                Display number of array elements before their values.\n", stream);
         fputs("  -outNelm <number>    Number of array elements to read.\n", stream);
         fputs("  -outSep <number>     Separator between array elements.\n", stream);
