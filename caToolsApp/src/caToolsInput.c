@@ -179,7 +179,8 @@ void usage(FILE *stream, enum tool tool, char *programName){
               "                       precision <number>. Overrides -prec option.\n", stream);
         fputs("  -f <number>          Format doubles using floating point with precision\n"\
               "                       <number>. Overrides -prec option.\n", stream);
-        fputs("  -g <number>          Format doubles using shorter of e or f <number>.\n"\
+        fputs("  -g <number>          Use %g format, printing <number> of most significant digits.\n"\
+              "                       %g formats doubles using shorter representation of -e or -f.\n"\
               "                       Overrides -prec option.\n", stream);
         fputs("  -prec <number>       Override PREC field with <number>.\n"\
               "                       (default: PREC field).\n", stream);
@@ -245,12 +246,15 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
     };
     putenv("POSIXLY_CORRECT="); /* Behave correctly on GNU getopt systems = stop parsing after 1st non option is encountered */
 
-    while ((opt = getopt_long_only(argc, argv, ":w:e:f:g:n:sthdav:", long_options, &opt_long)) != -1) {
+    while ((opt = getopt_long_only(argc, argv, "w:e:f:g:n:sthdav:", long_options, &opt_long)) != -1) {
         switch (opt) {
         case 'w':
             if (sscanf(optarg, "%lf", &arguments->caTimeout) != 1){    /*  type was not given as float */
                 arguments->caTimeout = CA_DEFAULT_TIMEOUT;
-                warnPrint("Requested timeout invalid - ignored. ('%s -h' for help.)\n", argv[0]);
+                warnPrint("Requested CA timeout invalid - ignored. ('%s -h' for help.)\n", argv[0]);
+            }
+            if(arguments->caTimeout < 0) {
+                warnPrint("CA timeout must be greater or equal to zero - ignored. ('%s -h' for help.)\n", argv[0]);
             }
             break;
         case 'd': /* same as date */
@@ -435,8 +439,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
                 arguments->nord = true;
                 break;
             case 21:	/*  tool */
-                /*  rev RV: what is this line below */
-                ;/* c */
+                ;/* declaration must not follow label */
                 int tool;
                 if (sscanf(optarg, "%d", &tool) != 1){   /*  type was not given as a number [0, 1, 2] */
                     if(!strcmp("caget", optarg)){
@@ -458,7 +461,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
                     }
                 } else{ /*  type was given as a number */
                     if(tool >= caget|| tool <= cainfo){   /* unknown tool case handled down below */
-                        arguments->round = tool;
+                        arguments->tool = tool_unknown;
                     }
                 }
                 break;
@@ -495,16 +498,6 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
             }
             break;
         case '?':
-            /* TODO: this doesn't seem to work OK. Using the following example, optopt is empty:
-             * ./caget -y
-             * The output is: Unrecognized option: '-'. ('./caget -h' for help.). Exiting.
-             * Need to inspect why... */
-            /*fprintf(stderr, "Unrecognized option: '-%c'. ('%s -h' for help.). Exiting.\n", optopt, argv[0]);*/
-            fprintf(stderr, "Unrecognized option. Issue command '%s -h' for help. Exiting.\n", argv[0]);
-            return false;
-            break;
-        case ':':
-            fprintf(stderr, "Option '-%c' requires an argument. ('%s -h' for help.). Exiting.\n", optopt, argv[0]);
             return false;
             break;
         case 'h':               /* Print usage */

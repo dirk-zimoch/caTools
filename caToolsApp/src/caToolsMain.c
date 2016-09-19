@@ -165,7 +165,7 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
         /* check for timeout */
         epicsTimeGetCurrent(&timeoutNow);
 
-        if (epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
+        if (arguments.caTimeout > 0 && epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
             debugPrint("waitForCallbacks - Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
             break;
         }
