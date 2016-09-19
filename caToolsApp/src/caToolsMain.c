@@ -193,7 +193,6 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
     debugPrint("caGenerateWriteRequests() - %s\n", ch->base.name);
     int status = ECA_NORMAL;
 
-    ch->state=put_waiting;
     /* request ctrl type */
     short baseType = ca_field_type(ch->base.id);
 
@@ -209,6 +208,7 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
                 warnPrint("Number of input elements is: %zu, but channel can accept only %zu.\n", ch->inNelm, ch->count);
                 ch->inNelm = ch->count;
             }
+            ch->state=put_waiting;
             debugPrint("nelm: %zu\n", ch->inNelm);
             ch->nRequests++;
             /* dont wait for callback in case of caputq */
@@ -224,6 +224,7 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
     }
     else if((arguments->tool == cagets) && ch->proc.created) {
         /* in case of cagets put 1 to the proc field */
+        ch->state=put_waiting;
         ch->nRequests++;
         dbr_char_t input=1;
         status = ca_array_put_callback(DBF_CHAR, 1, ch->proc.id, &input, caWriteCallback, ch);
@@ -595,7 +596,7 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         readAccess = ca_read_access(channels[i].base.id);
         writeAccess = ca_write_access(channels[i].base.id);
 
-        printf("\tIOC name: %s\n", ca_host_name(channels[i].base.id));                           /*host name */
+        printf("\tCA host name: %s\n", ca_host_name(channels[i].base.id));                           /*host name */
         printf("\tRead access: "); if(readAccess) printf("yes\n"); else printf("no\n");     /*read and write access */
         printf("\tWrite access: "); if(writeAccess) printf("yes\n"); else printf("no\n");
         printf("%s\n", delimeter);
