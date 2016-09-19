@@ -1,0 +1,433 @@
+Start this test just after first starting the test IOC
+caGet output
+CTT:PROC-CALC 0 (SEVR:INVALID STAT:UDF)
+
+caGets output
+CTT:PROC-CALC 1 
+
+making caDo request
+caGet output
+CTT:PROC-CALC 2 
+
+done
+
+caGet
+CTT:TEST_1-AI.SCAN ".1 second" 
+CTT:TEST_1-AI.INP "CTT:TEST_1 NPP NMS" 
+CTT:TEST_1-AI.EGU "ds" 
+CTT:CALC_BI.INAV "Local PV" 
+CTT:TEST_MBBO "50.00 Hz" (SEVR:MAJOR STAT:STATE)
+CTT:TEST_MBBO.ZRVL 1 (SEVR:MAJOR STAT:STATE)
+CTT:TEST_MBBO.DESC "Select RF 1 event freq" (SEVR:MAJOR STAT:STATE)
+CTT:TEST_STRING "Hello world" (SEVR:INVALID STAT:UDF)
+CTT:STRING "Value field can have only fourty chars." (SEVR:INVALID STAT:UDF)
+CTT:STRING.OUT "ten1234567twenty1234thirty1234forty12345fifty12345sixty12345 NPP NMS" (SEVR:INVALID STAT:UDF)
+CTT:STRING.DESC "Description field can have only fourty ." (SEVR:INVALID STAT:UDF)
+CTT:TEST_WVF-CHAR  
+CTT:TEST_WVF-DOUBLE  (SEVR:INVALID STAT:UDF)
+CTT:TEST_WVF-FLOAT  (SEVR:INVALID STAT:UDF)
+CTT:TEST_WVF-FLOAT.NELM 10 (SEVR:INVALID STAT:UDF)
+CTT:TEST_WVF-LONG  (SEVR:INVALID STAT:UDF)
+CTT:TEST_WVF-SHORT  (SEVR:INVALID STAT:UDF)
+CTT:TEST_WVF-STRING  (SEVR:INVALID STAT:UDF)
+CTT:MOTOR 0.000 deg. 
+CTT:MOTOR.VELO 0.000 deg./se 
+CTT:STATIC-LONGIN 20 test eg (SEVR:INVALID STAT:UDF)
+CTT:STATIC-AO 15 test eg 
+CTT:STATIC-AO.OUT "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest NPP NMS" 
+CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" (SEVR:INVALID STAT:UDF)
+
+caGets
+CTT:TEST_1-AI.SCAN ".1 second" 
+CTT:TEST_1-AI.INP "CTT:TEST_1 NPP NMS" 
+CTT:TEST_1-AI.EGU "ds" 
+CTT:CALC_BI.INAV "Local PV" 
+CTT:TEST_MBBO "50.00 Hz" (SEVR:MAJOR STAT:STATE)
+CTT:TEST_MBBO.ZRVL 1 (SEVR:MAJOR STAT:STATE)
+CTT:TEST_MBBO.DESC "Select RF 1 event freq" (SEVR:MAJOR STAT:STATE)
+CTT:TEST_STRING "Hello world" 
+CTT:STRING "Value field can have only fourty chars." (SEVR:INVALID STAT:LINK)
+CTT:STRING.OUT "ten1234567twenty1234thirty1234forty12345fifty12345sixty12345 NPP NMS" (SEVR:INVALID STAT:LINK)
+CTT:STRING.DESC "Description field can have only fourty ." (SEVR:INVALID STAT:LINK)
+CTT:TEST_WVF-CHAR  
+CTT:TEST_WVF-DOUBLE  
+CTT:TEST_WVF-FLOAT  
+CTT:TEST_WVF-FLOAT.NELM 10 
+CTT:TEST_WVF-LONG  
+CTT:TEST_WVF-SHORT  
+CTT:TEST_WVF-STRING  
+CTT:MOTOR 0.000 deg. 
+CTT:MOTOR.VELO 0.000 deg./se 
+CTT:STATIC-LONGIN 20 test eg 
+CTT:STATIC-AO 15 test eg 
+CTT:STATIC-AO.OUT "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest NPP NMS" 
+CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" 
+
+caDo
+
+caPut
+CTT:TEST_1-AI.SCAN ".5 second" 
+CTT:TEST_1-AI.EGU "tooLongEguToWri" 
+CTT:TEST_MBBO "10.00 Hz" 
+CTT:TEST_MBBO.ZRVL 0 
+CTT:TEST_MBBO.DESC "CTT description" 
+CTT:STRING "Value field can have only fourty chars_" (SEVR:INVALID STAT:LINK)
+Warning: Input ten1234567twenty1234thirty1234forty12345fifty12345sixty1234_ is longer than the allowed size 39.
+Warning: Truncating to: ten1234567twenty1234thirty1234forty1234
+CTT:STRING.OUT "ten1234567twenty1234thirty1234forty1234" (SEVR:INVALID STAT:LINK)
+CTT:TEST_WVF-CHAR "a 1 b 2 c 3" 
+CTT:TEST_WVF-DOUBLE 1 2 100 10 
+CTT:TEST_WVF-DOUBLE.PREC 5 
+CTT:TEST_WVF-FLOAT 1 2 100 10 
+CTT:TEST_WVF-LONG 1 2 100 10 6 7 8 9 10 11 
+CTT:TEST_WVF-SHORT 1 100 1000 10000 -31072 16960 
+CTT:TEST_WVF-STRING "1st" "string" "bring" "dring" "ping" 
+Error: CTT:MOTOR write response timed-out
+CTT:MOTOR 5.000 deg. 
+CTT:MOTOR.VELO 8.000 deg./se 
+CTT:STATIC-LONGIN 0 test eg 
+CTT:STATIC-AO 0 test eg 
+
+caPutq
+Warning: Input ten1234567twenty1234thirty1234forty12345fifty12345sixty1234! is longer than the allowed size 39.
+Warning: Truncating to: ten1234567twenty1234thirty1234forty1234
+
+caGet
+CTT:TEST_1-AI.SCAN ".2 second" 
+CTT:TEST_1-AI.INP "CTT:TEST_1 NPP NMS" 
+CTT:TEST_1-AI.EGU "ohTooLongEguToW" 
+CTT:CALC_BI.INAV "Local PV" 
+CTT:TEST_MBBO "16.66 Hz" 
+CTT:TEST_MBBO.ZRVL 1 
+CTT:TEST_MBBO.DESC "CTTest description" 
+CTT:TEST_STRING "Hello world" 
+CTT:STRING "Value field can have only fourty chars!" (SEVR:INVALID STAT:LINK)
+CTT:STRING.OUT "ten1234567twenty1234thirty1234forty1234 NPP NMS" (SEVR:INVALID STAT:LINK)
+CTT:STRING.DESC "Description field can have only fourty ." (SEVR:INVALID STAT:LINK)
+CTT:TEST_WVF-CHAR "1 a 2 b 3 c" 
+CTT:TEST_WVF-DOUBLE 2.00000 2.30000 100.00000 10.00000 
+CTT:TEST_WVF-FLOAT 2 2 100 10 
+CTT:TEST_WVF-FLOAT.NELM 10 
+CTT:TEST_WVF-LONG 2 2 100 10 6 7 8 9 10 11 
+CTT:TEST_WVF-SHORT 2 100 1000 10000 -31072 16960 
+CTT:TEST_WVF-STRING "2nd" "string" "bring" "dring" "ping" 
+CTT:MOTOR 4.000 deg. 
+CTT:MOTOR.VELO 5.000 deg./se 
+CTT:STATIC-LONGIN 1 test eg 
+CTT:STATIC-AO 1 test eg 
+CTT:STATIC-AO.OUT "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest NPP NMS" 
+CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" 
+
+caGets
+CTT:TEST_1-AI.SCAN ".2 second" 
+CTT:TEST_1-AI.INP "CTT:TEST_1 NPP NMS" 
+CTT:TEST_1-AI.EGU "ohTooLongEguToW" 
+CTT:CALC_BI.INAV "Local PV" 
+CTT:TEST_MBBO "16.66 Hz" 
+CTT:TEST_MBBO.ZRVL 1 
+CTT:TEST_MBBO.DESC "CTTest description" 
+CTT:TEST_STRING "Hello world" 
+CTT:STRING "Value field can have only fourty chars!" (SEVR:INVALID STAT:LINK)
+CTT:STRING.OUT "ten1234567twenty1234thirty1234forty1234 NPP NMS" (SEVR:INVALID STAT:LINK)
+CTT:STRING.DESC "Description field can have only fourty ." (SEVR:INVALID STAT:LINK)
+CTT:TEST_WVF-CHAR "1 a 2 b 3 c" 
+CTT:TEST_WVF-DOUBLE 2.00000 2.30000 100.00000 10.00000 
+CTT:TEST_WVF-FLOAT 2 2 100 10 
+CTT:TEST_WVF-FLOAT.NELM 10 
+CTT:TEST_WVF-LONG 2 2 100 10 6 7 8 9 10 11 
+CTT:TEST_WVF-SHORT 2 100 1000 10000 -31072 16960 
+CTT:TEST_WVF-STRING "2nd" "string" "bring" "dring" "ping" 
+Error: CTT:MOTOR.PROC write response timed-out
+CTT:MOTOR 4.000 deg. 
+Error: CTT:MOTOR.PROC write response timed-out
+CTT:MOTOR.VELO 5.000 deg./se 
+CTT:STATIC-LONGIN 1 test eg 
+CTT:STATIC-AO 1 test eg 
+CTT:STATIC-AO.OUT "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest NPP NMS" 
+CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" 
+
+caDo
+
+-----------------------------------------
+Various output formatting
+-----------------------------------------
+Using: -plain
+".2 second" 
+"CTT:TEST_1 NPP NMS" 
+"ohTooLongEguToW" 
+"Local PV" 
+"16.66 Hz" 
+1.000000 
+"CTTest description" 
+"Hello world" 
+"Value field can have only fourty chars!" 
+"ten1234567twenty1234thirty1234forty1234 NPP NMS" 
+"Description field can have only fourty ." 
+"1 a 2 b 3 c" 
+2.000000 2.300000 100.000000 10.000000 
+2.000000 2.300000 100.000000 10.000000 
+10.000000 
+2 2 100 10 6 7 8 9 10 11 
+2 100 1000 10000 -31072 16960 
+"2nd" "string" "bring" "dring" "ping" 
+4.000000 
+5.000000 
+1 
+1.000000 
+"CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest NPP NMS" 
+"CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" 
+
+Using: -noname -nostat -nounit
+".2 second" 
+"CTT:TEST_1 NPP NMS" 
+"ohTooLongEguToW" 
+"Local PV" 
+"16.66 Hz" 
+1 
+"CTTest description" 
+"Hello world" 
+"Value field can have only fourty chars!" 
+"ten1234567twenty1234thirty1234forty1234 NPP NMS" 
+"Description field can have only fourty ." 
+"1 a 2 b 3 c" 
+2.00000 2.30000 100.00000 10.00000 
+2 2 100 10 
+10 
+2 2 100 10 6 7 8 9 10 11 
+2 100 1000 10000 -31072 16960 
+"2nd" "string" "bring" "dring" "ping" 
+4.000 
+5.000 
+1 
+1 
+"CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest NPP NMS" 
+"CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" 
+
+Using: -stat -plain
+Warning: -plain option overrides all output formatting switches (except date/time related).
+".2 second" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"CTT:TEST_1 NPP NMS" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"ohTooLongEguToW" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"Local PV" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"16.66 Hz" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+1.000000 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"CTTest description" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"Hello world" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"Value field can have only fourty chars!" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"ten1234567twenty1234thirty1234forty1234 NPP NMS" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"Description field can have only fourty ." 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"1 a 2 b 3 c" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+2.000000 2.300000 100.000000 10.000000 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+2.000000 2.300000 100.000000 10.000000 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+10.000000 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+2 2 100 10 6 7 8 9 10 11 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+2 100 1000 10000 -31072 16960 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"2nd" "string" "bring" "dring" "ping" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+4.000000 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+5.000000 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+1 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+1.000000 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest NPP NMS" 
+Warning: -plain option overrides all output formatting switches (except date/time related).
+"CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" 
+
+Using: -stat -nostat
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_1-AI.SCAN ".2 second" (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_1-AI.INP "CTT:TEST_1 NPP NMS" (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_1-AI.EGU "ohTooLongEguToW" (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:CALC_BI.INAV "Local PV" (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_MBBO "16.66 Hz" (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_MBBO.ZRVL 1 (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_MBBO.DESC "CTTest description" (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_STRING "Hello world" (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:STRING "Value field can have only fourty chars!" (SEVR:INVALID STAT:LINK)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:STRING.OUT "ten1234567twenty1234thirty1234forty1234 NPP NMS" (SEVR:INVALID STAT:LINK)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:STRING.DESC "Description field can have only fourty ." (SEVR:INVALID STAT:LINK)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_WVF-CHAR "1 a 2 b 3 c" (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_WVF-DOUBLE 2.00000 2.30000 100.00000 10.00000 (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_WVF-FLOAT 2 2 100 10 (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_WVF-FLOAT.NELM 10 (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_WVF-LONG 2 2 100 10 6 7 8 9 10 11 (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_WVF-SHORT 2 100 1000 10000 -31072 16960 (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:TEST_WVF-STRING "2nd" "string" "bring" "dring" "ping" (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:MOTOR 4.000 deg. (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:MOTOR.VELO 5.000 deg./se (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:STATIC-LONGIN 1 test eg (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:STATIC-AO 1 test eg (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:STATIC-AO.OUT "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest NPP NMS" (SEVR:NO_ALARM STAT:NO_ALARM)
+Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
+CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" (SEVR:NO_ALARM STAT:NO_ALARM)
+
+Using: -d -t -localdate -localtime
+server time: 2016-09-19 11:09:11.472611 local time: 2016-09-19 11:09:14.343598 CTT:TEST_1-AI.SCAN ".2 second" 
+server time: 2016-09-19 11:09:11.472611 local time: 2016-09-19 11:09:14.418889 CTT:TEST_1-AI.INP "CTT:TEST_1 NPP NMS" 
+server time: 2016-09-19 11:09:11.672549 local time: 2016-09-19 11:09:14.499909 CTT:TEST_1-AI.EGU "ohTooLongEguToW" 
+server time: 2016-09-19 11:09:11.072509 local time: 2016-09-19 11:09:14.549461 CTT:CALC_BI.INAV "Local PV" 
+server time: 2016-09-19 11:09:05.119477 local time: 2016-09-19 11:09:14.594018 CTT:TEST_MBBO "16.66 Hz" 
+server time: 2016-09-19 11:09:05.119477 local time: 2016-09-19 11:09:14.637958 CTT:TEST_MBBO.ZRVL 1 
+server time: 2016-09-19 11:09:05.119477 local time: 2016-09-19 11:09:14.712450 CTT:TEST_MBBO.DESC "CTTest description" 
+server time: 2016-09-19 11:09:05.187016 local time: 2016-09-19 11:09:14.763804 CTT:TEST_STRING "Hello world" 
+server time: 2016-09-19 11:09:01.469792 local time: 2016-09-19 11:09:14.811639 CTT:STRING "Value field can have only fourty chars!" (SEVR:INVALID STAT:LINK)
+server time: 2016-09-19 11:09:01.469792 local time: 2016-09-19 11:09:14.900621 CTT:STRING.OUT "ten1234567twenty1234thirty1234forty1234 NPP NMS" (SEVR:INVALID STAT:LINK)
+server time: 2016-09-19 11:09:01.469792 local time: 2016-09-19 11:09:14.988484 CTT:STRING.DESC "Description field can have only fourty ." (SEVR:INVALID STAT:LINK)
+server time: 2016-09-19 11:09:05.256193 local time: 2016-09-19 11:09:15.032875 CTT:TEST_WVF-CHAR "1 a 2 b 3 c" 
+server time: 2016-09-19 11:09:05.321419 local time: 2016-09-19 11:09:15.083495 CTT:TEST_WVF-DOUBLE 2.00000 2.30000 100.00000 10.00000 
+server time: 2016-09-19 11:09:05.456928 local time: 2016-09-19 11:09:15.129154 CTT:TEST_WVF-FLOAT 2 2 100 10 
+server time: 2016-09-19 11:09:05.456928 local time: 2016-09-19 11:09:15.178664 CTT:TEST_WVF-FLOAT.NELM 10 
+server time: 2016-09-19 11:09:05.526586 local time: 2016-09-19 11:09:15.224063 CTT:TEST_WVF-LONG 2 2 100 10 6 7 8 9 10 11 
+server time: 2016-09-19 11:09:05.594008 local time: 2016-09-19 11:09:15.267652 CTT:TEST_WVF-SHORT 2 100 1000 10000 -31072 16960 
+server time: 2016-09-19 11:09:05.657962 local time: 2016-09-19 11:09:15.312002 CTT:TEST_WVF-STRING "2nd" "string" "bring" "dring" "ping" 
+server time: 2016-09-19 11:09:05.793221 local time: 2016-09-19 11:09:15.362293 CTT:MOTOR 4.000 deg. 
+server time: 2016-09-19 11:09:05.793221 local time: 2016-09-19 11:09:15.411461 CTT:MOTOR.VELO 5.000 deg./se 
+server time: 2016-09-19 11:09:05.857212 local time: 2016-09-19 11:09:15.457124 CTT:STATIC-LONGIN 1 test eg 
+server time: 2016-09-19 11:09:05.984541 local time: 2016-09-19 11:09:15.505931 CTT:STATIC-AO 1 test eg 
+server time: 2016-09-19 11:09:05.984541 local time: 2016-09-19 11:09:15.590343 CTT:STATIC-AO.OUT "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest NPP NMS" 
+server time: 2016-09-19 11:09:04.606749 local time: 2016-09-19 11:09:15.675527 CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" 
+
+Using: -mukmuk
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+../caget: unrecognized option '-mukmuk'
+
+-----------------------------------------
+caPut on waveforms
+-----------------------------------------
+with -bin
+CTT:TEST_WVF-CHAR 0b00000001 0b00000010 0b00000101 
+CTT:TEST_WVF-DOUBLE 0b00000000000000000000000000000001 0b00000000000000000000000000001010 0b00000000000000000000000001100101 
+CTT:TEST_WVF-FLOAT 0b00000000000000000000000000000001 0b00000000000000000000000000001010 0b00000000000000000000000001100101 
+CTT:TEST_WVF-LONG 0b00000000000000000000000000000001 0b00000000000000000000000000000010 0b00000000000000000000000000000101 
+CTT:TEST_WVF-SHORT 0b0000000000000001 0b0000000000000010 0b0000000000000101 
+CTT:TEST_WVF-STRING "123" "string" "456" "dring" "ping" 
+
+with -oct
+CTT:TEST_WVF-CHAR 0o1 0o10 0o101 
+CTT:TEST_WVF-DOUBLE 0o1 0o12 0o145 
+CTT:TEST_WVF-FLOAT 0o1 0o12 0o145 
+CTT:TEST_WVF-LONG 0o1 0o10 0o101 
+CTT:TEST_WVF-SHORT 0o1 0o10 0o101 
+CTT:TEST_WVF-STRING "123" "string" "456" "dring" "ping" 
+
+with -hex
+Error: 101 can not be parsed as an 8 bit integer using numeric base 16
+Error: Problem parsing input for PV CTT:TEST_WVF-CHAR: "1 10 101".
+CTT:TEST_WVF-DOUBLE 0x1 0xa 0x65 
+CTT:TEST_WVF-FLOAT 0x1 0xa 0x65 
+CTT:TEST_WVF-LONG 0x1 0x10 0x101 
+CTT:TEST_WVF-SHORT 0x1 0x10 0x101 
+CTT:TEST_WVF-STRING "123" "string" "456" "dring" "ping" 
+
+-----------------------------------------
+Test setting and reading enum values with number or string
+-----------------------------------------
+CTT:TEST_MBBO "50.00 Hz" (SEVR:MAJOR STAT:STATE)
+CTT:TEST_MBBO "25.00 Hz" 
+CTT:TEST_MBBO 3 
+CTT:TEST_MBBO "25.00 Hz" 
+CTT:BO "1" 
+CTT:BO "0" 
+CTT:BO "1" 
+CTT:BO "0" 
+CTT:BO "1" 
+
+-----------------------------------------
+Test setting and reading chars as numbers or strings
+-----------------------------------------
+CTT:TEST_WVF-CHAR "1 2" 
+CTT:TEST_WVF-CHAR 49 32 50 0 
+CTT:TEST_WVF-CHAR "1 2" 
+CTT:TEST_WVF-CHAR 1 2 
+CTT:TEST_WVF-CHAR 1 2 
+CTT:TEST_WVF-CHAR 1 2 
+CTT:TEST_WVF-CHAR 50 32 32 32 49 
+CTT:TEST_WVF-CHAR 50 32 32 32 49 
+CTT:TEST_WVF-CHAR "2   1" 
+
+-----------------------------------------
+Double conversion
+-----------------------------------------
+CTT:CALC 10 (SEVR:INVALID STAT:UDF)
+CTT:CALC.PREC 4 (SEVR:INVALID STAT:UDF)
+CTT:CALC 0xa (SEVR:INVALID STAT:UDF)
+CTT:CALC 0b00000000000000000000000000001010 (SEVR:INVALID STAT:UDF)
+CTT:CALC 0o12 (SEVR:INVALID STAT:UDF)
+CTT:CALC 10.2300 (SEVR:INVALID STAT:UDF)
+CTT:CALC 10.2300 (SEVR:INVALID STAT:UDF)
+
+-----------------------------------------
+Number of elements
+-----------------------------------------
+CTT:TEST_WVF-CHAR 5 "2   1" 
+CTT:TEST_WVF-DOUBLE 3 1.00000 10.00000 101.00000 
+CTT:TEST_WVF-FLOAT 3 1 10 101 
+CTT:TEST_WVF-LONG 3 1 16 257 
+CTT:TEST_WVF-SHORT 3 1 16 257 
+CTT:TEST_WVF-STRING 5 "123" "string" "456" "dring" "ping" 
+CTT:PROC-CALC 1 2 
+CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME 61 67 84 84 58 82 101 99 111 114 100 78 97 109 101 84 104 97 116 73 115 76 111 110 103 101 114 84 104 97 110 70 111 114 116 121 67 104 97 114 115 70 111 114 76 111 110 103 83 116 114 105 110 103 84 101 115 116 0 0 0 0 

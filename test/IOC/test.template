@@ -133,6 +133,8 @@ record(mbbo, "$(P):TEST_MBBO") {
     field(SVST, "5.00 Hz")
     field(EIST, "2.50 Hz")
     field(NIST, "5")
+
+    field(ONSV, "MAJOR")
 }
 record(calcout, "$(P):SECONDS"){
 	field(DESC, "Counting seconds")
@@ -166,9 +168,47 @@ record(calcout, "$(P):MINUTES"){
 }
 
 record(stringout, "$(P):STRING"){
-	field(VAL, "Value field can have only fourty")
-	field(DESC, "Long description more than fourty characters and even more text. It is long, so to say.")
+	field(VAL, "Value field can have only fourty chars.")
+	field(DESC, "Description field can have only fourty .")
 	field(SCAN,"Passive")
-	#field(OUT, "Longdescriptionmorethanfourtycharactersandevenmoretext.Itislongsotosay")
-	field(OUT, "one456789ten3456789twenty789thirty6789f")
+	field(OUT, "ten1234567twenty1234thirty1234forty12345fifty12345sixty12345")
+}
+
+record(ao, "$(P):STATIC-AO"){
+	field(EGU, "test egu")
+	field(VAL, "15")
+	field(PINI, "YES")
+	field(OUT, "$(P):RecordNameThatIsLongerThanFortyCharsForLongStringTest")
+}
+
+record(longin, "$(P):STATIC-LONGIN"){
+	field(EGU, "test egu")
+	field(VAL, "20")
+}
+
+record(motor, "$(P):MOTOR") {
+#	field(DTYP,"Soft Channel")
+    field(MRES,"1.000")
+    field(RRES,"1.000")
+    field(ERES,"1.000")
+    field(PREC,"3")
+    field(DHLM,"45")
+    field(DLLM,"-45")
+    field(TWV,"5")
+    field(RTRY,"0")
+    field(EGU,"deg.")
+}
+
+record(calc, "$(P):PROC-CALC") {
+	field(VAL, "0")
+	field(CALC, "VAL+1")
+}
+
+record(ai, "$(P):RecordNameThatIsLongerThanFortyCharsForLongStringTest") {
+
+}
+
+record(bo, "$(P):BO") {
+	field(ONAM, "0")
+	field(ZNAM, "1")
 }
