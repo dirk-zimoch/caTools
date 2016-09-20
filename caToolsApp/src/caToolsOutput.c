@@ -62,10 +62,11 @@ void printValue(evargs args, arguments_T *arguments){
     debugPrint("printValue() - baseType: %s\n", dbr_type_to_text(baseType));
 
     /* handle long strings */
-    if(baseType == DBR_CHAR &&  /* field type is char */
+    if(         (baseType == DBR_CHAR && (ch->type == DBF_STRING || ch->type == DBR_CTRL_STRING)) ||        /* this is long string */
+                (baseType == DBR_CHAR && !arguments->fieldSeparator && !arguments->parseArray && !(arguments->num) &&   /* no special numeric formating specified */
                 (ch->type == DBF_STRING || ch->type == DBR_CTRL_STRING ||  /* if base channel type is string*/
                  arguments->str ||                           /* if requested string formatting */
-                 (args.count > 1 && isPrintable((char *) value, (size_t) args.count)))/* if array returned and all characters are printable */
+                 (args.count > 1 && isPrintable((char *) value, (size_t) args.count))))/* if array returned and all characters are printable */
         )
     {  /* print as string */
         debugPrint("printValue() - case long string with count: %ld\n", args.count);
