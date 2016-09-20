@@ -14,7 +14,7 @@
 #define LEN_UNITS  20+MAX_UNITS_SIZE  /* Max length of the units string */
 #define LEN_RECORD_NAME  60           /* Max length of the epics record name */
 #define LEN_RECORD_FIELD 4            /* Max length of the epics record field name */
-#define LEN_FQN_NAME LEN_RECORD_NAME + LEN_RECORD_FIELD + 2 /* Max length of the full epics record name */
+#define LEN_FQN_NAME (LEN_RECORD_NAME + LEN_RECORD_FIELD + 2) /* Max length of the full epics record name */
 
 
 enum roundType {
@@ -70,6 +70,7 @@ typedef struct {
 
 enum channelField {
     field_desc = 0,
+    field_rtyp,
     field_hhsv,
     field_hsv,
     field_lsv,
@@ -101,8 +102,8 @@ enum channelField {
      * if cadef.h is not already included for current compile unit some epics types and
      * definitions are defined here
      */
-	#include "db_access.h"
-	#include "alarm.h"
+    #include "db_access.h"
+    #include "alarm.h"
 
     /*
      *  External OP codes for CA operations
@@ -120,17 +121,17 @@ enum channelField {
     #define CA_OP_CONN_UP       6
     #define CA_OP_CONN_DOWN     7
 
-	typedef struct oldChannelNotify *chid;
-	typedef chid                    chanId; /* for when the structures field name is "chid" */
+    typedef struct oldChannelNotify *chid;
+    typedef chid                    chanId; /* for when the structures field name is "chid" */
 
-	typedef struct event_handler_args {
-	    void            *usr;   /* user argument supplied with request */
-	    chanId          chid;   /* channel id */
-	    long            type;   /* the type of the item returned */ 
-	    long            count;  /* the element count of the item returned */
-	    const void      *dbr;   /* a pointer to the item returned */
-	    int             status; /* ECA_XXX status of the requested op from the server */
-	} evargs;
+    typedef struct event_handler_args {
+        void            *usr;   /* user argument supplied with request */
+        chanId          chid;   /* channel id */
+        long            type;   /* the type of the item returned */
+        long            count;  /* the element count of the item returned */
+        const void      *dbr;   /* a pointer to the item returned */
+        int             status; /* ECA_XXX status of the requested op from the server */
+    } evargs;
 #endif
 
 struct field {
@@ -138,7 +139,6 @@ struct field {
     chid id;                /* the id of the ca channel */
     long connectionState;   /* channel connected/disconnected  */
     bool created;           /* channel creation for the field was successfull */
-    bool done;              /* indicates if callback has finished processing this channel */
     struct channel * ch;	/* reference to the channel */
 };
 
@@ -171,10 +171,11 @@ struct channel {
     struct field    base;       /* the name of the channel */
     struct field    proc;       /* sibling channel for writing to proc field */
     struct field    lstr;       /* sibling channel for reading string as an array of chars  */
-    char           *name;       /* the name of the channel */
-    struct field    fields[23]; /* sibling channels for fields (description, severities, long strings...)  */
+    epicsTimeStamp  lstrTimestamp;  /* timestamp when the request for long string channel was sent */
+    bool            lstrDone;   /* long string channel connection was already handled */
+    struct field    fields[24]; /* sibling channels for fields (description, severities, long strings...)  */
     short           type;       /* dbr type */
-    size_t          count;      /* element count */
+    size_t          count;      /* maximum array element count in the server. Zero is returned if the channel is disconnected */
     size_t          inNelm;     /* requested number of elements for writing */
     size_t          outNelm;    /* requested number of elements for reading */
     int             i;          /* process variable id */
@@ -186,7 +187,6 @@ struct channel {
     int      		severity; 		 /*  severity */
     int             prec;            /* precision */
     enum state      state;          /* state of the channel within catools application */
-
 };
 
 /* global strings see caToolsGlobals.c */

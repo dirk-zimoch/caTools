@@ -17,23 +17,133 @@
 #include "caToolsInput.h"
 #include "caToolsUtils.h"
 
+static void caReadCallback (evargs args);
+
+/**
+ * @brief issueLongStringRequest will try to issue a read callback for the long string channel
+ * @param ch channel to issue the request for
+ * @return true if request succeded
+ */
+bool issueLongStringRequest(struct channel *ch) {
+    bool success = false;
+    /* This is string request, so we read entire string. No.of.elements has no meaning here */
+    int status = ca_array_get_callback(DBR_CHAR, 0, ch->lstr.id, caReadCallback, ch);
+    if (status == ECA_NORMAL) {
+        debugPrint("issueLongStringRequest() Request completed successfully.\n");
+        ch->nRequests++;
+        success = true;
+    }
+    else {
+        debugPrint("issueLongStringRequest() Request failed.\n");
+    }
+
+    return success;
+}
+
+/**
+ * @brief channelInitCallback - callback for initField. Is executed whenever a base or sibling channel connects or disconnects.
+ *                              Sets proper flags and extracts initial data such as count from the response.
+ * @param args
+ */
+void channelInitCallback(struct connection_handler_args args){
+    debugPrint("channelInitCallback()\n");
+
+    struct field   *field = ( struct field * ) ca_puser ( args.chid );
+    struct channel *ch = field->ch;
+    debugPrint("channelInitCallback() callbacks to process: %i\n", ch->nRequests);
+    ch->nRequests --; /* Used to notify waitForCallbacks about finished request */
+
+    if (field->connectionState == CA_OP_OTHER) {
+        /* first callback */
+        if (&ch->base == field){
+            ch->type = ca_field_type(args.chid);
+            ch->state = base_created;
+            debugPrint("channelInitCallback() ch->state: %i\n", ch->state);
+        }else{
+            if(ch->nRequests == 0) ch->state = sibl_created; /* all sibling channels connected - not a necesarry condition for the program to continue */
+        }
+
+    }
+
+    /* update the connection state */
+    field->connectionState = args.op;
+
+    debugPrint("channelInitCallback() - %s\n", field->name);
+
+    if(args.op == CA_OP_CONN_UP){ /* connected */
+        debugPrint("channelInitCallback() - connected\n");
+        debugPrint("channelInitCallback() - COUNT: %lu\n", ca_element_count(field->id));
+        if (&ch->base == field){
+            /* base channel */
+            ch->count = ca_element_count(field->id);
+        }
+
+    }
+    else{ /* disconected */
+        debugPrint("channelInitCallback() - not connected\n");
+        if (&ch->base == field){
+            /* base channel */
+            printf("%s DISCONNECTED!\n", ch->base.name);
+        }
+    }
+    debugPrint("channelInitCallback() ch->state: %i\n", ch->state);
+
+}
+
+/**
+ * @brief checkStatus and print an error message if th status is not indicating success
+ * @param status
+ * @return true for status indicating success
+ */
+bool checkStatus(int status){
+/*checks status of channel create_ and clear_ */
+    if (status != ECA_NORMAL){
+        errPrint("CA error %s occurred\n", ca_message(status));
+        SEVCHK(status, "CA error");
+        return false;
+    }
+    return true;
+}
+
+/**
+ * @brief initField - creates ca_channel and sets initial flags for channel and field structure
+ * @param ch - poiter to the channel structure
+ * @param field - pointer to the field structure
+ * @return returns true if the channel was created succesfully
+ */
+bool initField(struct channel *ch, struct field * field)
+{
+    debugPrint("initField() - %s\n", field->name);
+    field->connectionState = CA_OP_OTHER; /* ca connection state - is updated in initCallback */
+    field->ch = ch;                       /* pointer back to channel structure */
+    ch->nRequests ++;        /* indicates number of issued requests. Callback functions substract one from this field and take corresponding actions on ch->nRequests==0 */
+    debugPrint("initField() callbacks to process: %i\n", ch->nRequests);
+    int status = ca_create_channel(field->name, channelInitCallback, field, CA_PRIORITY, &field->id);
+    field->created = checkStatus(status);    /* error if the channels are not created */
+    return field->created;
+}
 
 /**
  * @brief caReadCallback callback called by ca_get or subscription
  * @param args
  */
 static void caReadCallback (evargs args){
-    debugPrint("caWriteCallback()\n");
-    /*check if status is ok */
-    if (args.status != ECA_NORMAL){
-        errPrint("Error in read callback. %s.\n", ca_message(args.status));
-        return;
-    }
+    debugPrint("caReadCallback()\n");
 
     struct channel *ch = (struct channel *)args.usr;
     debugPrint("ReadCallback() callbacks to process: %i\n", ch->nRequests);
     debugPrint("ReadCallback() type: %s\n", dbr_type_to_text(args.type));
     ch->nRequests --; /* number of returned callbacks before printing */
+
+    /*check if status is ok */
+    if (args.status != ECA_NORMAL) {
+        /* When does this happen?
+         * One case is, if the channel disconnects before a ca_get_callback() request can be completed.
+         *
+         * In this case nRequests need to be reduced. */
+        errPrint("Error in read callback. %s.\n", ca_message(args.status));
+        return;
+    }
 
     /*if we are in monitor or cawait and just waiting for the program to exit, don't proceed. */
     if (g_runMonitor == false){
@@ -41,9 +151,31 @@ static void caReadCallback (evargs args){
         return;
     }
 
-    /* get metadata from args and fill the global strings and channel properties:
-     * status, severity, timestamp, precision, units*/
-    getMetadataFromEvArgs(ch, args);
+    /* Only read metadata and issue long string requests
+     * if this is not long string request */
+    if(ch->lstr.id != args.chid) {
+        /* get metadata from args and fill the global strings and channel properties:
+         * status, severity, timestamp, precision, units*/
+        getMetadataFromEvArgs(ch, args);
+
+
+        /* See if it makes sense to check for string length and
+         * then issue new request for long string */
+        if(     ch->nRequests <= 0 &&       /* last request was handled. */
+                ch->lstr.name != NULL &&    /* name is allocated in caInit() only when request is not on the VAL field and base type is string */
+                ch->lstrDone != true)   /* we did not try to open long string channel yet */
+        {
+            char* value = dbr_value_ptr(args.dbr, args.type);
+            value[MAX_STRING_SIZE-1] = '\0'; /* null terminate string, in case it is not... */
+            if(strlen(value) >= MAX_STRING_SIZE-1 ) {   /* string is full. Let's do the long string request */
+                initField(ch, &ch->lstr);
+                ch->lstr.created = true;
+                epicsTimeGetCurrent(&ch->lstrTimestamp);
+                epicsTimeAddSeconds(&ch->lstrTimestamp, arguments.caTimeout);
+                if(ch->nRequests <= 0) ch->nRequests++; // this happens on non-first camon/cawait callback
+            }
+        }
+    }
 
     bool shouldPrint = true;
 
@@ -60,7 +192,7 @@ static void caReadCallback (evargs args){
 
         if (arguments.tool == cawait) {
             /* check wait condition */
-            if (cawaitEvaluateCondition(ch, args, &arguments)) {
+            if (cawaitEvaluateCondition(ch, args)) {
                 g_runMonitor = false;
             }else{
                 shouldPrint = false;
@@ -84,7 +216,6 @@ static void caReadCallback (evargs args){
         /* print out */
         printOutput(args, &arguments);
     }
-    ch->base.done = true;
 }
 
 /**
@@ -97,7 +228,6 @@ static void caWriteCallback (evargs args) {
     struct channel *ch = (struct channel *)args.usr;
     debugPrint("caWriteCallback() callbacks to process: %i\n", ch->nRequests);
     ch->nRequests --;
-    ch->base.done = true;
     if (args.status != ECA_NORMAL){
         debugPrint("caWriteCallback() error status returned");
         errPrint("%s.\n", ca_message(args.status));
@@ -128,7 +258,7 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
         /* check for timeout */
         epicsTimeGetCurrent(&timeoutNow);
 
-        if (epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
+        if (arguments.caTimeout > 0 && epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
             debugPrint("waitForCallbacks - Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
             break;
         }
@@ -156,7 +286,6 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
     debugPrint("caGenerateWriteRequests() - %s\n", ch->base.name);
     int status = ECA_NORMAL;
 
-    ch->state=put_waiting;
     /* request ctrl type */
     short baseType = ca_field_type(ch->base.id);
 
@@ -172,6 +301,7 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
                 warnPrint("Number of input elements is: %zu, but channel can accept only %zu.\n", ch->inNelm, ch->count);
                 ch->inNelm = ch->count;
             }
+            ch->state=put_waiting;
             debugPrint("nelm: %zu\n", ch->inNelm);
             ch->nRequests++;
             /* dont wait for callback in case of caputq */
@@ -187,6 +317,7 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
     }
     else if((arguments->tool == cagets) && ch->proc.created) {
         /* in case of cagets put 1 to the proc field */
+        ch->state=put_waiting;
         ch->nRequests++;
         dbr_char_t input=1;
         status = ca_array_put_callback(DBF_CHAR, 1, ch->proc.id, &input, caWriteCallback, ch);
@@ -229,22 +360,14 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
 
     /* check number of elements. arguments->outNelm is 0 by default.
      * calling ca_create_subscription or ca_request with COUNT 0
-     * returns defaultnumber of elements NORD in R3.14.21 or NELM in R3.13.10 */
+     * returns default number of elements NORD in R3.14.21 or NELM in R3.13.10 */
     if((unsigned long) arguments->outNelm < ch->count) ch->outNelm = (unsigned long) arguments->outNelm;
     else{
         ch->outNelm = ch->count;
         warnPeriodicPrint("Invalid number of requested elements to read (%"PRId64") from %s - reading maximum number of elements (%zu).\n", arguments->outNelm, ch->base.name, ch->count);
     }
 
-    /* if string, connect to long string sibling channel if connected and number of characters is longer than MAX_STRING_SIZE */
-    if (baseType==DBF_STRING &&
-        ch->lstr.connectionState==CA_OP_CONN_UP &&
-        ca_element_count(ch->lstr.id) > MAX_STRING_SIZE &&
-        arguments->dbrRequestType==-1)
-    {
-        reqChid = ch->lstr.id;
-        reqType = DBR_CTRL_CHAR;
-    }
+
     /* use dbrtype that has been specified as command line argument */
     if (arguments->dbrRequestType!=-1){
         reqType = arguments->dbrRequestType;
@@ -261,9 +384,11 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         return false;
     }
 
+
+
     /* if needed issue second request using time type */
     if ((arguments->time || arguments->date || arguments->timestamp) &&
-            arguments->dbrRequestType == -1 )
+            !(DBR_TIME_STRING <= arguments->dbrRequestType && arguments->dbrRequestType <= DBR_TIME_DOUBLE) )
     {
         if (ca_field_type(reqChid) == DBF_ENUM && !(arguments->num)){
             /* if enum && s, use time_string */
@@ -272,6 +397,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         else{ /* else use time_native */
             reqType = dbf_type_to_DBR_TIME(dbr_type_to_DBF(reqType));
         }
+        debugPrint("caGenerateReadRequests() - Issued second request using time type: %s\n", dbr_type_to_text(reqType));
         ch->nRequests=ch->nRequests+1;
         status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
         if (status != ECA_NORMAL) {
@@ -296,6 +422,25 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
 }
 
 /**
+ * @brief cainfoPendIO issues CA pend IO request and handles error
+ * @return true on success
+ */
+bool cainfoPendIO(){
+    int status = ca_pend_io(arguments.caTimeout);
+    if (status != ECA_NORMAL) {
+        if (status == ECA_TIMEOUT) {
+            errPrint("All issued requests for record fields did not complete.\n");
+        }
+        else {
+            errPrint("All issued requests for record fields did not complete.\n");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
  * @brief cainfoRequest - this spaghetti function does all the work for caInfo tool. Reads channel data using ca_get and then prints.
  * @param channels - array of channel structs
  * @param nChannels - number of channels in array
@@ -305,12 +450,11 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
     int status;
     u_int32_t i, j;
 
-    bool readAccess, writeAccess;
+    bool readAccess, writeAccess, success = true;
     u_int32_t nFields = noFields;
     const char *delimeter = "-------------------------------";
 
     for(i=0; i < nChannels; i++){
-
         if (channels[i].base.connectionState != CA_OP_CONN_UP) continue; /* skip unconnected channels */
 
         channels[i].count = ca_element_count ( channels[i].base.id );
@@ -318,7 +462,7 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         channels[i].type = dbf_type_to_DBR_CTRL(ca_field_type(channels[i].base.id));
 
         /*allocate data for all caget returns */
-        void *data;
+        void *data = NULL, *dataLstr = NULL;
         struct dbr_sts_string *fieldData[nFields];
 
         data = callocMustSucceed(1, dbr_size_n(channels[i].type, channels[i].count), "caInfoRequest");
@@ -328,14 +472,21 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         status = ca_array_get(channels[i].type, channels[i].count, channels[i].base.id, data);
         if (status != ECA_NORMAL) {
             errPrint("CA error %s occurred while trying to create ca_get request for record %s.\n", ca_message(status), channels[i].base.name);
-            return false;
+            success = false;
+            goto cleanup;
         }
 
+
+        /* get field data */
         for(j=0; j < nFields; j++) {
             if(channels[i].fields[j].connectionState == CA_OP_CONN_UP) {
                 fieldData[j] = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest: field");
                 status = ca_array_get(DBR_STS_STRING, 1, channels[i].fields[j].id, fieldData[j]);
-                if (status != ECA_NORMAL) errPrint("Problem reading %s field of record %s: %s.\n", fields[j], channels[i].base.name, ca_message(status));
+                if (status != ECA_NORMAL) {
+                    errPrint("Problem reading %s field of record %s: %s.\n", fields[j], channels[i].base.name, ca_message(status));
+                    free(fieldData[j]);
+                    fieldData[j] = NULL;
+                }
             }
             else {
                 fieldData[j] = NULL;
@@ -343,35 +494,87 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         }
 
 
-        status = ca_pend_io(arguments.caTimeout);
-        if (status != ECA_NORMAL) {
-            if (status == ECA_TIMEOUT) {
-                errPrint("All issued requests for record fields did not complete.\n");
-            }
-            else {
-                errPrint("All issued requests for record fields did not complete.\n");
-                return false;
+        if(!cainfoPendIO()) {
+            success = false;
+            goto cleanup;
+        }
+
+        /* Handle long strings */
+
+        /* See if it makes sense to check for string length and
+         * then issue new request for long string */
+        if(     channels[i].lstr.name != NULL &&    /* name is allocated in caInit() only when request is not on the VAL field and base type is string */
+                channels[i].base.connectionState == CA_OP_CONN_UP)
+        {
+            char* value = dbr_value_ptr(data, channels[i].type);
+            value[MAX_STRING_SIZE-1] = '\0'; /* null terminate string, in case it is not... */
+            if(strlen(value) >= MAX_STRING_SIZE-1 ) {   /* string is full. Let's do the long string request */
+                if(initField(&channels[i], &channels[i].lstr)) {
+                    waitForCallbacks(channels, nChannels);
+                }
+                channels[i].nRequests--;
             }
         }
 
+        if(channels[i].lstr.connectionState == CA_OP_CONN_UP)   /* long string channel is connected. */
+        {
+            debugPrint("cainfoRequest() Starting request for long strings\n");
+            dataLstr = callocMustSucceed(1, dbr_size_n(DBR_CTRL_CHAR, ca_element_count(channels[i].lstr.id)), "caInfoRequest: long string");
+            status = ca_array_get(DBR_CTRL_CHAR, ca_element_count(channels[i].lstr.id), channels[i].lstr.id, dataLstr);
+            if (status == ECA_NORMAL) {
+                if(!cainfoPendIO()) {
+                    success = false;
+                    goto cleanup;
+                }
+            }
+            else {
+                debugPrint("cainfoRequest() Request for long strings failed.\n");
+                free(dataLstr);
+                dataLstr = NULL;
+                ca_clear_channel(channels[i].lstr.id);
+                free(channels[i].lstr.name);
+                channels[i].lstr.name = NULL;
+                channels[i].lstr.created = false;
+            }
+        }
+
+        /* check if request is done to the base channel or to it's fields */
+        bool isBaseChannel = false;
+        if(isValField(channels[i].base.name)) {
+            isBaseChannel = true;
+        }
 
         /*start printing */
         fputc('\n',stdout);
         fputc('\n',stdout);
-        printf("%s\n%s\n", delimeter, channels[i].base.name);                                          /*name */
-        if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);          /*description */
-        printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].base.id)));                     /*field type */
-        printf("\tNumber of elements: %zu\n", channels[i].count);                                               /*number of elements */
+        printf("%s\n%s\n", delimeter, channels[i].base.name);                                               /*name */
+        if(isBaseChannel) {
+            if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);  /*description */
+        }
+        if(fieldData[field_rtyp] != NULL) printf("\tRecord type: %s\n", fieldData[field_rtyp]->value);      /*record type */
+        printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].base.id)));            /*field type */
+        printf("\tNumber of elements: %zu\n", channels[i].count);                                           /*number of elements */
+
 
 
         evargs args;
-        args.chid = channels[i].base.id;
-        args.count = ca_element_count ( channels[i].base.id );
-        args.dbr = data;
-        args.status = ECA_NORMAL;
-        args.type = channels[i].type; /*ca_field_type(channels[i].base.id); */
-        args.usr = &channels[i];
+        /* handle long strings */
+        if(dataLstr == NULL) {
+            args.chid = channels[i].base.id;
+            args.count = ca_element_count ( channels[i].base.id );
+            args.dbr = data;
+            args.type = channels[i].type;
+        }
+        else {
+            args.chid = channels[i].lstr.id;
+            args.count = ca_element_count ( channels[i].lstr.id );
+            args.dbr = dataLstr;
+            args.type = DBR_CTRL_CHAR;
+        }
         printf("\tValue: ");
+        args.status = ECA_NORMAL;
+        args.usr = &channels[i];
+
         printValue(args, &arguments);
         fputc('\n',stdout);
 
@@ -405,13 +608,13 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
                     epicsAlarmConditionStrings[((struct dbr_ctrl_float *)data)->status],
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_float *)data)->severity]);
             printf("\n");
-            printf("\tWarning\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tWarning\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_float *)data)->upper_warning_limit, ((struct dbr_ctrl_float *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tAlarm\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_float *)data)->upper_alarm_limit, ((struct dbr_ctrl_float *)data)->lower_alarm_limit);
-            printf("\tControl\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tControl\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_float *)data)->upper_ctrl_limit, ((struct dbr_ctrl_float *)data)->lower_ctrl_limit);
-            printf("\tDisplay\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tDisplay\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_float *)data)->upper_disp_limit, ((struct dbr_ctrl_float *)data)->lower_disp_limit);
             fputc('\n',stdout);
             printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_float *)data)->precision);
@@ -467,13 +670,13 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
                     epicsAlarmConditionStrings[((struct dbr_ctrl_double *)data)->status],
                     epicsAlarmSeverityStrings[((struct dbr_ctrl_double *)data)->severity]);
             fputc('\n',stdout);
-            printf("\tWarning\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tWarning\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_double *)data)->upper_warning_limit, ((struct dbr_ctrl_double *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %f\n\t\tlower limit: %f\n",
+            printf("\tAlarm\tupper limit: %g\n\t\tlower limit: %g\n",
                     ((struct dbr_ctrl_double *)data)->upper_alarm_limit, ((struct dbr_ctrl_double *)data)->lower_alarm_limit);
-            printf("\tControl\tupper limit: %f\n\t\tlower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_ctrl_limit,\
+            printf("\tControl\tupper limit: %g\n\t\tlower limit: %g\n", ((struct dbr_ctrl_double *)data)->upper_ctrl_limit,\
                     ((struct dbr_ctrl_double *)data)->lower_ctrl_limit);
-            printf("\tDisplay\tupper limit: %f\n\t\tlower limit: %f\n", ((struct dbr_ctrl_double *)data)->upper_disp_limit,\
+            printf("\tDisplay\tupper limit: %g\n\t\tlower limit: %g\n", ((struct dbr_ctrl_double *)data)->upper_disp_limit,\
                     ((struct dbr_ctrl_double *)data)->lower_disp_limit);
             fputc('\n',stdout);
             printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_double *)data)->precision);
@@ -481,25 +684,39 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
         }
 
         fputc('\n',stdout);
+        if(!isBaseChannel) {
+            getBaseChannelName(channels[i].base.name);
+            printf("\t%s info:\n", channels[i].base.name);
+
+            if(!isBaseChannel) {
+                if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);
+            }
+        }
         for(j=field_hhsv; j < nFields; j++) {
             if (fieldData[j] != NULL) {
                 printf("\t%s alarm severity: %s\n", fields[j], fieldData[j]->value);
-                free(fieldData[j]);
             }
         }
+
         fputc('\n',stdout);
+
 
         readAccess = ca_read_access(channels[i].base.id);
         writeAccess = ca_write_access(channels[i].base.id);
 
-        printf("\tIOC name: %s\n", ca_host_name(channels[i].base.id));                           /*host name */
+        printf("\tCA host name: %s\n", ca_host_name(channels[i].base.id));                           /*host name */
         printf("\tRead access: "); if(readAccess) printf("yes\n"); else printf("no\n");     /*read and write access */
         printf("\tWrite access: "); if(writeAccess) printf("yes\n"); else printf("no\n");
         printf("%s\n", delimeter);
 
-        free(data);
+        cleanup:
+        if(data != NULL) free(data);
+        if(dataLstr != NULL) free(dataLstr);
+        for(j=0; j < nFields; j++) {
+            if(fieldData[j] != NULL) free(fieldData[j]);
+        }
     }
-    return true;
+    return success;
 }
 
 /**
@@ -511,6 +728,7 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
 bool caRequest(struct channel *channels, u_int32_t nChannels) {
     bool success = true;
     u_int32_t i;
+    int status = ECA_NORMAL;
 
     /* generate write requests  */
     if (arguments.tool == caput ||
@@ -532,6 +750,19 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
         /* wait for callbacks to finish before issuing read requests */
         waitForCallbacks(channels, nChannels);
 
+        /* something went wrong with the write request,
+         * inform the user and return */
+        for (i=0; i < nChannels; ++i) {
+            if (channels[i].state == put_waiting) {
+                if(arguments.tool == cagets) {
+                    errPrint("%s write response timed-out\n", channels[i].proc.name);
+                } else {
+                    errPrint("%s write response timed-out\n", channels[i].base.name);
+                }
+                channels[i].nRequests--;
+                channels[i].state = put_done;
+            }
+        }
     }
     /* generate read requests */
     if (success &&
@@ -554,8 +785,50 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
                 success &= caGenerateReadRequests(&channels[i], &arguments);
         }
 
-        /* wait for callbacks to finish before ending the program */
+        /* wait for callbacks to finish before checking for long strings */
         waitForCallbacks(channels, nChannels);
+
+        /* long string support */
+        /* after waiting for callbacks to complete,
+         * we should have long string channels connected (if any) */
+        bool anylstrChannels = false;   /* do we have any long string requests? */
+
+        for (i=0; i < nChannels; i++) {
+            if(channels[i].lstr.created == true && channels[i].lstrDone != true) {  /* long string channel connection request was sent */
+                /* if connected, issue long string request, otherwise clean up after it */
+                if(channels[i].lstr.connectionState == CA_OP_CONN_UP) {
+                    debugPrint("caRequest() Starting request for long strings\n");
+                    issueLongStringRequest(&channels[i]);
+                    channels[i].lstrDone = true;
+                    anylstrChannels = true;
+                }
+            }
+
+            /* clean-up after long string channel connection failed */
+            if (    channels[i].lstr.created &&
+                    (channels[i].lstr.connectionState != CA_OP_CONN_UP || status != ECA_NORMAL))
+            {
+                ca_clear_channel(channels[i].lstr.id);
+                free(channels[i].lstr.name);
+                channels[i].lstr.name = NULL;
+                channels[i].nRequests--;
+                channels[i].lstrDone = true;
+                channels[i].lstr.created = false;
+
+                /* ensure that latest data is printed by re-issuing the read request.
+                 * The value of the original read request was not printed nor saved,
+                 * so issue another normal read request here */
+                if(channels[i].base.connectionState == CA_OP_CONN_UP) {
+                    success &= caGenerateReadRequests(&channels[i], &arguments);
+                    anylstrChannels = true;
+                }
+            }
+        }
+
+        /* wait for callbacks to finish before ending the program */
+        if(anylstrChannels) {
+            waitForCallbacks(channels, nChannels);
+        }
     }
 
 
@@ -569,71 +842,6 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
     return success;
 }
 
-/**
- * @brief channelInitCallback - callback for initField. Is executed whenever a base or sibling channel connects or disconnects.
- *                              Sets proper flags and extracts initial data such as count from the response.
- * @param args
- */
-void channelInitCallback(struct connection_handler_args args){
-    debugPrint("channelInitCallback()\n");
-
-    struct field   *field = ( struct field * ) ca_puser ( args.chid );
-    struct channel *ch = field->ch;
-    debugPrint("channelInitCallback() callbacks to process: %i\n", ch->nRequests);
-    ch->nRequests --; /* Used to notify waitForCallbacks about finished request */
-
-    if (field->connectionState == CA_OP_OTHER) {
-        /* first callback */
-        field->done = true;   /* set field to done only on first connection, not when connection goes up / down */
-        if (&ch->base == field){
-            ch->type = ca_field_type(args.chid);
-            ch->state = base_created;
-            debugPrint("channelInitCallback() ch->state: %i\n", ch->state);
-        }else{
-            if(ch->nRequests == 0) ch->state = sibl_created; /* all sibling channels connected - not a necesarry condition for the program to continue */
-        }
-
-    }
-
-    /* update the connection state */
-    field->connectionState = args.op;
-
-    debugPrint("channelInitCallback() - %s\n", field->name);
-
-    if(args.op == CA_OP_CONN_UP){ /* connected */
-        debugPrint("channelInitCallback() - connected\n");
-        debugPrint("channelInitCallback() - COUNT: %lu\n", ca_element_count(field->id));
-        if (&ch->base == field){
-            /* base channel */
-            ch->count = ca_element_count(field->id);
-        }
-
-    }
-    else{ /* disconected */
-        debugPrint("channelInitCallback() - not connected\n");
-        if (&ch->base == field){
-            /* base channel */
-            printf("%s DISCONNECTED!\n", ch->base.name);
-        }
-    }
-    debugPrint("channelInitCallback() ch->state: %i\n", ch->state);
-
-}
-
-/**
- * @brief checkStatus and print an error message if th status is not indicating success
- * @param status
- * @return true for status indicating success
- */
-bool checkStatus(int status){
-/*checks status of channel create_ and clear_ */
-    if (status != ECA_NORMAL){
-        errPrint("CA error %s occurred\n", ca_message(status));
-        SEVCHK(status, "CA error");
-        return false;
-    }
-    return true;
-}
 
 /**
  * @brief caCustomExceptionHandler
@@ -666,24 +874,6 @@ void caCustomExceptionHandler( struct exception_handler_args args) {
 }
 
 /**
- * @brief initField - creates ca_channel and sets initial flags for channel and field structure
- * @param ch - poiter to the channel structure
- * @param field - pointer to the field structure
- * @return returns true if the channel was created succesfully
- */
-bool initField(struct channel *ch, struct field * field)
-{
-    debugPrint("initField() - %s\n", field->name);
-    field->connectionState = CA_OP_OTHER; /* ca connection state - is updated in initCallback */
-    field->done = false;                  /* indicates wether the first callback arrived */
-    field->ch = ch;                       /* pointer back to channel structure */
-    ch->nRequests ++;        /* indicates number of issued requests. Callback functions substract one from this field and take corresponding actions on ch->nRequests==0 */
-    int status = ca_create_channel(field->name, channelInitCallback, field, CA_PRIORITY, &field->id);
-    field->created = checkStatus(status);    /* error if the channels are not created */
-    return field->created;
-}
-
-/**
  * @brief initSiblings call initField to create sibling channells depending on arguments and channel properties
  * @param ch pointer to the channel struct
  * @param arguments pointer to the arguments struct
@@ -697,13 +887,15 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
     /*if tool = cagets or cado, each channel has a sibling connecting to the proc field */
     if (arguments->tool == cagets || arguments->tool == cado) {
         ch->proc.name = callocMustSucceed (LEN_FQN_NAME, sizeof(char), "main");/*2 spaces for .(field name) + null termination */
-        strcpy(ch->proc.name, ch->base.name); /*Consider using strn_xxxx everywhere */
-        getBaseChannelName(ch->proc.name); /*append .PROC */
-        strncat(ch->proc.name, ".PROC",LEN_FQN_NAME);
-        hasSiblings = initField(ch, &ch->proc);
+        strcpy(ch->proc.name, ch->base.name);   /* ch->base.name is always null-terminated */
+        getBaseChannelName(ch->proc.name); /* remove field name */
+        strcat(ch->proc.name, ".PROC"); /*append .PROC */
+        hasSiblings |= initField(ch, &ch->proc);
     }
 
-    /* open sibling channel for long strings */
+    /* opening sibling channel for long strings
+     * is done in caReadCallback(), when we know the length of the original response.
+     * Here we just prepare in advance */
     if(ca_field_type(ch->base.id)==DBF_STRING &&
         !isValField(ch->base.name) &&
             (arguments->tool == caget ||
@@ -711,26 +903,29 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
             arguments->tool == cainfo ||
             arguments->tool == camon  ||
             arguments->tool == cawait )){
-        debugPrint("caInitSiblings() - string chanel\n");
+        debugPrint("caInitSiblings() - init sibling for long string channel\n");
         debugPrint("caInitSiblings() - dbftype: %s\n", dbf_type_to_text(ca_field_type(ch->base.id)));
-        ch->lstr.name = callocMustSucceed (strlen(ch->base.name) + 2, sizeof(char), "main"); /*2 spaces for $ + null termination */
+        ch->lstr.name = callocMustSucceed (strlen(ch->base.name) + 2, sizeof(char), "main");   /*2 spaces for $ + null termination */
         strcpy(ch->lstr.name, ch->base.name);
         strcat(ch->lstr.name, "$");
-        hasSiblings = initField(ch, &ch->lstr);
     }
+    else {
+        ch->lstr.name = NULL;
+    }
+    ch->lstr.created = false;
 
     /* open all sibling channels for cainfo */
     if (arguments->tool == cainfo) {
         size_t nFields = noFields;  /* so we don't calculate in each loop */
         size_t j;
         for (j=0; j < nFields; j++) {
-            debugPrint("caInit() - If caInfo for j=%zu\n", j);
+            debugPrint("caInit() - caInfo for fields[%zu]: %s\n", j, fields[j]);
             ch->fields[j].created = true;
             ch->fields[j].name = callocMustSucceed(LEN_FQN_NAME, sizeof(char), fields[j]);
             strcpy(ch->fields[j].name, ch->base.name);
             getBaseChannelName(ch->fields[j].name);
             strcat(ch->fields[j].name, fields[j]);
-            hasSiblings = initField(ch, &ch->fields[j]);
+            hasSiblings |= initField(ch, &ch->fields[j]);
         }
     }
     return hasSiblings;
@@ -769,7 +964,7 @@ bool caInit(struct channel *channels, u_int32_t nChannels){
     bool siblings = false;
     for (i=0; i < nChannels; ++i) {
         if (channels[i].base.connectionState == CA_OP_CONN_UP)
-            siblings = initSiblings(&channels[i], &arguments);
+            siblings |= initSiblings(&channels[i], &arguments);
         else
             printf("Process variable not connected: %s\n", channels[i].base.name);
     }
@@ -798,22 +993,47 @@ bool monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arg
 /*after -timeout is exceeded (cawait). */
     size_t i = 0;
     bool success = true;
+    epicsTimeStamp timeoutNow;
 
     while (g_runMonitor){
         ca_pend_event(CA_PEND_EVENT_TIMEOUT);
-        /* connect channels that were not connected at the start of the program in caInit */
-        for(i = 0; i < nChannels; i++){
+        epicsTimeGetCurrent(&timeoutNow);
+
+
+        for(i = 0; i < nChannels; i++) {
+            /* connect channels that were not connected at the start of the program in caInit */
             if(channels[i].state==base_created){
                 //Return value is not checked as it is ought to be
                 caGenerateReadRequests(&channels[i], arguments);
+            }
+
+            /* long string support */
+            if(     !channels[i].lstrDone &&          /* was long string connection handled already? */
+                    channels[i].lstr.created == true) /* long string channel connection request was sent */
+            {
+                /* if connected, issue long string request, otherwise clean up after it */
+                if(channels[i].lstr.connectionState == CA_OP_CONN_UP) {
+                    debugPrint("monitorLoop() Starting request for long strings\n");
+                    issueLongStringRequest(&channels[i]);
+                    channels[i].lstrDone = true;
+                }
+                else {
+                    if (epicsTimeGreaterThanEqual(&timeoutNow, &channels[i].lstrTimestamp)) {
+                        debugPrint("monitorLoop() Long string request timed-out\n");
+                        ca_clear_channel(channels[i].lstr.id);
+                        free(channels[i].lstr.name);
+                        channels[i].lstr.name = NULL;
+                        channels[i].nRequests--;
+                        channels[i].lstrDone = true;
+                        channels[i].lstr.created = false;
+                        caGenerateReadRequests(&channels[i], arguments);
+                    }
+                }
             }
         }
 
         /* check for timeout */
         if (arguments->timeout!=-1) {
-            epicsTimeStamp timeoutNow;
-            epicsTimeGetCurrent(&timeoutNow);
-
             if (epicsTimeGreaterThanEqual(&timeoutNow, &g_timeoutTime)) {
                 /* we are done waiting */
                 printf("Timeout of %f seconds reached - exiting.\n",arguments->timeout);
@@ -917,6 +1137,10 @@ void freeChannels(struct channel * channels, u_int32_t nChannels){
     size_t i, j;
     for (i=0 ;i < nChannels; ++i) {
 
+        if (channels[i].lstr.name != NULL) {
+            free(channels[i].lstr.name);
+        }
+
         if ( arguments.tool == cagets || arguments.tool == cado )
             free(channels[i].proc.name);
 
@@ -960,7 +1184,6 @@ void freeStringBuffers(u_int32_t nChannels){
     free(g_timestampRead);
     free(g_lastUpdate);
     free(g_firstUpdate);
-
     free(g_errorTimestamp);
 }
 
@@ -992,7 +1215,7 @@ int main ( int argc, char ** argv ){
     channels = (struct channel *) callocMustSucceed (nChannels, sizeof(struct channel), "Could not allocate channels"); /*Consider adding more descriptive error message. */
 
     /* parse command line and fill up the channel structures*/
-    if(!(success = parseChannels(argc, argv, nChannels, &arguments, channels))){
+    if(!(success = parseChannels(argc, argv, &arguments, channels))){
         debugPrint("main() - no succes with parseChannels\n");
         goto clear_channels;
     }

@@ -42,7 +42,7 @@ void getTimeStamp(size_t i, arguments_T * arguments);
  * @param args evrargs returned by the read callback function
  * @return true if the condition is fulfilled
  */
-bool cawaitEvaluateCondition(struct channel * ch, evargs args, arguments_T * arguments);
+bool cawaitEvaluateCondition(struct channel * ch, evargs args);
 
 /* print integer as binary number */
 #define printBits(x) \

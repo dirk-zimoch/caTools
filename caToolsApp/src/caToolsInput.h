@@ -26,12 +26,11 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
  * @brief parseChannels - allocates global array of channel structs and fills it up
  * @param argc from main
  * @param argv from main
- * @param nChannels number of channels obtained from parseArguments()
  * @param arguments - arguments struct
  * @param channels - pointer to the variable holding the channels array
  * @return true if everything went ok
  */
-bool parseChannels(int argc, char ** argv, u_int32_t nChannels,  arguments_T *arguments, struct channel *channels);
+bool parseChannels(int argc, char ** argv, arguments_T *arguments, struct channel *channels);
 
 /**
  * @brief cawaitParseCondition parses input string and extracts operators and numerals, saves them to the channel structure
