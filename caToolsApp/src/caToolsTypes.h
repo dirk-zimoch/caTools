@@ -171,6 +171,8 @@ struct channel {
     struct field    base;       /* the name of the channel */
     struct field    proc;       /* sibling channel for writing to proc field */
     struct field    lstr;       /* sibling channel for reading string as an array of chars  */
+    epicsTimeStamp  lstrTimestamp;  /* timestamp when the request for long string channel was sent */
+    bool            lstrDone;   /* long string channel connection was already handled */
     struct field    fields[24]; /* sibling channels for fields (description, severities, long strings...)  */
     short           type;       /* dbr type */
     size_t          count;      /* maximum array element count in the server. Zero is returned if the channel is disconnected */

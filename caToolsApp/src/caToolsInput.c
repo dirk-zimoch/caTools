@@ -90,7 +90,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
     /* flags common for most of the tools */
     if (tool != cado){
         fputs("Channel Access options\n", stream);
-        fprintf(stream, "  -w <time>            Wait time in seconds, specifies CA timeout.\n"
+        fprintf(stream, "  -w <time>            Wait time in seconds, specifies CA timeout. Value 0 means wait forever.\n"
                         "                       (default: %d s)\n", CA_DEFAULT_TIMEOUT);
         if (tool != cainfo) {
             fputs("  -dbrtype <type>      Type of DBR request to use for communicating\n"
