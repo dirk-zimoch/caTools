@@ -304,30 +304,30 @@ Warning: Options -stat and -nostat are mutually exclusive. Using -stat.
 CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" (SEVR:NO_ALARM STAT:NO_ALARM)
 
 Using: -d -t -localdate -localtime
-server time: 2016-09-19 11:09:11.472611 local time: 2016-09-19 11:09:14.343598 CTT:TEST_1-AI.SCAN ".2 second" 
-server time: 2016-09-19 11:09:11.472611 local time: 2016-09-19 11:09:14.418889 CTT:TEST_1-AI.INP "CTT:TEST_1 NPP NMS" 
-server time: 2016-09-19 11:09:11.672549 local time: 2016-09-19 11:09:14.499909 CTT:TEST_1-AI.EGU "ohTooLongEguToW" 
-server time: 2016-09-19 11:09:11.072509 local time: 2016-09-19 11:09:14.549461 CTT:CALC_BI.INAV "Local PV" 
-server time: 2016-09-19 11:09:05.119477 local time: 2016-09-19 11:09:14.594018 CTT:TEST_MBBO "16.66 Hz" 
-server time: 2016-09-19 11:09:05.119477 local time: 2016-09-19 11:09:14.637958 CTT:TEST_MBBO.ZRVL 1 
-server time: 2016-09-19 11:09:05.119477 local time: 2016-09-19 11:09:14.712450 CTT:TEST_MBBO.DESC "CTTest description" 
-server time: 2016-09-19 11:09:05.187016 local time: 2016-09-19 11:09:14.763804 CTT:TEST_STRING "Hello world" 
-server time: 2016-09-19 11:09:01.469792 local time: 2016-09-19 11:09:14.811639 CTT:STRING "Value field can have only fourty chars!" (SEVR:INVALID STAT:LINK)
-server time: 2016-09-19 11:09:01.469792 local time: 2016-09-19 11:09:14.900621 CTT:STRING.OUT "ten1234567twenty1234thirty1234forty1234 NPP NMS" (SEVR:INVALID STAT:LINK)
-server time: 2016-09-19 11:09:01.469792 local time: 2016-09-19 11:09:14.988484 CTT:STRING.DESC "Description field can have only fourty ." (SEVR:INVALID STAT:LINK)
-server time: 2016-09-19 11:09:05.256193 local time: 2016-09-19 11:09:15.032875 CTT:TEST_WVF-CHAR "1 a 2 b 3 c" 
-server time: 2016-09-19 11:09:05.321419 local time: 2016-09-19 11:09:15.083495 CTT:TEST_WVF-DOUBLE 2.00000 2.30000 100.00000 10.00000 
-server time: 2016-09-19 11:09:05.456928 local time: 2016-09-19 11:09:15.129154 CTT:TEST_WVF-FLOAT 2 2 100 10 
-server time: 2016-09-19 11:09:05.456928 local time: 2016-09-19 11:09:15.178664 CTT:TEST_WVF-FLOAT.NELM 10 
-server time: 2016-09-19 11:09:05.526586 local time: 2016-09-19 11:09:15.224063 CTT:TEST_WVF-LONG 2 2 100 10 6 7 8 9 10 11 
-server time: 2016-09-19 11:09:05.594008 local time: 2016-09-19 11:09:15.267652 CTT:TEST_WVF-SHORT 2 100 1000 10000 -31072 16960 
-server time: 2016-09-19 11:09:05.657962 local time: 2016-09-19 11:09:15.312002 CTT:TEST_WVF-STRING "2nd" "string" "bring" "dring" "ping" 
-server time: 2016-09-19 11:09:05.793221 local time: 2016-09-19 11:09:15.362293 CTT:MOTOR 4.000 deg. 
-server time: 2016-09-19 11:09:05.793221 local time: 2016-09-19 11:09:15.411461 CTT:MOTOR.VELO 5.000 deg./se 
-server time: 2016-09-19 11:09:05.857212 local time: 2016-09-19 11:09:15.457124 CTT:STATIC-LONGIN 1 test eg 
-server time: 2016-09-19 11:09:05.984541 local time: 2016-09-19 11:09:15.505931 CTT:STATIC-AO 1 test eg 
-server time: 2016-09-19 11:09:05.984541 local time: 2016-09-19 11:09:15.590343 CTT:STATIC-AO.OUT "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest NPP NMS" 
-server time: 2016-09-19 11:09:04.606749 local time: 2016-09-19 11:09:15.675527 CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" 
+server time: 2016-09-20 18:38:06.393141 local time: 2016-09-20 18:38:09.405951 CTT:TEST_1-AI.SCAN ".2 second" 
+server time: 2016-09-20 18:38:06.393141 local time: 2016-09-20 18:38:09.451189 CTT:TEST_1-AI.INP "CTT:TEST_1 NPP NMS" 
+server time: 2016-09-20 18:38:06.393141 local time: 2016-09-20 18:38:09.495980 CTT:TEST_1-AI.EGU "ohTooLongEguToW" 
+server time: 2016-09-20 18:38:06.393107 local time: 2016-09-20 18:38:09.545895 CTT:CALC_BI.INAV "Local PV" 
+server time: 2016-09-20 18:38:00.719613 local time: 2016-09-20 18:38:09.595353 CTT:TEST_MBBO "16.66 Hz" 
+server time: 2016-09-20 18:38:00.719613 local time: 2016-09-20 18:38:09.638173 CTT:TEST_MBBO.ZRVL 1 
+server time: 2016-09-20 18:38:00.719613 local time: 2016-09-20 18:38:09.682151 CTT:TEST_MBBO.DESC "CTTest description" 
+server time: 2016-09-20 18:38:00.783579 local time: 2016-09-20 18:38:09.726355 CTT:TEST_STRING "Hello world" 
+server time: 2016-09-20 18:37:57.082552 local time: 2016-09-20 18:38:09.770760 CTT:STRING "Value field can have only fourty chars!" (SEVR:INVALID STAT:LINK)
+server time: 2016-09-20 18:37:57.082552 local time: 2016-09-20 18:38:09.846240 CTT:STRING.OUT "ten1234567twenty1234thirty1234forty1234 NPP NMS" (SEVR:INVALID STAT:LINK)
+server time: 2016-09-20 18:37:57.082552 local time: 2016-09-20 18:38:09.921084 CTT:STRING.DESC "Description field can have only fourty ." (SEVR:INVALID STAT:LINK)
+server time: 2016-09-20 18:38:00.847416 local time: 2016-09-20 18:38:09.968692 CTT:TEST_WVF-CHAR "1 a 2 b 3 c" 
+server time: 2016-09-20 18:38:00.911094 local time: 2016-09-20 18:38:10.014227 CTT:TEST_WVF-DOUBLE 2.00000 2.30000 100.00000 10.00000 
+server time: 2016-09-20 18:38:01.038714 local time: 2016-09-20 18:38:10.060169 CTT:TEST_WVF-FLOAT 2 2 100 10 
+server time: 2016-09-20 18:38:01.038714 local time: 2016-09-20 18:38:10.105908 CTT:TEST_WVF-FLOAT.NELM 10 
+server time: 2016-09-20 18:38:01.103176 local time: 2016-09-20 18:38:10.153795 CTT:TEST_WVF-LONG 2 2 100 10 6 7 8 9 10 11 
+server time: 2016-09-20 18:38:01.166884 local time: 2016-09-20 18:38:10.202434 CTT:TEST_WVF-SHORT 2 100 1000 10000 -31072 16960 
+server time: 2016-09-20 18:38:01.230647 local time: 2016-09-20 18:38:10.246204 CTT:TEST_WVF-STRING "2nd" "string" "bring" "dring" "ping" 
+server time: 2016-09-20 18:38:01.358202 local time: 2016-09-20 18:38:10.290052 CTT:MOTOR 4.000 deg. 
+server time: 2016-09-20 18:38:01.358202 local time: 2016-09-20 18:38:10.334407 CTT:MOTOR.VELO 5.000 deg./se 
+server time: 2016-09-20 18:38:01.422086 local time: 2016-09-20 18:38:10.379527 CTT:STATIC-LONGIN 1 test eg 
+server time: 2016-09-20 18:38:01.551863 local time: 2016-09-20 18:38:10.424757 CTT:STATIC-AO 1 test eg 
+server time: 2016-09-20 18:38:01.551863 local time: 2016-09-20 18:38:10.501171 CTT:STATIC-AO.OUT "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest NPP NMS" 
+server time: 2016-09-20 18:38:00.230483 local time: 2016-09-20 18:38:10.576299 CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" 
 
 Using: -mukmuk
 ../caget: unrecognized option '-mukmuk'
@@ -412,13 +412,13 @@ CTT:TEST_WVF-CHAR "2   1"
 -----------------------------------------
 Double conversion
 -----------------------------------------
-CTT:CALC 10 (SEVR:INVALID STAT:UDF)
-CTT:CALC.PREC 4 (SEVR:INVALID STAT:UDF)
-CTT:CALC 0xa (SEVR:INVALID STAT:UDF)
-CTT:CALC 0b00000000000000000000000000001010 (SEVR:INVALID STAT:UDF)
-CTT:CALC 0o12 (SEVR:INVALID STAT:UDF)
-CTT:CALC 10.2300 (SEVR:INVALID STAT:UDF)
-CTT:CALC 10.2300 (SEVR:INVALID STAT:UDF)
+CTT:CALC 10 egu (SEVR:INVALID STAT:UDF)
+CTT:CALC.PREC 4 egu (SEVR:INVALID STAT:UDF)
+CTT:CALC 0xa egu (SEVR:INVALID STAT:UDF)
+CTT:CALC 0b00000000000000000000000000001010 egu (SEVR:INVALID STAT:UDF)
+CTT:CALC 0o12 egu (SEVR:INVALID STAT:UDF)
+CTT:CALC 10.2300 egu (SEVR:INVALID STAT:UDF)
+CTT:CALC 10.2300 egu (SEVR:INVALID STAT:UDF)
 
 -----------------------------------------
 Number of elements
@@ -430,4 +430,4 @@ CTT:TEST_WVF-LONG 3 1 16 257
 CTT:TEST_WVF-SHORT 3 1 16 257 
 CTT:TEST_WVF-STRING 5 "123" "string" "456" "dring" "ping" 
 CTT:PROC-CALC 1 2 
-CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME 61 67 84 84 58 82 101 99 111 114 100 78 97 109 101 84 104 97 116 73 115 76 111 110 103 101 114 84 104 97 110 70 111 114 116 121 67 104 97 114 115 70 111 114 76 111 110 103 83 116 114 105 110 103 84 101 115 116 0 0 0 0 
+CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest.NAME 1 "CTT:RecordNameThatIsLongerThanFortyCharsForLongStringTest" 

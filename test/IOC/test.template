@@ -19,6 +19,7 @@ record(calc, "$(P):CALC"){
 	field(INPA, "$(P):CALC")
 	field(CALC, "A+1")
 	field(VAL,  "1")
+	field(EGU,  "egu")
 }
 
 record(calcout, "$(P):CALC_BI"){

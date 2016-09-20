@@ -12,7 +12,9 @@ This folder contains an example IOC and a few scripts to help automate basic tes
 Tools used in the tests are: caget, caput, cagets, caputq and cado.
 
 ## How to
-Move to the folder, where caTools were copied and build. Then:
+Move to the folder, where caTools were copied and build. Create create symbolic links, or make copies of the executable appropriate for your architecture in the same folder for: caget, caput, cagets, caputq and cado
+
+Then:
 
 - in the first terminal, start the IOC in the `test/IOC` folder
 
