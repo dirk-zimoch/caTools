@@ -93,8 +93,8 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fprintf(stream, "  -w <time>            Wait time in seconds, specifies CA timeout. Value 0 means wait forever.\n"
                         "                       (default: %d s)\n", CA_DEFAULT_TIMEOUT);
         if (tool != cainfo) {
-            fputs("  -dbrtype <type>      Type of DBR request to use for communicating\n"
-                  "                       with the server. Use string (DBR_ prefix may be\n"
+            fputs("  -dbrtype <type>      Type of DBR request to use for retrieving values\n"
+                  "                       from the server. Use string (DBR_ prefix may be\n"
                   "                       omitted, or number of one of the following types:\n", stream);
             fputs("             DBR_STRING     0  DBR_STS_LONG    12  DBR_GR_ENUM       24\n"
                   "             DBR_INT        1  DBR_STS_DOUBLE  13  DBR_GR_CHAR       25\n"
@@ -141,7 +141,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Monitoring options\n", stream);
         fputs("  -n <number>          Exit the program after <number> updates.\n", stream);
         fputs("  -timestamp <option>  Display relative timestamps. Options:\n", stream);
-        fputs("                            r: server timestamp relative to the start of the program,\n", stream);
+        fputs("                            r: server timestamp relative to the local time when the program started,\n", stream);
         fputs("                            u: time elapsed since last update of any PV,\n", stream);
         fputs("                            c: time elapsed since last update separately for each PV.\n", stream);
     }
@@ -185,7 +185,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -prec <number>       Override PREC field with <number>.\n"\
               "                       (default: PREC field).\n", stream);
         fputs("  -round <option>      Round floating point value(s). Options:\n", stream);
-        fputs("                                 round: round to nearest (default).\n", stream);
+        fputs("                                 round: round to nearest.\n", stream);
         fputs("                                 ceil: round up,\n", stream);
         fputs("                                 floor: round down,\n", stream);
 
