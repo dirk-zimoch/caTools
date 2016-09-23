@@ -158,22 +158,29 @@ static void caReadCallback (evargs args){
          * status, severity, timestamp, precision, units*/
         getMetadataFromEvArgs(ch, args);
 
+        char* value = dbr_value_ptr(args.dbr, args.type);
+        value[MAX_STRING_SIZE-1] = '\0'; /* null terminate string, in case it is not... */
+        size_t stringLength = strlen(value);
 
         /* See if it makes sense to check for string length and
          * then issue new request for long string */
         if(     ch->nRequests <= 0 &&       /* last request was handled. */
                 ch->lstr.name != NULL &&    /* name is allocated in caInit() only when request is not on the VAL field and base type is string */
-                ch->lstrDone != true)   /* we did not try to open long string channel yet */
+                ch->lstrDone != true &&     /* we did not try to open long string channel yet */
+                stringLength >= MAX_STRING_SIZE-1)   /* string is full. Let's do the long string request */
         {
-            char* value = dbr_value_ptr(args.dbr, args.type);
-            value[MAX_STRING_SIZE-1] = '\0'; /* null terminate string, in case it is not... */
-            if(strlen(value) >= MAX_STRING_SIZE-1 ) {   /* string is full. Let's do the long string request */
-                initField(ch, &ch->lstr);
-                ch->lstr.created = true;
-                epicsTimeGetCurrent(&ch->lstrTimestamp);
-                epicsTimeAddSeconds(&ch->lstrTimestamp, arguments.caTimeout);
-                if(ch->nRequests <= 0) ch->nRequests++; // this happens on non-first camon/cawait callback
-            }
+            initField(ch, &ch->lstr);
+            ch->lstr.created = true;
+            epicsTimeGetCurrent(&ch->lstrTimestamp);
+            epicsTimeAddSeconds(&ch->lstrTimestamp, arguments.caTimeout);
+            if(ch->nRequests <= 0) ch->nRequests++; // this happens on camon/cawait callback
+        }
+
+        /* if long string channel is already opened and response is lenghtly
+         * then issue another request for the long string */
+        if(ch->lstr.created && ch->lstrDone && stringLength >= MAX_STRING_SIZE-1) {
+            issueLongStringRequest(ch);
+            if(ch->nRequests <= 0) ch->nRequests++; // this happens on camon/cawait callback
         }
     }
 
@@ -294,10 +301,36 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
    if (arguments->tool == caput || arguments->tool == caputq) {
 
         void * input;
+        chid channelId = ch->base.id;
+        bool usingLongString = false;
+
+        if(ch->lstr.created == true && ch->lstrDone != true) {  /* long string channel connection request was sent */
+            /* if connected, issue long string request, otherwise clean up after it */
+            if(ch->lstr.connectionState == CA_OP_CONN_UP) {
+                debugPrint("caGenerateWriteRequests() Doing request for long strings\n");
+                ch->lstrDone = true;
+                arguments->str = true;
+                baseType = ca_field_type(ch->lstr.id);
+                channelId = ch->lstr.id;
+                usingLongString = true;
+            }
+        }
+
+        /* clean-up after long string channel connection failed */
+        if (    ch->lstr.created &&
+                ch->lstr.connectionState != CA_OP_CONN_UP)
+        {
+            ca_clear_channel(ch->lstr.id);
+            free(ch->lstr.name);
+            ch->lstr.name = NULL;
+            ch->nRequests--;
+            ch->lstrDone = true;
+            ch->lstr.created = false;
+        }
 
         /* parse input strings to dbr types */
         if (castStrToDBR(&input, ch, &baseType, arguments)) {
-            if (ch->inNelm > ch->count){
+            if (!usingLongString && ch->inNelm > ch->count){
                 warnPrint("Number of input elements is: %zu, but channel can accept only %zu.\n", ch->inNelm, ch->count);
                 ch->inNelm = ch->count;
             }
@@ -305,8 +338,8 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
             debugPrint("nelm: %zu\n", ch->inNelm);
             ch->nRequests++;
             /* dont wait for callback in case of caputq */
-            if(arguments->tool == caputq) status = ca_array_put(baseType, ch->inNelm, ch->base.id, input);
-            else status = ca_array_put_callback(baseType, ch->inNelm, ch->base.id, input, caWriteCallback, ch);
+            if(arguments->tool == caputq) status = ca_array_put(baseType, ch->inNelm, channelId, input);
+            else status = ca_array_put_callback(baseType, ch->inNelm, channelId, input, caWriteCallback, ch);
             free(input);
         }
         else {
@@ -376,6 +409,8 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     /* if no other type specified issue first request with ctrl type or with the type that was specified. */
     debugPrint("caGenerateReadRequests() - outNelm: %zu\n", ch->outNelm);
     debugPrint("caGenerateReadRequests() - reqType: %s\n", dbr_type_to_text(reqType));
+
+
     ch->nRequests ++;
     status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
     if (status != ECA_NORMAL) {
@@ -728,7 +763,6 @@ bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
 bool caRequest(struct channel *channels, u_int32_t nChannels) {
     bool success = true;
     u_int32_t i;
-    int status = ECA_NORMAL;
 
     /* generate write requests  */
     if (arguments.tool == caput ||
@@ -736,10 +770,35 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
         arguments.tool == cado ||
         arguments.tool == cagets)
     {
+        bool anylstrChannels = false;   /* do we have any long string requests? */
         for(i=0; i < nChannels; i++) {
             if (channels[i].base.connectionState != CA_OP_CONN_UP) {/*skip disconnected channels */
                 continue;
             }
+
+            /* check if long string channel needs to be opened */
+            if(     channels[i].lstr.name != NULL &&    /* name is allocated in caInit() only when request is not on the VAL field and base type is string */
+                    channels[i].lstrDone != true)   /* we did not try to open long string channel yet */
+            {
+                size_t length = strlen(channels[i].inpStr);
+                if(length >= MAX_STRING_SIZE) {   /* string is too large. Let's do the long string request */
+                    debugPrint("caRequest() Trying to connect long string channel\n");
+                    initField(&channels[i], &channels[i].lstr);
+                    channels[i].lstr.created = true;
+                    anylstrChannels = true;   /* do we have any long string requests? */
+                }
+            }
+        }
+
+        if(anylstrChannels) {
+            waitForCallbacks(channels, nChannels);
+        }
+
+        for(i=0; i < nChannels; i++) {
+            if (channels[i].base.connectionState != CA_OP_CONN_UP) {/*skip disconnected channels */
+                continue;
+            }
+
             success &= caGenerateWriteRequests(&channels[i], &arguments);
         }
         /* if cado or caputq flush and exit right away */
@@ -806,7 +865,7 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
 
             /* clean-up after long string channel connection failed */
             if (    channels[i].lstr.created &&
-                    (channels[i].lstr.connectionState != CA_OP_CONN_UP || status != ECA_NORMAL))
+                    channels[i].lstr.connectionState != CA_OP_CONN_UP)
             {
                 ca_clear_channel(channels[i].lstr.id);
                 free(channels[i].lstr.name);
@@ -902,7 +961,9 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
             arguments->tool == cagets ||
             arguments->tool == cainfo ||
             arguments->tool == camon  ||
-            arguments->tool == cawait )){
+            arguments->tool == cawait ||
+            arguments->tool == caputq ||
+            arguments->tool == caput )){
         debugPrint("caInitSiblings() - init sibling for long string channel\n");
         debugPrint("caInitSiblings() - dbftype: %s\n", dbf_type_to_text(ca_field_type(ch->base.id)));
         ch->lstr.name = callocMustSucceed (strlen(ch->base.name) + 2, sizeof(char), "main");   /*2 spaces for $ + null termination */

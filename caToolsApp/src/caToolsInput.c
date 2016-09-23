@@ -821,7 +821,7 @@ bool castStrToDBR(void ** data, struct channel * ch, short * pBaseType, argument
 
         /*  handle as string if string */
         if(isStr && !arguments->parseArray){
-            debugPrint("castStrToDBR_CHAR() - is long string %s\n", ch->inpStr);
+            debugPrint("castStrToDBR_CHAR() - is string %s\n", ch->inpStr);
             /* reallocate data */
             free(*data);
             size_t charsInStr = strlen(ch->inpStr)+1; /* worst case */
