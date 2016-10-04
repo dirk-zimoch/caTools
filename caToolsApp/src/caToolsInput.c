@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <string.h>
+#include "epicsString.h"
 #include "cantProceed.h"
 #include "caToolsTypes.h"
 #include "caToolsUtils.h"
@@ -80,7 +81,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
     fputs("\n", stream);
     fputs("Accepted flags:\n", stream);
     fputs("\n", stream);
-    fputs("  -h                   Help: Print this message\n", stream);
+    fputs("  -h, -?, -help        Help: Print this message\n", stream);
     fputs("  -v                   Verbosity. Options:\n", stream);
     fprintf(stream,"                       Print error messages: %d\n", VERBOSITY_ERR);
     fprintf(stream,"                       Also print warning messages: %d (default)\n", VERBOSITY_WARN);
@@ -149,6 +150,12 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Timeout options\n", stream);
         fputs("  -timeout <number>    Exit the program after <number> seconds.\n", stream);
     }
+    else {
+        fputs("Loop options\n", stream);
+        fputs("  -period <seconds>    Repeat periodically.\n", stream);
+        fputs("  -sep <string>        Print separator string beween loops.\n", stream);
+        fputs("  -n <number>          Exit after <number> loops.\n", stream);
+    }
 
     /* Flags associated with returned values. Used by both reading and writing tools. */
     if (tool == caget || tool == cagets || tool == camon
@@ -166,6 +173,8 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("  -localdate           Display client date.\n", stream);
         fputs("  -localtime           Display client time.\n", stream);
         fputs("  -t, -time            Display server time.\n", stream);
+        fputs("  -tfmt <timeformat>   Display server time with format\n", stream);
+        fputs("  -ltfmt <timeformat>  Display client time with format\n", stream);
 
         fputs("Formating output : Integer format options\n", stream);
         fputs("  -bin                 Display integer values in binary format.\n", stream);
@@ -196,6 +205,14 @@ void usage(FILE *stream, enum tool tool, char *programName){
     }
 }
 
+static char* translatePercentN(char* s)
+{ /* translate %N to %f */
+    char* p;
+    for (p=s; (p=strchr(p, '%')); p++)
+        if (*++p == 'N') *p = 'f';
+    return s;
+}
+
 /**
  * @brief parseArguments - parses command line arguments and fills up the arguments variable
  * @param argc from main
@@ -218,31 +235,35 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
     if (endsWith(argv[0],"cainfo")) arguments->tool = cainfo;
 
     static struct option long_options[] = {
-        {"num",     	no_argument,        0,  0 },
-        {"int",     	no_argument,        0,  0 },    /* same as num */
-        {"round",   	required_argument,  0,  0 },	/* type of rounding:round, ceil, floor */
-        {"prec",    	required_argument,  0,  0 },	/* precision */
-        {"hex",     	no_argument,        0,  0 },	/* display as hex */
-        {"bin",     	no_argument,        0,  0 },	/* display as bin */
-        {"oct",     	no_argument,        0,  0 },	/* display as oct */
-        {"plain",   	no_argument,        0,  0 },	/* ignore formatting switches */
-        {"stat",    	no_argument,       0,  0 },     /* status and severity on */
-        {"nostat",  	no_argument,        0,  0 },	/* status and severity off */
-        {"noname",  	no_argument,        0,  0 },	/* hide name */
-        {"nounit",  	no_argument,        0,  0 },	/* hide units */
-        {"timestamp",	required_argument, 	0,  0 },	/* timestamp type r,u,c */
-        {"localdate",	no_argument,       0,  0 },     /* client date */
-        {"time",      no_argument,       0,  0 },       /* server time */
-        {"localtime",	no_argument,       0,  0 },     /* client time */
-        {"date",      no_argument,       0,  0 },       /* server date */
-        {"outNelm", 	required_argument,	0,  0 },	/* number of array elements - read */
-        {"outSep",      required_argument,	0,  0 },	/* array field separator - read */
-        {"inSep",      required_argument,	0,  0 },	/* array field separator - write */
-        {"nord",      no_argument,      0,  0 },        /* display number of array elements */
-        {"tool",      required_argument, 	0,	0 },	/* tool */
-        {"timeout",   	required_argument, 	0,	0 },	/* timeout */
-        {"dbrtype",   	required_argument, 	0,	0 },	/* dbrtype */
-        {0,         	0,                 	0,  0 }
+        {"num",         no_argument,        0,  0 },
+        {"int",         no_argument,        0,  0 },    /* same as num */
+        {"round",       required_argument,  0,  0 },    /* type of rounding:round, ceil, floor */
+        {"prec",        required_argument,  0,  0 },    /* precision */
+        {"hex",         no_argument,        0,  0 },    /* display as hex */
+        {"bin",         no_argument,        0,  0 },    /* display as bin */
+        {"oct",         no_argument,        0,  0 },    /* display as oct */
+        {"plain",       no_argument,        0,  0 },    /* ignore formatting switches */
+        {"stat",        no_argument,        0,  0 },    /* status and severity on */
+        {"nostat",      no_argument,        0,  0 },    /* status and severity off */
+        {"noname",      no_argument,        0,  0 },    /* hide name */
+        {"nounit",      no_argument,        0,  0 },    /* hide units */
+        {"timestamp",   required_argument,  0,  0 },    /* timestamp type r,u,c */
+        {"localdate",   no_argument,        0,  0 },    /* client date */
+        {"time",        no_argument,        0,  0 },    /* server time */
+        {"localtime",   no_argument,        0,  0 },    /* client time */
+        {"date",        no_argument,        0,  0 },    /* server date */
+        {"outNelm",     required_argument,  0,  0 },    /* number of array elements - read */
+        {"outSep",      required_argument,  0,  0 },    /* array field separator - read */
+        {"inSep",       required_argument,  0,  0 },    /* array field separator - write */
+        {"nord",        no_argument,        0,  0 },    /* display number of array elements */
+        {"tool",        required_argument,  0,  0 },    /* tool */
+        {"timeout",     required_argument,  0,  0 },    /* timeout */
+        {"dbrtype",     required_argument,  0,  0 },    /* dbrtype */
+        {"period",      required_argument,  0,  0 },    /* periodic execution */
+        {"sep",         required_argument,  0,  0 },    /* seperator between periodic runs */
+        {"tfmt",        required_argument,  0,  0 },    /* time stamp format */
+        {"ltfmt",       required_argument,  0,  0 },    /* local time format */
+        {0,             0,                  0,  0 }
     };
     putenv("POSIXLY_CORRECT="); /* Behave correctly on GNU getopt systems = stop parsing after 1st non option is encountered */
 
@@ -260,7 +281,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
         case 'd': /* same as date */
             arguments->date = true;
             break;
-        case 'e':	/* how to format doubles in strings */
+        case 'e':    /* how to format doubles in strings */
         case 'f':
         case 'g':
             if (sscanf(optarg, "%"SCNd32, &arguments->prec) != 1){
@@ -276,13 +297,13 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
                 }
             }
             break;
-        case 's':	/* try to interpret values as strings */
+        case 's':    /* try to interpret values as strings */
             arguments->str = true;
             break;
-        case 't':	/* same as time */
+        case 't':    /* same as time */
             arguments->time = true;
             break;
-        case 'n':	/* stop monitor after numUpdates */
+        case 'n':    /* stop monitor after numUpdates */
             if (sscanf(optarg, "%"SCNd64, &arguments->numUpdates) != 1) {
                 warnPrint("Invalid argument '%s' for option '-%c' - ignored.\n", optarg, opt);
                 arguments->numUpdates = -1;
@@ -372,7 +393,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
             case 8:   /* stat */
                 arguments->stat = true;
                 break;
-            case 9:	  /* nostat */
+            case 9:   /* nostat */
                 arguments->nostat = true;
                 break;
             case 10:   /* noname */
@@ -438,7 +459,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
             case 20:   /*  nord */
                 arguments->nord = true;
                 break;
-            case 21:	/*  tool */
+            case 21:   /*  tool */
                 ;/* declaration must not follow label */
                 int tool;
                 if (sscanf(optarg, "%d", &tool) != 1){   /*  type was not given as a number [0, 1, 2] */
@@ -465,7 +486,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
                     }
                 }
                 break;
-            case 22: /* timeout */
+            case 22:   /* timeout */
                 if (sscanf(optarg, "%lf", &arguments->timeout) != 1){
                     warnPrint("Invalid timeout argument '%s' "
                             "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
@@ -477,7 +498,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
                     }
                 }
                 break;
-            case 23: /* dbrtype */
+            case 23:   /* dbrtype */
                 if (sscanf(optarg, "%"SCNd32, &arguments->dbrRequestType) != 1)     /*  type was not given as an integer */
                 {
                     dbr_text_to_type(optarg, arguments->dbrRequestType);
@@ -495,11 +516,25 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
                 }
 
                 break;
+            case 24:   /* period */
+                if (sscanf(optarg, "%lf", &arguments->period) != 1)
+                {
+                    warnPrint("Invalid argument '%s' "
+                            "for option '%s' - ignored.\n", optarg, long_options[opt_long].name);
+                }
+                break;
+            case 25:   /* sep */
+                arguments->separator = epicsStrDup(optarg);
+                break;
+            case 26:   /* tfmt */
+                arguments->tfmt = translatePercentN(epicsStrDup(optarg));
+                break;
+            case 27:   /* ltfmt */
+                arguments->ltfmt = translatePercentN(epicsStrDup(optarg));
+                break;
             }
             break;
         case '?':
-            return false;
-            break;
         case 'h':               /* Print usage */
             usage(stdout, arguments->tool, argv[0]);
             exit(EXIT_SUCCESS); /* do not return here, exit strainght away */
@@ -530,9 +565,6 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
      else if (arguments->tool != camon){
          if (arguments->timestamp != 0){
              warnPrint("Option -timestamp can only be specified with camon.\n");
-         }
-         if (arguments->numUpdates != -1){
-             warnPrint("Option -n can only be specified with camon.\n");
          }
      }
      else if ((arguments->parseArray || arguments->inputSeparator !=' ') && (arguments->tool != caput && arguments->tool != caputq)){
@@ -588,7 +620,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
             return false;
         }
 
-        *nChannels = (argc - optind) / 2;	/* half of the args are PV names, rest conditions/values */
+        *nChannels = (argc - optind) / 2;    /* half of the args are PV names, rest conditions/values */
     }
 
 
@@ -618,7 +650,7 @@ bool parseChannels(int argc, char ** argv, arguments_T *arguments, struct channe
             break;
         }
 
-        channels[i].i = i;	/* channel number, serves to synchronise pvs and output. */
+        channels[i].i = i;    /* channel number, serves to synchronise pvs and output. */
 
         if (arguments->tool == caput || arguments->tool == caputq || arguments->tool == cawait){
             channels[i].inNelm = 1;
