@@ -173,14 +173,14 @@ static void caReadCallback (evargs args){
             ch->lstr.created = true;
             epicsTimeGetCurrent(&ch->lstrTimestamp);
             epicsTimeAddSeconds(&ch->lstrTimestamp, arguments.caTimeout);
-            if(ch->nRequests <= 0) ch->nRequests++; // this happens on camon/cawait callback
+            if(ch->nRequests <= 0) ch->nRequests++; /* this happens on camon/cawait callback */
         }
 
         /* if long string channel is already opened and response is lenghtly
          * then issue another request for the long string */
         if(ch->lstr.created && ch->lstrDone && stringLength >= MAX_STRING_SIZE-1) {
             issueLongStringRequest(ch);
-            if(ch->nRequests <= 0) ch->nRequests++; // this happens on camon/cawait callback
+            if(ch->nRequests <= 0) ch->nRequests++; /* this happens on camon/cawait callback */
         }
     }
 
@@ -212,7 +212,7 @@ static void caReadCallback (evargs args){
     /* finish */
     if(shouldPrint){
         /* handle -n option, count plus one and stop after n */
-        if (arguments.numUpdates != -1) {
+        if (arguments.tool == camon && arguments.numUpdates != -1) {
             g_numMonitorUpdates++;	/*increase counter of updates */
 
             if (g_numMonitorUpdates >= arguments.numUpdates) {
@@ -422,7 +422,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
 
 
     /* if needed issue second request using time type */
-    if ((arguments->time || arguments->date || arguments->timestamp) &&
+    if ((arguments->time || arguments->date || arguments->timestamp || arguments->tfmt) &&
             !(DBR_TIME_STRING <= arguments->dbrRequestType && arguments->dbrRequestType <= DBR_TIME_DOUBLE) )
     {
         if (ca_field_type(reqChid) == DBF_ENUM && !(arguments->num)){
@@ -1064,7 +1064,7 @@ bool monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arg
         for(i = 0; i < nChannels; i++) {
             /* connect channels that were not connected at the start of the program in caInit */
             if(channels[i].state==base_created){
-                //Return value is not checked as it is ought to be
+                /* Return value is not checked as it is ought to be */
                 caGenerateReadRequests(&channels[i], arguments);
             }
 
@@ -1167,6 +1167,8 @@ void allocateStringBuffers(u_int32_t nChannels){
     g_outTimestamp = callocMustSucceed(nChannels, sizeof(char *),"main");
     g_outLocalDate = callocMustSucceed(nChannels, sizeof(char *),"main");
     g_outLocalTime = callocMustSucceed(nChannels, sizeof(char *),"main");
+    g_outTimeFmt = callocMustSucceed(nChannels, sizeof(char *),"main");
+    g_outLocalTimeFmt = callocMustSucceed(nChannels, sizeof(char *),"main");
 
     int i;
     for(i = 0; i < nChannels; i++){
@@ -1178,6 +1180,8 @@ void allocateStringBuffers(u_int32_t nChannels){
         g_outTimestamp[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
         g_outLocalDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
         g_outLocalTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
+        g_outTimeFmt[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char *),"main");
+        g_outLocalTimeFmt[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char *),"main");
     }
     /*memory for timestamp */
     g_timestampRead = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
@@ -1231,6 +1235,8 @@ void freeStringBuffers(u_int32_t nChannels){
         free(g_outTimestamp[i]);
         free(g_outLocalDate[i]);
         free(g_outLocalTime[i]);
+        free(g_outTimeFmt[i]);
+        free(g_outLocalTimeFmt[i]);
     }
     free(g_outDate);
     free(g_outTime);
@@ -1240,6 +1246,8 @@ void freeStringBuffers(u_int32_t nChannels){
     free(g_outTimestamp);
     free(g_outLocalDate);
     free(g_outLocalTime);
+    free(g_outTimeFmt);
+    free(g_outLocalTimeFmt);
 
     /*free monitor's timestamp */
     free(g_timestampRead);
@@ -1297,12 +1305,18 @@ int main ( int argc, char ** argv ){
         epicsTimeAddSeconds(&g_timeoutTime, arguments.timeout);
     }
 
-    /* issue ca requests and subscriptions */
-    if(!(success = caRequest(channels, nChannels))){
-        debugPrint("main() - no succes with caRequest\n");
-        goto ca_disconnect;
+    while(1) {
+        /* issue ca requests and subscriptions */
+        if(!(success = caRequest(channels, nChannels))){
+            debugPrint("main() - no succes with caRequest\n");
+            goto ca_disconnect;
+        }
+        if (arguments.separator) printf("%s\n", arguments.separator);
+        if (arguments.tool == camon || arguments.tool == cawait) break;
+        if (arguments.period<0) break;
+        if (arguments.numUpdates != -1 && ++g_numMonitorUpdates >= arguments.numUpdates) break;
+        if (arguments.period>0) epicsThreadSleep(arguments.period);
     }
-
 
     /* wait for monitor or cawait to finish */
     if(arguments.tool == camon || arguments.tool == cawait ) {

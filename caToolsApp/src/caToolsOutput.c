@@ -262,21 +262,31 @@ void printOutput(evargs args, arguments_T *arguments){
     }
 
     /* we assume that manually specifying dbr_time implies -time and -date. */
-    if (arguments->date || isTimeType) epicsTimeToStrftime(g_outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &g_timestampRead[ch->i]);
-    if (arguments->time || isTimeType) epicsTimeToStrftime(g_outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &g_timestampRead[ch->i]);
+    if (arguments->date || (isTimeType && !arguments->tfmt))
+        epicsTimeToStrftime(g_outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &g_timestampRead[ch->i]);
+    if (arguments->time || (isTimeType && !arguments->tfmt))
+    {
+        epicsTimeToStrftime(g_outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &g_timestampRead[ch->i]);
+    }
+    if (arguments->tfmt)
+    {
+        epicsTimeToStrftime(g_outTimeFmt[ch->i], LEN_TIMESTAMP, arguments->tfmt, &g_timestampRead[ch->i]);
+    }
 
     /* show local date or time? */
-    if (arguments->localdate || arguments->localtime){
+    if (arguments->localdate || arguments->localtime || arguments->ltfmt){
         epicsTimeStamp localTime;
         epicsTimeGetCurrent(&localTime);
         /* validateTimestamp(&localTime, "localTime"); */
 
         if (arguments->localdate) epicsTimeToStrftime(g_outLocalDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &localTime);
         if (arguments->localtime) epicsTimeToStrftime(g_outLocalTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &localTime);
+        if (arguments->ltfmt) epicsTimeToStrftime(g_outLocalTimeFmt[ch->i], LEN_TIMESTAMP, arguments->ltfmt, &localTime);
     }
 
     /* if both local and server times are requested, clarify which is which */
-    bool doubleTime = (arguments->localdate || arguments->localtime) && (arguments->date || arguments->time || isTimeType);
+    bool doubleTime = (arguments->localdate || arguments->localtime || arguments->tfmt) &&
+        (arguments->date || arguments->time || isTimeType || arguments->ltfmt);
     if (doubleTime){
         fputs("server time: ",stdout);
     }
@@ -285,15 +295,19 @@ void printOutput(evargs args, arguments_T *arguments){
     if (!isStrEmpty(g_outDate[ch->i]))    printf("%s ",g_outDate[ch->i]);
     /* server time */
     if (!isStrEmpty(g_outTime[ch->i]))    printf("%s ",g_outTime[ch->i]);
+    /* formatted server time */
+    if (!isStrEmpty(g_outTimeFmt[ch->i])) printf("%s ",g_outTimeFmt[ch->i]);
 
     if (doubleTime){
         fputs("local time: ",stdout);
     }
 
     /* local date */
-    if (!isStrEmpty(g_outLocalDate[ch->i]))   printf("%s ",g_outLocalDate[ch->i]);
+    if (!isStrEmpty(g_outLocalDate[ch->i]))    printf("%s ",g_outLocalDate[ch->i]);
     /* local time */
-    if (!isStrEmpty(g_outLocalTime[ch->i]))   printf("%s ",g_outLocalTime[ch->i]);
+    if (!isStrEmpty(g_outLocalTime[ch->i]))    printf("%s ",g_outLocalTime[ch->i]);
+    /* formatted local time */
+    if (!isStrEmpty(g_outLocalTimeFmt[ch->i])) printf("%s ",g_outLocalTimeFmt[ch->i]);
 
 
     /* timestamp if monitor*/
@@ -358,6 +372,8 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
     clearStr(g_outStat[ch->i]);
     clearStr(g_outLocalDate[ch->i]);
     clearStr(g_outLocalTime[ch->i]);
+    clearStr(g_outTimeFmt[ch->i]);
+    clearStr(g_outLocalTimeFmt[ch->i]);
 
     ch->status=0;
     ch->severity=0;

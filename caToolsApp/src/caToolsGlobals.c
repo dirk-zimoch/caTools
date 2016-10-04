@@ -36,7 +36,8 @@ arguments_T arguments = {
         .parseArray = false,
         .outNelm = 0,  /* return number of elements definef by IOC */
         .nord = false,
-        .verbosity = VERBOSITY_WARN /*  show warnings */
+        .verbosity = VERBOSITY_WARN, /*  show warnings */
+        .period = -1, /* do not run periodically */
 };
 
 
@@ -72,7 +73,7 @@ const char * fields[] = {
 /* output strings */
 /*  TODO: most of theese should go in struct channel */
 char *g_errorTimestamp;   /*  timestamp used in caCustomExceptionHandler */
-char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outLocalDate, **g_outLocalTime;
+char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outLocalDate, **g_outLocalTime, **g_outTimeFmt, **g_outLocalTimeFmt;
 char **g_outTimestamp; /* relative timestamps for camon */
 
 

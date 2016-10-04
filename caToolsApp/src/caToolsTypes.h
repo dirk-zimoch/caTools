@@ -9,7 +9,7 @@
 #define CA_PEND_EVENT_TIMEOUT 0.01
 
 /* string lengths */
-#define LEN_TIMESTAMP 50              /* Max length of the timestamp string */
+#define LEN_TIMESTAMP 80              /* Max length of the timestamp string */
 #define LEN_SEVSTAT 30                /* Max length of the severity and status string */
 #define LEN_UNITS  20+MAX_UNITS_SIZE  /* Max length of the units string */
 #define LEN_RECORD_NAME  60           /* Max length of the epics record name */
@@ -66,6 +66,10 @@ typedef struct {
    int64_t outNelm;         /* number of array elements to read */
    bool nord;               /* display number of array elements */
    u_int16_t verbosity;     /* verbosity level: see VERBOSITY_* defines */
+   double period;           /* periodic execution */
+   char* separator;         /* periodic execution separator string */
+   char* tfmt;              /* time stamp format */
+   char* ltfmt;             /* local time stamp */
 } arguments_T;
 
 enum channelField {
@@ -190,7 +194,7 @@ struct channel {
 };
 
 /* global strings see caToolsGlobals.c */
-extern char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outLocalDate, **g_outLocalTime, **g_outTimestamp;
+extern char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outLocalDate, **g_outLocalTime, **g_outTimestamp, **g_outTimeFmt, **g_outLocalTimeFmt;
 
 extern bool *g_firstUpdate; /* indicates that lastUpdate has not been initialized */
 
