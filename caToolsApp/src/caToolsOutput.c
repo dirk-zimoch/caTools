@@ -62,12 +62,14 @@ void printValue(evargs args, arguments_T *arguments){
     debugPrint("printValue() - baseType: %s\n", dbr_type_to_text(baseType));
 
     /* handle long strings */
-    if(baseType == DBR_CHAR && !arguments->fieldSeparator && !arguments->parseArray && !(arguments->num) &&   /* no special numeric formating specified */
-                (ch->type == DBF_STRING ||   /* if base channel is DBF_STRING*/
+    if(         (baseType == DBR_CHAR && (ch->type == DBF_STRING || ch->type == DBR_CTRL_STRING)) ||        /* this is long string */
+                (baseType == DBR_CHAR && !arguments->fieldSeparator && !arguments->parseArray && !(arguments->num) &&   /* no special numeric formating specified */
+                (ch->type == DBF_STRING || ch->type == DBR_CTRL_STRING ||  /* if base channel type is string*/
                  arguments->str ||                           /* if requested string formatting */
-                 (args.count > 1 && isPrintable((char *) value, (size_t) args.count)))/* if array returned and all characters are printable */
+                 (args.count > 1 && isPrintable((char *) value, (size_t) args.count))))/* if array returned and all characters are printable */
         )
     {  /* print as string */
+        debugPrint("printValue() - case long string with count: %ld\n", args.count);
         printf("\"%.*s\"", (int) args.count, (char *) value);
         return;
     }
@@ -86,7 +88,7 @@ void printValue(evargs args, arguments_T *arguments){
         switch (baseType) {
         case DBR_STRING:
             debugPrint("printValue() - case DBR_STRING - print as normal string\n");
-            printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);    /*  TODO: is this always null-terminated? */
+            printf("\"%.*s\"", MAX_STRING_SIZE, ((dbr_string_t*) value)[j]);
             break;
         case DBR_FLOAT:
         case DBR_DOUBLE:{
@@ -95,7 +97,7 @@ void printValue(evargs args, arguments_T *arguments){
             else valueDbl = ((dbr_double_t*)value)[j];
 
             /* round if desired or will be writen as hex oct, bin or string */
-            if (arguments->round == roundType_round || arguments->hex || arguments->oct || arguments->bin || arguments->str) {
+            if (arguments->round == roundType_round || arguments->hex || arguments->oct || arguments->bin) {
                 valueDbl = round(valueDbl);
             }
             else if(arguments->round == roundType_ceil) {
@@ -246,7 +248,7 @@ void printOutput(evargs args, arguments_T *arguments){
 /*  prints global output strings corresponding to i-th channel. */
 
     struct channel *ch = (struct channel *)args.usr;
-    bool isTimeType = args.type >= DBR_TIME_STRING && args.type <= DBR_TIME_DOUBLE; /* otherwise we don't have time */
+    bool isTimeType = arguments->dbrRequestType >= DBR_TIME_STRING && arguments->dbrRequestType <= DBR_TIME_DOUBLE;
 
     /* do formating */
 
@@ -259,12 +261,9 @@ void printOutput(evargs args, arguments_T *arguments){
         else sprintf(g_outSev[ch->i],"UNKNOWN: %u",ch->status);
     }
 
-    if (isTimeType){/* otherwise we don't have it */
-        /* we assume that manually specifying dbr_time implies -time or -date. */
-        if (arguments->date || arguments->dbrRequestType != -1) epicsTimeToStrftime(g_outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &g_timestampRead[ch->i]);
-        if (arguments->time || arguments->dbrRequestType != -1) epicsTimeToStrftime(g_outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &g_timestampRead[ch->i]);
-    }
-
+    /* we assume that manually specifying dbr_time implies -time and -date. */
+    if (arguments->date || isTimeType) epicsTimeToStrftime(g_outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &g_timestampRead[ch->i]);
+    if (arguments->time || isTimeType) epicsTimeToStrftime(g_outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &g_timestampRead[ch->i]);
 
     /* show local date or time? */
     if (arguments->localdate || arguments->localtime){
@@ -277,8 +276,8 @@ void printOutput(evargs args, arguments_T *arguments){
     }
 
     /* if both local and server times are requested, clarify which is which */
-    bool doubleTime = (arguments->localdate || arguments->localtime) && (arguments->date || arguments->time);
-    if (doubleTime && isTimeType){
+    bool doubleTime = (arguments->localdate || arguments->localtime) && (arguments->date || arguments->time || isTimeType);
+    if (doubleTime){
         fputs("server time: ",stdout);
     }
 
@@ -297,14 +296,26 @@ void printOutput(evargs args, arguments_T *arguments){
     if (!isStrEmpty(g_outLocalTime[ch->i]))   printf("%s ",g_outLocalTime[ch->i]);
 
 
-    /* timestamp if monitor and if requested and if isTimeType */
-    if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp && isTimeType)
+    /* timestamp if monitor*/
+    if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp) {
+        if(arguments->localdate || arguments->localtime || arguments->date || arguments->time || isTimeType) {
+            fputs("timestamp: ", stdout);
+        }
         printf("%s ", g_outTimestamp[ch->i]);
+    }
 
     /* channel name */
     if (!arguments->noname)  printf("%s ",ch->base.name);
 
-    if (arguments->nord) printf("%lu ", args.count); /*  show nord if requested */
+
+    if (arguments->nord){
+        if(args.chid == ch->lstr.id) {  /* long strings are strings...so nord is 1 */
+            printf("1 ");
+        }
+        else {
+            printf("%lu ", args.count); /*  show nord if requested */
+        }
+    }
 
     /* value(s) */
     printValue(args, arguments);
@@ -511,7 +522,7 @@ void getTimeStamp(size_t i, arguments_T * arguments) {
         /*timestamps separate for each channel, otherwise use lastUpdate[0] */
         /*for all channels (commonI). */
 
-        /* firstUpodate var is set at the end of caReadCallback, just before printing results. */
+        /* firstUpdate var is set at the end of caReadCallback, just before printing results. */
         if (g_firstUpdate[i]) {
             negative = epicsTimeDiffFull(&elapsed, &g_timestampRead[i], &g_lastUpdate[commonI]);
         }
@@ -540,7 +551,7 @@ void getTimeStamp(size_t i, arguments_T * arguments) {
 }
 
 
-bool cawaitEvaluateCondition(struct channel * ch, evargs args, arguments_T * arguments){
+bool cawaitEvaluateCondition(struct channel * ch, evargs args){
     /*evaluates output of channel i against the corresponding condition. */
     /*returns 1 if matching, 0 otherwise, and -1 if error. */
     /*Before evaluation, channel output is converted to double. If this is */

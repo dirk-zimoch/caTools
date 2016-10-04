@@ -34,6 +34,10 @@ ifeq ($(OS_CLASS),Linux)
 install: links
 endif
 
+#ifeq ($(EPICS_HOST_ARCH),$(T_A))
+#install: archLinks
+#endif
+
 links: 
 	ln -sf caTools $(INSTALL_BIN)/cado
 	ln -sf caTools $(INSTALL_BIN)/caget
@@ -43,3 +47,14 @@ links:
 	ln -sf caTools $(INSTALL_BIN)/caput
 	ln -sf caTools $(INSTALL_BIN)/caputq
 	ln -sf caTools $(INSTALL_BIN)/cawait
+
+archLinks:
+	echo $(INSTALL_HOST_BIN)
+	ln -sf bin/$(EPICS_HOST_ARCH)/caTools $(TOP)/cado
+	ln -sf bin/$(EPICS_HOST_ARCH)/caTools $(TOP)/caget
+	ln -sf bin/$(EPICS_HOST_ARCH)/caTools $(TOP)/cagets
+	ln -sf bin/$(EPICS_HOST_ARCH)/caTools $(TOP)/cainfo
+	ln -sf bin/$(EPICS_HOST_ARCH)/caTools $(TOP)/camon
+	ln -sf bin/$(EPICS_HOST_ARCH)/caTools $(TOP)/caput
+	ln -sf bin/$(EPICS_HOST_ARCH)/caTools $(TOP)/caputq
+	ln -sf bin/$(EPICS_HOST_ARCH)/caTools $(TOP)/cawait
