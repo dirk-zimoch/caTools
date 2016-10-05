@@ -1159,29 +1159,13 @@ bool caDisconnect(struct channel * channels, u_int32_t nChannels){
 void allocateStringBuffers(u_int32_t nChannels){
     /*allocate memory for output strings */
     g_errorTimestamp = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"errorTimestamp");
-    g_outDate = callocMustSucceed(nChannels, sizeof(char *),"main");
-    g_outTime = callocMustSucceed(nChannels, sizeof(char *),"main");
-    g_outSev = callocMustSucceed(nChannels, sizeof(char *),"main");
-    g_outStat = callocMustSucceed(nChannels, sizeof(char *),"main");
     g_outUnits = callocMustSucceed(nChannels, sizeof(char *),"main");
     g_outTimestamp = callocMustSucceed(nChannels, sizeof(char *),"main");
-    g_outLocalDate = callocMustSucceed(nChannels, sizeof(char *),"main");
-    g_outLocalTime = callocMustSucceed(nChannels, sizeof(char *),"main");
-    g_outTimeFmt = callocMustSucceed(nChannels, sizeof(char *),"main");
-    g_outLocalTimeFmt = callocMustSucceed(nChannels, sizeof(char *),"main");
 
     int i;
     for(i = 0; i < nChannels; i++){
-        g_outDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
-        g_outTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
-        g_outSev[i] = callocMustSucceed(LEN_SEVSTAT, sizeof(char),"main");
-        g_outStat[i] = callocMustSucceed(LEN_SEVSTAT, sizeof(char),"main");
         g_outUnits[i] = callocMustSucceed(LEN_UNITS, sizeof(char),"main");
         g_outTimestamp[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
-        g_outLocalDate[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
-        g_outLocalTime[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
-        g_outTimeFmt[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char *),"main");
-        g_outLocalTimeFmt[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char *),"main");
     }
     /*memory for timestamp */
     g_timestampRead = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
@@ -1227,27 +1211,11 @@ void freeStringBuffers(u_int32_t nChannels){
     /*free output strings */
     size_t i;
     for( i = 0; i < nChannels; i++) {
-        free(g_outDate[i]);
-        free(g_outTime[i]);
-        free(g_outSev[i]);
-        free(g_outStat[i]);
         free(g_outUnits[i]);
         free(g_outTimestamp[i]);
-        free(g_outLocalDate[i]);
-        free(g_outLocalTime[i]);
-        free(g_outTimeFmt[i]);
-        free(g_outLocalTimeFmt[i]);
     }
-    free(g_outDate);
-    free(g_outTime);
-    free(g_outSev);
-    free(g_outStat);
     free(g_outUnits);
     free(g_outTimestamp);
-    free(g_outLocalDate);
-    free(g_outLocalTime);
-    free(g_outTimeFmt);
-    free(g_outLocalTimeFmt);
 
     /*free monitor's timestamp */
     free(g_timestampRead);

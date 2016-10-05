@@ -67,7 +67,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
         fputs("Monitors the PV(s).\n", stream);
     }
     if (tool == cawait) {
-         fputs("Monitors the PV(s), but only displays the values when they match the provided conditions. When at least one of the conditions is true, the program exits." \
+        fputs("Monitors the PV(s), but only displays the values when they match the provided conditions. When at least one of the conditions is true, the program exits." \
                "The conditions are specified as a string containing the operator together with the values.\n", stream);
         fputs("Following operators are supported:  >, <, <=, >=, ==, !=, !, ==A...B(in interval), !=A...B or !A...B (out of interval). For example, "\
                 "cawait pv '==1...5' exits after pv value is inside the interval [1,5]."

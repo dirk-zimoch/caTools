@@ -238,11 +238,15 @@ void printValue(evargs args, arguments_T *arguments){
             errPeriodicPrint("Unrecognized DBR type.\n");
             break;
         }
-
     }
-
 }
 
+static void printTimestamp(const char* fmt, epicsTimeStamp *pts){
+    char buffer[100]; /* epicsTimeToStrftime does not report errors on overflow! It just prints less. */
+    epicsTimeToStrftime(buffer, sizeof(buffer), fmt, pts);
+    fputs(buffer, stdout);
+    putc(' ', stdout);
+}
 
 void printOutput(evargs args, arguments_T *arguments){
 /*  prints global output strings corresponding to i-th channel. */
@@ -252,63 +256,36 @@ void printOutput(evargs args, arguments_T *arguments){
 
     /* do formating */
 
-    /* check alarm limits */
-    if (arguments->stat || (!arguments->nostat && (ch->status != 0 || ch->severity != 0))) { /*   display status/severity */
-        if (ch->status <= lastEpicsAlarmCond) sprintf(g_outStat[ch->i],"STAT:%s", epicsAlarmConditionStrings[ch->status]); /*  strcpy(outStat[ch->i], epicsAlarmConditionStrings[ch->status]); */
-        else sprintf(g_outStat[ch->i],"UNKNOWN: %u",ch->status);
-
-        if (ch->severity <= lastEpicsAlarmSev) sprintf(g_outSev[ch->i],"SEVR:%s", epicsAlarmSeverityStrings[ch->severity]);/* strcpy(outSev[ch->i], epicsAlarmSeverityStrings[ch->]); */
-        else sprintf(g_outSev[ch->i],"UNKNOWN: %u",ch->status);
-    }
-
-    /* we assume that manually specifying dbr_time implies -time and -date. */
-    if (arguments->date || (isTimeType && !arguments->tfmt))
-        epicsTimeToStrftime(g_outDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &g_timestampRead[ch->i]);
-    if (arguments->time || (isTimeType && !arguments->tfmt))
-    {
-        epicsTimeToStrftime(g_outTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &g_timestampRead[ch->i]);
-    }
-    if (arguments->tfmt)
-    {
-        epicsTimeToStrftime(g_outTimeFmt[ch->i], LEN_TIMESTAMP, arguments->tfmt, &g_timestampRead[ch->i]);
-    }
-
-    /* show local date or time? */
-    if (arguments->localdate || arguments->localtime || arguments->ltfmt){
-        epicsTimeStamp localTime;
-        epicsTimeGetCurrent(&localTime);
-        /* validateTimestamp(&localTime, "localTime"); */
-
-        if (arguments->localdate) epicsTimeToStrftime(g_outLocalDate[ch->i], LEN_TIMESTAMP, "%Y-%m-%d", &localTime);
-        if (arguments->localtime) epicsTimeToStrftime(g_outLocalTime[ch->i], LEN_TIMESTAMP, "%H:%M:%S.%06f", &localTime);
-        if (arguments->ltfmt) epicsTimeToStrftime(g_outLocalTimeFmt[ch->i], LEN_TIMESTAMP, arguments->ltfmt, &localTime);
-    }
-
     /* if both local and server times are requested, clarify which is which */
     bool doubleTime = (arguments->localdate || arguments->localtime || arguments->tfmt) &&
         (arguments->date || arguments->time || isTimeType || arguments->ltfmt);
-    if (doubleTime){
-        fputs("server time: ",stdout);
+    if (doubleTime)
+        fputs("server time: ", stdout);
+
+    /* we assume that manually specifying dbr_time implies -time and -date if no -tfmt is given. */
+    if (arguments->date || (isTimeType && !arguments->tfmt))
+        printTimestamp("%Y-%m-%d", &g_timestampRead[ch->i]);
+    if (arguments->time || (isTimeType && !arguments->tfmt))
+        printTimestamp("%H:%M:%S.%06f", &g_timestampRead[ch->i]);
+    if (arguments->tfmt)
+        printTimestamp(arguments->tfmt, &g_timestampRead[ch->i]);
+
+    /* show local date or time? */
+    if (arguments->localdate || arguments->localtime || arguments->ltfmt) {
+        epicsTimeStamp localTime;
+        epicsTimeGetCurrent(&localTime);
+
+        if (doubleTime)
+            fputs("local time: ", stdout);
+        /* validateTimestamp(&localTime, "localTime"); */
+
+        if (arguments->localdate)
+            printTimestamp("%Y-%m-%d", &localTime);
+        if (arguments->localtime)
+            printTimestamp("%H:%M:%S.%06f", &localTime);
+        if (arguments->ltfmt)
+            printTimestamp(arguments->ltfmt, &localTime);
     }
-
-    /* server date */
-    if (!isStrEmpty(g_outDate[ch->i]))    printf("%s ",g_outDate[ch->i]);
-    /* server time */
-    if (!isStrEmpty(g_outTime[ch->i]))    printf("%s ",g_outTime[ch->i]);
-    /* formatted server time */
-    if (!isStrEmpty(g_outTimeFmt[ch->i])) printf("%s ",g_outTimeFmt[ch->i]);
-
-    if (doubleTime){
-        fputs("local time: ",stdout);
-    }
-
-    /* local date */
-    if (!isStrEmpty(g_outLocalDate[ch->i]))    printf("%s ",g_outLocalDate[ch->i]);
-    /* local time */
-    if (!isStrEmpty(g_outLocalTime[ch->i]))    printf("%s ",g_outLocalTime[ch->i]);
-    /* formatted local time */
-    if (!isStrEmpty(g_outLocalTimeFmt[ch->i])) printf("%s ",g_outLocalTimeFmt[ch->i]);
-
 
     /* timestamp if monitor*/
     if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp) {
@@ -319,12 +296,14 @@ void printOutput(evargs args, arguments_T *arguments){
     }
 
     /* channel name */
-    if (!arguments->noname)  printf("%s ",ch->base.name);
+    if (!arguments->noname) {
+        fputs(ch->base.name, stdout);
+        putc(' ', stdout);
+    }
 
-
-    if (arguments->nord){
+    if (arguments->nord) {
         if(args.chid == ch->lstr.id) {  /* long strings are strings...so nord is 1 */
-            printf("1 ");
+            fputs("1 ", stdout);
         }
         else {
             printf("%lu ", args.count); /*  show nord if requested */
@@ -334,19 +313,23 @@ void printOutput(evargs args, arguments_T *arguments){
     /* value(s) */
     printValue(args, arguments);
 
-
-    fputc(' ',stdout);
-
     /* egu */
-    if (!isStrEmpty(g_outUnits[ch->i]) && !arguments->nounit) printf("%s ",g_outUnits[ch->i]);
+    if (!isStrEmpty(g_outUnits[ch->i]) && !arguments->nounit)
+        printf(" %s",g_outUnits[ch->i]);
 
-    /* severity */
-    if (!isStrEmpty(g_outSev[ch->i])) printf("(%s",g_outSev[ch->i]);
-
-    /* status */
-    if (!isStrEmpty(g_outStat[ch->i])) printf(" %s)",g_outStat[ch->i]);
-    else if (!isStrEmpty(g_outSev[ch->i])) putc(')', stdout);
-
+    /* display severity/status if necessary */
+    if (arguments->stat || (!arguments->nostat && (ch->status != 0 || ch->severity != 0))) {
+        fputs(" SEVR:", stdout);
+        if (ch->severity <= lastEpicsAlarmSev)
+            fputs(epicsAlarmSeverityStrings[ch->severity], stdout);
+        else
+            printf("%u", ch->severity);
+        fputs(" STAT:", stdout);
+        if (ch->status <= lastEpicsAlarmCond)
+            fputs(epicsAlarmConditionStrings[ch->status], stdout);
+        else
+            printf("%u", ch->status);
+    }
     putc('\n', stdout);
     return;
 }
@@ -366,14 +349,6 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
     /* clear global output strings; the purpose of this callback is to overwrite them */
     /* the exception are units and precision, which we may be getting from elsewhere; we only clear them if we can write them */
     debugPrint("getMetadataFromEvArgs() - %s\n", ch->base.name);
-    clearStr(g_outDate[ch->i]);
-    clearStr(g_outTime[ch->i]);
-    clearStr(g_outSev[ch->i]);
-    clearStr(g_outStat[ch->i]);
-    clearStr(g_outLocalDate[ch->i]);
-    clearStr(g_outLocalTime[ch->i]);
-    clearStr(g_outTimeFmt[ch->i]);
-    clearStr(g_outLocalTimeFmt[ch->i]);
 
     ch->status=0;
     ch->severity=0;

@@ -188,13 +188,13 @@ struct channel {
     enum operator   conditionOperator;    /* cawait operator */
     double          conditionOperands[2]; /* cawait operands */
     int             status;          /*  status */
-    int      		severity; 		 /*  severity */
+    int      	    severity; 		 /*  severity */
     int             prec;            /* precision */
     enum state      state;          /* state of the channel within catools application */
 };
 
 /* global strings see caToolsGlobals.c */
-extern char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outLocalDate, **g_outLocalTime, **g_outTimestamp, **g_outTimeFmt, **g_outLocalTimeFmt;
+extern char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outTimestamp;
 
 extern bool *g_firstUpdate; /* indicates that lastUpdate has not been initialized */
 
