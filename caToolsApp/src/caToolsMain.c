@@ -1151,12 +1151,10 @@ bool caDisconnect(struct channel * channels, u_int32_t nChannels){
  */
 void allocateStringBuffers(u_int32_t nChannels){
     /*allocate memory for output strings */
-    g_outUnits = callocMustSucceed(nChannels, sizeof(char *),"main");
     g_outTimestamp = callocMustSucceed(nChannels, sizeof(char *),"main");
 
     int i;
     for(i = 0; i < nChannels; i++){
-        g_outUnits[i] = callocMustSucceed(LEN_UNITS, sizeof(char),"main");
         g_outTimestamp[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
     }
     /*memory for timestamp */
@@ -1203,10 +1201,8 @@ void freeStringBuffers(u_int32_t nChannels){
     /*free output strings */
     size_t i;
     for( i = 0; i < nChannels; i++) {
-        free(g_outUnits[i]);
         free(g_outTimestamp[i]);
     }
-    free(g_outUnits);
     free(g_outTimestamp);
 
     /*free monitor's timestamp */

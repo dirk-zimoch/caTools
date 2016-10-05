@@ -72,9 +72,7 @@ const char * fields[] = {
 
 /* output strings */
 /*  TODO: most of theese should go in struct channel */
-char **g_outUnits;
 char **g_outTimestamp; /* relative timestamps for camon */
-
 
 /* timestamps needed by -timestamp */
 epicsTimeStamp *g_timestampRead;      /* timestamps of received data (per channel) */

@@ -314,8 +314,11 @@ void printOutput(evargs args, arguments_T *arguments){
     printValue(args, arguments);
 
     /* egu */
-    if (!isStrEmpty(g_outUnits[ch->i]) && !arguments->nounit)
-        printf(" %s",g_outUnits[ch->i]);
+    if (ch->units && !arguments->nounit)
+    {
+        putc(' ', stdout);
+        fputs(ch->units, stdout);
+    }
 
     /* display severity/status if necessary */
     if (arguments->stat || (!arguments->nostat && (ch->status != 0 || ch->severity != 0))) {
@@ -342,7 +345,7 @@ ch->severity = ((struct T *)args.dbr)->severity;
 #define timestamp_get(T) \
     g_timestampRead[ch->i] = ((struct T *)args.dbr)->stamp;\
     validateTimestamp(&g_timestampRead[ch->i], ch->base.name);
-#define units_get_cb(T) clearStr(g_outUnits[ch->i]); sprintf(g_outUnits[ch->i], "%s", ((struct T *)args.dbr)->units);
+#define units_get_cb(T) free(ch->units); ch->units = strdup(((struct T *)args.dbr)->units);
 #define precision_get(T) ch->prec = (((struct T *)args.dbr)->precision);
 
 void getMetadataFromEvArgs(struct channel * ch, evargs args){

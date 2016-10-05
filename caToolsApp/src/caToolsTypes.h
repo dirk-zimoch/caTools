@@ -189,11 +189,12 @@ struct channel {
     int             status;     /* status */
     int      	    severity; 	/* severity */
     int             prec;       /* precision */
+    char*           units;      /* units */
     enum state      state;      /* state of the channel within catools application */
 };
 
 /* global strings see caToolsGlobals.c */
-extern char **g_outDate,**g_outTime, **g_outSev, **g_outStat, **g_outUnits, **g_outTimestamp;
+extern char **g_outTimestamp;
 
 extern bool *g_firstUpdate; /* indicates that lastUpdate has not been initialized */
 
