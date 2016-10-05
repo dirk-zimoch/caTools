@@ -257,20 +257,53 @@ void printOutput(evargs args, arguments_T *arguments){
     /* do formating */
 
     /* if both local and server times are requested, clarify which is which */
-    bool doubleTime = (arguments->localdate || arguments->localtime || arguments->tfmt) &&
-        (arguments->date || arguments->time || isTimeType || arguments->ltfmt);
-    if (doubleTime)
-        fputs("server time: ", stdout);
+    bool doubleTime = (arguments->localdate || arguments->localtime || arguments->tfmt) +
+        (arguments->date || arguments->time || isTimeType || arguments->ltfmt) +
+        (arguments->timestamp != 0) > 1;
 
-    /* we assume that manually specifying dbr_time implies -time and -date if no -tfmt is given. */
-    if (arguments->date || (isTimeType && !arguments->tfmt))
-        printTimestamp("%Y-%m-%d", &ch->timestamp);
-    if (arguments->time || (isTimeType && !arguments->tfmt))
-        printTimestamp("%H:%M:%S.%06f", &ch->timestamp);
-    if (arguments->tfmt)
-        printTimestamp(arguments->tfmt, &ch->timestamp);
+    /* relative timestamp */
+    if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp) {
+        epicsTimeStamp* lastTimeStamp;
+        epicsTimeStamp elapsed;
+        bool negative;
+        
+        lastTimeStamp = arguments->timestamp == 'r' ? &g_programStartTime : arguments->timestamp == 'c' ? &ch->lastUpdate : &g_commonLastUpdate;
+        
+        if(doubleTime)
+            fputs("timestamp:", stdout);
 
-    /* show local date or time? */
+        if (lastTimeStamp->secPastEpoch == 0 && lastTimeStamp->nsec == 0)
+            fputs("                    ", stdout);
+        else
+        {
+            /*convert to h,m,s,ns */
+            struct tm tm;
+            unsigned long nsec;
+
+            negative = epicsTimeDiffFull(&elapsed, &ch->timestamp, lastTimeStamp);
+            epicsTimeToGMTM(&tm, &nsec, &elapsed);
+
+            printf("%c%02d:%02d:%02d.%09lu ", negative ? '-' : ' ', tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
+        }
+        if (arguments->timestamp != 'r')
+            *lastTimeStamp = ch->timestamp;
+    }
+
+    /* server time stamp */
+    if (arguments->date || arguments->time || arguments->tfmt || isTimeType) {
+        if (doubleTime)
+            fputs("server time: ", stdout);
+
+        /* we assume that manually specifying dbr_time implies -time and -date if no -tfmt is given. */
+        if (arguments->date || (isTimeType && !arguments->tfmt))
+            printTimestamp("%Y-%m-%d", &ch->timestamp);
+        if (arguments->time || (isTimeType && !arguments->tfmt))
+            printTimestamp("%H:%M:%S.%06f", &ch->timestamp);
+        if (arguments->tfmt)
+            printTimestamp(arguments->tfmt, &ch->timestamp);
+    }
+
+    /* local time */
     if (arguments->localdate || arguments->localtime || arguments->ltfmt) {
         epicsTimeStamp localTime;
         epicsTimeGetCurrent(&localTime);
@@ -285,34 +318,6 @@ void printOutput(evargs args, arguments_T *arguments){
             printTimestamp("%H:%M:%S.%06f", &localTime);
         if (arguments->ltfmt)
             printTimestamp(arguments->ltfmt, &localTime);
-    }
-
-    /* timestamp if monitor*/
-    if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp) {
-        epicsTimeStamp* lastTimeStamp;
-        epicsTimeStamp elapsed;
-        bool negative;
-        
-        lastTimeStamp = arguments->timestamp == 'r' ? &g_programStartTime : arguments->timestamp == 'c' ? &ch->lastUpdate : &g_commonLastUpdate;
-        
-        if (lastTimeStamp->secPastEpoch == 0 && lastTimeStamp->nsec == 0)
-            fputs("                    ", stdout);
-        else
-        {
-            /*convert to h,m,s,ns */
-            struct tm tm;
-            unsigned long nsec;
-
-            negative = epicsTimeDiffFull(&elapsed, &ch->timestamp, lastTimeStamp);
-            epicsTimeToGMTM(&tm, &nsec, &elapsed);
-
-            if(arguments->localdate || arguments->localtime || arguments->date || arguments->time || isTimeType) {
-                fputs("timestamp: ", stdout);
-            }
-            printf("%c%02d:%02d:%02d.%09lu ", negative ? '-' : ' ', tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
-        }
-        if (arguments->timestamp != 'r')
-            *lastTimeStamp = ch->timestamp;
     }
 
     /* channel name */
