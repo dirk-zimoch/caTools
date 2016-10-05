@@ -649,8 +649,6 @@ bool parseChannels(int argc, char ** argv, arguments_T *arguments, struct channe
             break;
         }
 
-        channels[i].i = i;    /* channel number, serves to synchronise pvs and output. */
-
         if (arguments->tool == caput || arguments->tool == caputq || arguments->tool == cawait){
             channels[i].inNelm = 1;
 

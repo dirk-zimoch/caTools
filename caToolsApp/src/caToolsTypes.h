@@ -142,7 +142,7 @@ struct field {
     chid id;                /* the id of the ca channel */
     long connectionState;   /* channel connected/disconnected  */
     bool created;           /* channel creation for the field was successfull */
-    struct channel * ch;	/* reference to the channel */
+    struct channel * ch;    /* reference to the channel */
 };
 
 enum operator { /* possible conditions for cawait */
@@ -181,7 +181,6 @@ struct channel {
     size_t          count;      /* maximum array element count in the server. Zero is returned if the channel is disconnected */
     size_t          inNelm;     /* requested number of elements for writing */
     size_t          outNelm;    /* requested number of elements for reading */
-    int             i;          /* process variable id */
     int             nRequests;  /* holds the number of requests to finish */
     char            *inpStr;    /* pointer to the input in argv for this chanel */
     enum operator   conditionOperator;    /* cawait operator */
