@@ -75,7 +75,6 @@ const char * fields[] = {
 char **g_outTimestamp; /* relative timestamps for camon */
 
 /* timestamps needed by -timestamp */
-epicsTimeStamp *g_timestampRead;      /* timestamps of received data (per channel) */
 epicsTimeStamp g_programStartTime;  /* timestamp indicating program start */
 epicsTimeStamp *g_lastUpdate;       /* timestamp indicating last update per channel */
 bool *g_firstUpdate;              /* indicates that lastUpdate has not been initialized */

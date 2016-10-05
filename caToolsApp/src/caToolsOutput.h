@@ -32,7 +32,7 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args);
  * @param i index of the channel in channel array
  * @param arguments pointer to the arguments struct
  */
-void getTimeStamp(size_t i, arguments_T * arguments);
+void getTimeStamp(struct channel * ch, arguments_T * arguments);
 
 /**
  * @brief cawaitEvaluateCondition evaluates output of channel i against the corresponding wait condition.

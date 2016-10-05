@@ -264,11 +264,11 @@ void printOutput(evargs args, arguments_T *arguments){
 
     /* we assume that manually specifying dbr_time implies -time and -date if no -tfmt is given. */
     if (arguments->date || (isTimeType && !arguments->tfmt))
-        printTimestamp("%Y-%m-%d", &g_timestampRead[ch->i]);
+        printTimestamp("%Y-%m-%d", &ch->timestamp);
     if (arguments->time || (isTimeType && !arguments->tfmt))
-        printTimestamp("%H:%M:%S.%06f", &g_timestampRead[ch->i]);
+        printTimestamp("%H:%M:%S.%06f", &ch->timestamp);
     if (arguments->tfmt)
-        printTimestamp(arguments->tfmt, &g_timestampRead[ch->i]);
+        printTimestamp(arguments->tfmt, &ch->timestamp);
 
     /* show local date or time? */
     if (arguments->localdate || arguments->localtime || arguments->ltfmt) {
@@ -343,9 +343,9 @@ void printOutput(evargs args, arguments_T *arguments){
 ch->status = ((struct T *)args.dbr)->status; \
 ch->severity = ((struct T *)args.dbr)->severity;
 #define timestamp_get(T) \
-    g_timestampRead[ch->i] = ((struct T *)args.dbr)->stamp;\
-    validateTimestamp(&g_timestampRead[ch->i], ch->base.name);
-#define units_get_cb(T) free(ch->units); ch->units = strdup(((struct T *)args.dbr)->units);
+    ch->timestamp = ((struct T *)args.dbr)->stamp;\
+    validateTimestamp(&ch->timestamp, ch->base.name);
+#define units_get_cb(T) ch->units = strdup(((struct T *)args.dbr)->units);
 #define precision_get(T) ch->prec = (((struct T *)args.dbr)->precision);
 
 void getMetadataFromEvArgs(struct channel * ch, evargs args){
@@ -499,17 +499,17 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
     }
 }
 
-void getTimeStamp(size_t i, arguments_T * arguments) {
+void getTimeStamp(struct channel * ch, arguments_T * arguments) {
 /*calculates timestamp for monitor tool, formats it and saves it into the global string. */
 
     epicsTimeStamp elapsed;
     bool negative=false;
-    size_t commonI = (arguments->timestamp == 'c') ? i : 0;
+    size_t commonI = (arguments->timestamp == 'c') ? ch->i : 0;
     bool showEmpty = false;
 
     if (arguments->timestamp == 'r') {
         /*calculate elapsed time since startTime */
-        negative = epicsTimeDiffFull(&elapsed, &g_timestampRead[i], &g_programStartTime);
+        negative = epicsTimeDiffFull(&elapsed, &ch->timestamp, &g_programStartTime);
     }
     else if(arguments->timestamp == 'c' || arguments->timestamp == 'u') {
         /*calculate elapsed time since last update; if using 'c' keep */
@@ -517,15 +517,15 @@ void getTimeStamp(size_t i, arguments_T * arguments) {
         /*for all channels (commonI). */
 
         /* firstUpdate var is set at the end of caReadCallback, just before printing results. */
-        if (g_firstUpdate[i]) {
-            negative = epicsTimeDiffFull(&elapsed, &g_timestampRead[i], &g_lastUpdate[commonI]);
+        if (g_firstUpdate[ch->i]) {
+            negative = epicsTimeDiffFull(&elapsed, &ch->timestamp, &g_lastUpdate[commonI]);
         }
         else {
-            g_firstUpdate[i] = true;
+            g_firstUpdate[ch->i] = true;
             showEmpty = true;
         }
 
-        g_lastUpdate[commonI] = g_timestampRead[i]; /* reset */
+        g_lastUpdate[commonI] = ch->timestamp; /* reset */
     }
 
     /*convert to h,m,s,ns */
@@ -536,11 +536,11 @@ void getTimeStamp(size_t i, arguments_T * arguments) {
 
     if (showEmpty) {
         /*this is the first update for this channel */
-        sprintf(g_outTimestamp[i],"%19c",' ');
+        sprintf(g_outTimestamp[ch->i],"%19c",' ');
     }
     else {  /*save to outTs string */
         char cSign = negative ? '-' : ' ';
-        sprintf(g_outTimestamp[i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
+        sprintf(g_outTimestamp[ch->i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
     }
 }
 

@@ -195,7 +195,7 @@ static void caReadCallback (evargs args){
 
         /* update relative timestamps only after all initial get requests have arived */
         if ((arguments.tool == cawait || arguments.tool == camon) && arguments.timestamp)
-            getTimeStamp(ch->i, &arguments);	/*calculate relative timestamps. */
+            getTimeStamp(ch, &arguments);	/*calculate relative timestamps. */
 
         if (arguments.tool == cawait) {
             /* check wait condition */
@@ -1158,7 +1158,6 @@ void allocateStringBuffers(u_int32_t nChannels){
         g_outTimestamp[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
     }
     /*memory for timestamp */
-    g_timestampRead = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
     if (arguments.tool == camon || arguments.tool == cawait){
         g_lastUpdate = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
         g_firstUpdate = callocMustSucceed(nChannels, sizeof(bool),"main");
@@ -1206,7 +1205,6 @@ void freeStringBuffers(u_int32_t nChannels){
     free(g_outTimestamp);
 
     /*free monitor's timestamp */
-    free(g_timestampRead);
     free(g_lastUpdate);
     free(g_firstUpdate);
 }

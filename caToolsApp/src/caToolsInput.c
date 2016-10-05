@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <string.h>
-#include "epicsString.h"
 #include "cantProceed.h"
 #include "caToolsTypes.h"
 #include "caToolsUtils.h"
@@ -524,13 +523,13 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
                 }
                 break;
             case 25:   /* sep */
-                arguments->separator = epicsStrDup(optarg);
+                arguments->separator = optarg;
                 break;
             case 26:   /* tfmt */
-                arguments->tfmt = translatePercentN(epicsStrDup(optarg));
+                arguments->tfmt = translatePercentN(optarg);
                 break;
             case 27:   /* ltfmt */
-                arguments->ltfmt = translatePercentN(epicsStrDup(optarg));
+                arguments->ltfmt = translatePercentN(optarg);
                 break;
             }
             break;
