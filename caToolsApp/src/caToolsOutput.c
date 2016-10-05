@@ -504,7 +504,6 @@ void getTimeStamp(struct channel * ch, arguments_T * arguments) {
 
     epicsTimeStamp elapsed;
     bool negative=false;
-    size_t commonI = (arguments->timestamp == 'c') ? ch->i : 0;
     bool showEmpty = false;
 
     if (arguments->timestamp == 'r') {
@@ -513,19 +512,18 @@ void getTimeStamp(struct channel * ch, arguments_T * arguments) {
     }
     else if(arguments->timestamp == 'c' || arguments->timestamp == 'u') {
         /*calculate elapsed time since last update; if using 'c' keep */
-        /*timestamps separate for each channel, otherwise use lastUpdate[0] */
-        /*for all channels (commonI). */
+        /*timestamps separate for each channel, otherwise use g_commonLastUpdate */
+        /*for all channels. */
+        epicsTimeStamp* lastUpdate = (arguments->timestamp == 'c') ? &ch->lastUpdate : &g_commonLastUpdate;
 
         /* firstUpdate var is set at the end of caReadCallback, just before printing results. */
-        if (g_firstUpdate[ch->i]) {
-            negative = epicsTimeDiffFull(&elapsed, &ch->timestamp, &g_lastUpdate[commonI]);
-        }
-        else {
-            g_firstUpdate[ch->i] = true;
+        if (lastUpdate->secPastEpoch == 0 && lastUpdate->nsec == 0) {
             showEmpty = true;
         }
-
-        g_lastUpdate[commonI] = ch->timestamp; /* reset */
+        else {
+            negative = epicsTimeDiffFull(&elapsed, &ch->timestamp, lastUpdate);
+        }
+        *lastUpdate = ch->timestamp;
     }
 
     /*convert to h,m,s,ns */

@@ -190,16 +190,15 @@ struct channel {
     int      	    severity; 	/* severity */
     int             prec;       /* precision */
     char*           units;      /* units */
-    epicsTimeStamp  timestamp;  /* last read time stamp */
+    epicsTimeStamp  timestamp;  /* time stamp */
+    epicsTimeStamp  lastUpdate; /* last update for timestamp diff */
     enum state      state;      /* state of the channel within catools application */
 };
 
 /* global strings see caToolsGlobals.c */
 extern char **g_outTimestamp;
 
-extern bool *g_firstUpdate; /* indicates that lastUpdate has not been initialized */
-
-extern epicsTimeStamp g_programStartTime, *g_lastUpdate; /* see caToolsGlobals.c */
+extern epicsTimeStamp g_programStartTime, g_commonLastUpdate; /* see caToolsGlobals.c */
 
 extern int g_verbosity;
 

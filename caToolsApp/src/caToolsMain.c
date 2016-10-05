@@ -1159,8 +1159,6 @@ void allocateStringBuffers(u_int32_t nChannels){
     }
     /*memory for timestamp */
     if (arguments.tool == camon || arguments.tool == cawait){
-        g_lastUpdate = mallocMustSucceed(nChannels * sizeof(epicsTimeStamp),"main");
-        g_firstUpdate = callocMustSucceed(nChannels, sizeof(bool),"main");
         g_numMonitorUpdates = 0;
     }
 }
@@ -1203,10 +1201,6 @@ void freeStringBuffers(u_int32_t nChannels){
         free(g_outTimestamp[i]);
     }
     free(g_outTimestamp);
-
-    /*free monitor's timestamp */
-    free(g_lastUpdate);
-    free(g_firstUpdate);
 }
 
 /**

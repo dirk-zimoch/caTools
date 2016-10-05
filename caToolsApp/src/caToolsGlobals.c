@@ -76,8 +76,7 @@ char **g_outTimestamp; /* relative timestamps for camon */
 
 /* timestamps needed by -timestamp */
 epicsTimeStamp g_programStartTime;  /* timestamp indicating program start */
-epicsTimeStamp *g_lastUpdate;       /* timestamp indicating last update per channel */
-bool *g_firstUpdate;              /* indicates that lastUpdate has not been initialized */
+epicsTimeStamp g_commonLastUpdate;
 epicsTimeStamp g_timeoutTime;       /* when to stop monitoring (-timeout) */
 
 bool g_runMonitor;                /* indicates when to stop monitoring according to -timeout, -n or cawait condition is true */
