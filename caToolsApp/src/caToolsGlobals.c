@@ -72,7 +72,6 @@ const char * fields[] = {
 
 /* output strings */
 /*  TODO: most of theese should go in struct channel */
-char *g_errorTimestamp;   /*  timestamp used in caCustomExceptionHandler */
 char **g_outUnits;
 char **g_outTimestamp; /* relative timestamps for camon */
 

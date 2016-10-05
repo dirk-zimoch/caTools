@@ -10,7 +10,6 @@
 
 /* string lengths */
 #define LEN_TIMESTAMP 80              /* Max length of the timestamp string */
-#define LEN_SEVSTAT 30                /* Max length of the severity and status string */
 #define LEN_UNITS  20+MAX_UNITS_SIZE  /* Max length of the units string */
 #define LEN_RECORD_NAME  60           /* Max length of the epics record name */
 #define LEN_RECORD_FIELD 4            /* Max length of the epics record field name */
@@ -184,13 +183,13 @@ struct channel {
     size_t          outNelm;    /* requested number of elements for reading */
     int             i;          /* process variable id */
     int             nRequests;  /* holds the number of requests to finish */
-    char            *inpStr;      /* pointer to the input in argv for this chanel */
+    char            *inpStr;    /* pointer to the input in argv for this chanel */
     enum operator   conditionOperator;    /* cawait operator */
     double          conditionOperands[2]; /* cawait operands */
-    int             status;          /*  status */
-    int      	    severity; 		 /*  severity */
-    int             prec;            /* precision */
-    enum state      state;          /* state of the channel within catools application */
+    int             status;     /* status */
+    int      	    severity; 	/* severity */
+    int             prec;       /* precision */
+    enum state      state;      /* state of the channel within catools application */
 };
 
 /* global strings see caToolsGlobals.c */

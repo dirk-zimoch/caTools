@@ -908,27 +908,20 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
  */
 void caCustomExceptionHandler( struct exception_handler_args args) {
     char buf[512];
-    const char *pName;
     epicsTimeStamp timestamp;	/*timestamp indicating program start */
 
-    if ( args.chid ) {
-        pName = ca_name ( args.chid );
-    }
-    else {
-        pName = "?";
-    }
-
     epicsTimeGetCurrent(&timestamp);
-    epicsTimeToStrftime(g_errorTimestamp, LEN_TIMESTAMP, "%Y-%m-%d %H:%M:%S.%06f", &timestamp);
+    size_t l = epicsTimeToStrftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S.%06f ", &timestamp);
 
     if (args.stat == ECA_DISCONN || args.stat == ECA_DISCONNCHID) {
-        printf("%s ", g_errorTimestamp);
+        fputs(buf, stdout);
     }
     else {
-        sprintf ( buf,
-                "%s in %s - with request chanel=%s operation=%ld data type=%s count=%ld",
-                g_errorTimestamp, args.ctx, pName, args.op, dbr_type_to_text ( args.type ), args.count );
-        ca_signal ( args.stat, buf );
+        sprintf(buf + l,
+                "in %s - with request chanel=%s operation=%ld data type=%s count=%ld",
+                args.ctx, args.chid ? ca_name(args.chid) : "?",
+                args.op, dbr_type_to_text(args.type), args.count);
+        ca_signal(args.stat, buf);
     }
 }
 
@@ -1158,7 +1151,6 @@ bool caDisconnect(struct channel * channels, u_int32_t nChannels){
  */
 void allocateStringBuffers(u_int32_t nChannels){
     /*allocate memory for output strings */
-    g_errorTimestamp = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"errorTimestamp");
     g_outUnits = callocMustSucceed(nChannels, sizeof(char *),"main");
     g_outTimestamp = callocMustSucceed(nChannels, sizeof(char *),"main");
 
@@ -1221,7 +1213,6 @@ void freeStringBuffers(u_int32_t nChannels){
     free(g_timestampRead);
     free(g_lastUpdate);
     free(g_firstUpdate);
-    free(g_errorTimestamp);
 }
 
 /**
