@@ -289,10 +289,30 @@ void printOutput(evargs args, arguments_T *arguments){
 
     /* timestamp if monitor*/
     if ((arguments->tool == camon || arguments->tool == cainfo) && arguments->timestamp) {
-        if(arguments->localdate || arguments->localtime || arguments->date || arguments->time || isTimeType) {
-            fputs("timestamp: ", stdout);
+        epicsTimeStamp* lastTimeStamp;
+        epicsTimeStamp elapsed;
+        bool negative;
+        
+        lastTimeStamp = arguments->timestamp == 'r' ? &g_programStartTime : arguments->timestamp == 'c' ? &ch->lastUpdate : &g_commonLastUpdate;
+        
+        if (lastTimeStamp->secPastEpoch == 0 && lastTimeStamp->nsec == 0)
+            fputs("                    ", stdout);
+        else
+        {
+            /*convert to h,m,s,ns */
+            struct tm tm;
+            unsigned long nsec;
+
+            negative = epicsTimeDiffFull(&elapsed, &ch->timestamp, lastTimeStamp);
+            epicsTimeToGMTM(&tm, &nsec, &elapsed);
+
+            if(arguments->localdate || arguments->localtime || arguments->date || arguments->time || isTimeType) {
+                fputs("timestamp: ", stdout);
+            }
+            printf("%c%02d:%02d:%02d.%09lu ", negative ? '-' : ' ', tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
         }
-        printf("%s ", g_outTimestamp[ch->i]);
+        if (arguments->timestamp != 'r')
+            *lastTimeStamp = ch->timestamp;
     }
 
     /* channel name */
@@ -498,50 +518,6 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
             errPeriodicPrint("Can not print %s DBR type (DBR numeric type code: %ld). \n", dbr_type_to_text(args.type), args.type);
     }
 }
-
-void getTimeStamp(struct channel * ch, arguments_T * arguments) {
-/*calculates timestamp for monitor tool, formats it and saves it into the global string. */
-
-    epicsTimeStamp elapsed;
-    bool negative=false;
-    bool showEmpty = false;
-
-    if (arguments->timestamp == 'r') {
-        /*calculate elapsed time since startTime */
-        negative = epicsTimeDiffFull(&elapsed, &ch->timestamp, &g_programStartTime);
-    }
-    else if(arguments->timestamp == 'c' || arguments->timestamp == 'u') {
-        /*calculate elapsed time since last update; if using 'c' keep */
-        /*timestamps separate for each channel, otherwise use g_commonLastUpdate */
-        /*for all channels. */
-        epicsTimeStamp* lastUpdate = (arguments->timestamp == 'c') ? &ch->lastUpdate : &g_commonLastUpdate;
-
-        /* firstUpdate var is set at the end of caReadCallback, just before printing results. */
-        if (lastUpdate->secPastEpoch == 0 && lastUpdate->nsec == 0) {
-            showEmpty = true;
-        }
-        else {
-            negative = epicsTimeDiffFull(&elapsed, &ch->timestamp, lastUpdate);
-        }
-        *lastUpdate = ch->timestamp;
-    }
-
-    /*convert to h,m,s,ns */
-    struct tm tm;
-    unsigned long nsec;
-    int status = epicsTimeToGMTM(&tm, &nsec, &elapsed);
-    assert(status == epicsTimeOK);
-
-    if (showEmpty) {
-        /*this is the first update for this channel */
-        sprintf(g_outTimestamp[ch->i],"%19c",' ');
-    }
-    else {  /*save to outTs string */
-        char cSign = negative ? '-' : ' ';
-        sprintf(g_outTimestamp[ch->i],"%c%02d:%02d:%02d.%09lu", cSign,tm.tm_hour, tm.tm_min, tm.tm_sec, nsec);
-    }
-}
-
 
 bool cawaitEvaluateCondition(struct channel * ch, evargs args){
     /*evaluates output of channel i against the corresponding condition. */

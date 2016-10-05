@@ -195,9 +195,6 @@ struct channel {
     enum state      state;      /* state of the channel within catools application */
 };
 
-/* global strings see caToolsGlobals.c */
-extern char **g_outTimestamp;
-
 extern epicsTimeStamp g_programStartTime, g_commonLastUpdate; /* see caToolsGlobals.c */
 
 extern int g_verbosity;

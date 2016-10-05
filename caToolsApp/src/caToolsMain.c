@@ -193,10 +193,6 @@ static void caReadCallback (evargs args){
     else{
         ch->state = reading;
 
-        /* update relative timestamps only after all initial get requests have arived */
-        if ((arguments.tool == cawait || arguments.tool == camon) && arguments.timestamp)
-            getTimeStamp(ch, &arguments);	/*calculate relative timestamps. */
-
         if (arguments.tool == cawait) {
             /* check wait condition */
             if (cawaitEvaluateCondition(ch, args)) {
@@ -1146,24 +1142,6 @@ bool caDisconnect(struct channel * channels, u_int32_t nChannels){
 
 
 /**
- * @brief allocateStringBuffers - allocates global string buffers
- * @param nChannels - number of channels
- */
-void allocateStringBuffers(u_int32_t nChannels){
-    /*allocate memory for output strings */
-    g_outTimestamp = callocMustSucceed(nChannels, sizeof(char *),"main");
-
-    int i;
-    for(i = 0; i < nChannels; i++){
-        g_outTimestamp[i] = callocMustSucceed(LEN_TIMESTAMP, sizeof(char),"main");
-    }
-    /*memory for timestamp */
-    if (arguments.tool == camon || arguments.tool == cawait){
-        g_numMonitorUpdates = 0;
-    }
-}
-
-/**
  * @brief freeChannels - free global channels array
  * @param channels - array of channel structs
  * @param nChannels - number of channels
@@ -1186,21 +1164,12 @@ void freeChannels(struct channel * channels, u_int32_t nChannels){
                 free(channels[i].fields[j].name);
             }
         }
+        if (channels[i].units != NULL) {
+            free(channels[i].units);
+        }
+
     }
     free(channels);
-}
-
-/**
- * @brief freeStringBuffers free global string buffers
- * @param nChannels
- */
-void freeStringBuffers(u_int32_t nChannels){
-    /*free output strings */
-    size_t i;
-    for( i = 0; i < nChannels; i++) {
-        free(g_outTimestamp[i]);
-    }
-    free(g_outTimestamp);
 }
 
 /**
@@ -1236,12 +1205,10 @@ int main ( int argc, char ** argv ){
         goto clear_channels;
     }
 
-    allocateStringBuffers(nChannels);
-
     /*start channel access */
     if(!(success = caInit(channels, nChannels))){
         debugPrint("main() - no succes with caInit\n");
-        goto clear_global_strings;
+        goto clear_channels;
     }
 
     /* set cawait timeout time from now */
@@ -1289,9 +1256,6 @@ int main ( int argc, char ** argv ){
         debugPrint("main() - ca_disconnect\n");
         success &= caDisconnect(channels, nChannels);
         ca_context_destroy();
-    clear_global_strings:
-        debugPrint("main() - clear_global_strings\n");
-        freeStringBuffers(nChannels);
     clear_channels:
         debugPrint("main() - clear_channels\n");
         freeChannels(channels, nChannels);

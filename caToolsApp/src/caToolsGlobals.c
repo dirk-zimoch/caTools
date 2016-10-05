@@ -70,10 +70,6 @@ const char * fields[] = {
 
 #define noFields (sizeof (fields) / sizeof (const char *))
 
-/* output strings */
-/*  TODO: most of theese should go in struct channel */
-char **g_outTimestamp; /* relative timestamps for camon */
-
 /* timestamps needed by -timestamp */
 epicsTimeStamp g_programStartTime;  /* timestamp indicating program start */
 epicsTimeStamp g_commonLastUpdate;

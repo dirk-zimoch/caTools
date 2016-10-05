@@ -28,13 +28,6 @@ void printValue(evargs args, arguments_T *arguments);
 void getMetadataFromEvArgs(struct channel * ch, evargs args);
 
 /**
- * @brief getTimeStamp - calculates the relative timestamp for monitor tool, formats it and saves it into the global string.
- * @param i index of the channel in channel array
- * @param arguments pointer to the arguments struct
- */
-void getTimeStamp(struct channel * ch, arguments_T * arguments);
-
-/**
  * @brief cawaitEvaluateCondition evaluates output of channel i against the corresponding wait condition.
  *              returns 1 if matching, 0 otherwise, and -1 if error. Before evaluation, channel output is converted to double. If this is
  *              not successful, the function returns -1. If the channel in question is an array, the condition is evaluated against the first element.
