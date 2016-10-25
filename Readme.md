@@ -107,10 +107,10 @@ If no flags are set catools will allways try to parse the input as number(s). If
 ## Build
 The tools are structured as an EPICS application.
 
-1. If you do not have the sources, git clone this repository in your local folder ( referenced as the `<top>` folder).
-1. Amend `<top>/configure/RELEASE` to match your site specifics.
+1. Clone this repository in your local folder ( referenced as the `<top>` folder).
+1. (Optional) Amend `<top>/configure/RELEASE` to match your site specifics.
   - i.e. uncomment and adapt EPICS_BASE=/usr/local/epics/base-3.14.12
-1. Amend `<top>/configure/CONFIG_SITE` to match your site specifics.
+1. (Optional) Amend `<top>/configure/CONFIG_SITE` to match your site specifics.
 1. Move to `<top>` folder and run `make`
 1. Find the executable in `<top>/bin/<architecture>/caTools`
 1. Find symbolic links for all the tools in `<top>/bin/<architecture>/` folder.
