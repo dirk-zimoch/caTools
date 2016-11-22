@@ -8,6 +8,14 @@
 
 
 /**
+ * @brief version, prints out version of the tools
+ * @param stream,  output stream for printing
+ */
+void version(FILE* stream){
+    fprintf(stream,"caTools-%s\n",VERSION_STR);
+}
+
+/**
  * @brief usage prints the usage of the tools
  * @param stream is the output stream for printing
  * @param tool is the selected tool
@@ -80,6 +88,7 @@ void usage(FILE *stream, enum tool tool, char *programName){
     fputs("\n", stream);
     fputs("Accepted flags:\n", stream);
     fputs("\n", stream);
+    fputs("  --version            Version: Print out version\n", stream);
     fputs("  -h, -?, -help        Help: Print this message\n", stream);
     fputs("  -v                   Verbosity. Options:\n", stream);
     fprintf(stream,"                       Print error messages: %d\n", VERBOSITY_ERR);
@@ -262,6 +271,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
         {"sep",         required_argument,  0,  0 },    /* seperator between periodic runs */
         {"tfmt",        required_argument,  0,  0 },    /* time stamp format */
         {"ltfmt",       required_argument,  0,  0 },    /* local time format */
+        {"version",     no_argument,        0,  0 },    /* version */
         {0,             0,                  0,  0 }
     };
     putenv("POSIXLY_CORRECT="); /* Behave correctly on GNU getopt systems = stop parsing after 1st non option is encountered */
@@ -530,6 +540,10 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
                 break;
             case 27:   /* ltfmt */
                 arguments->ltfmt = translatePercentN(optarg);
+                break;
+            case 28:    /* version */
+                version(stdout);
+                exit(EXIT_SUCCESS);
                 break;
             }
             break;

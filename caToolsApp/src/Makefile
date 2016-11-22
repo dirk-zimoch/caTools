@@ -22,7 +22,11 @@ caTools_SRCS += caToolsUtils.c
 # Finally link to the EPICS Base libraries
 caTools_LIBS += $(EPICS_BASE_IOC_LIBS)
 
-USR_CFLAGS_DEFAULT += -std=c99 -Wall
+#Generate version from GIT tag
+GIT_VERSION := $(shell git describe --abbrev=4 --dirty --always --tags)
+
+
+USR_CFLAGS_DEFAULT += -std=c99 -Wall -DVERSION_STR=\"$(GIT_VERSION)\"
 
 #=============================
 

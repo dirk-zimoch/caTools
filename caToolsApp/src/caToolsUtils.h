@@ -19,6 +19,10 @@
 #define errPeriodicPrint(M, ...) customPrint(VERBOSITY_ERR_PERIODIC, stderr, "Error: "M, ##__VA_ARGS__)
 #define debugPrint(M, ...) customPrint(VERBOSITY_DEBUG, stderr, "Debug: "M, ##__VA_ARGS__)
 
+#ifndef VERSION_STR
+#define VERSION_STR "development build "__DATE__":"__TIME__
+#endif
+
 /**
   * @brief dbr_type_to_DBF returns base dbf type from any dbr type
   * @param X dbr type
