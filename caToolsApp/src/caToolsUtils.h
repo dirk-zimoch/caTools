@@ -20,7 +20,7 @@
 #define debugPrint(M, ...) customPrint(VERBOSITY_DEBUG, stderr, "Debug: "M, ##__VA_ARGS__)
 
 #ifndef VERSION_STR
-#define VERSION_STR "development build "__DATE__":"__TIME__
+#define VERSION_STR "development build"
 #endif
 
 /**

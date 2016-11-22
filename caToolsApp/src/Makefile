@@ -23,7 +23,7 @@ caTools_SRCS += caToolsUtils.c
 caTools_LIBS += $(EPICS_BASE_IOC_LIBS)
 
 #Generate version from GIT tag
-GIT_VERSION := $(shell git describe --abbrev=4 --dirty --always --tags)
+GIT_VERSION := $(shell git describe --abbrev=2 --dirty --tags)
 
 
 USR_CFLAGS_DEFAULT += -std=c99 -Wall -DVERSION_STR=\"$(GIT_VERSION)\"
