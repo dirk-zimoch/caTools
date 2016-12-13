@@ -28,7 +28,12 @@ bool getEnumString(char ** str, evargs * args, size_t j){
         }
         else{
             *str = ((struct dbr_gr_enum *)(*args).dbr)->strs[v];
-            return true;
+            if(*str[0]=='\0'){
+                return false;
+            }
+            else{
+                return true;
+            }
         }
     }
     else if (dbr_type_is_CTRL((*args).type)) {
@@ -39,7 +44,12 @@ bool getEnumString(char ** str, evargs * args, size_t j){
         }
         else{
             *str = ((struct dbr_ctrl_enum *)(*args).dbr)->strs[v];
-            return true;
+            if(*str[0]=='\0'){
+                return false;
+            }
+            else{
+                return true;
+            }
         }
     }
     return true;

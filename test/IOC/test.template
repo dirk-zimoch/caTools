@@ -210,6 +210,4 @@ record(ai, "$(P):RecordNameThatIsLongerThanFortyCharsForLongStringTest") {
 }
 
 record(bo, "$(P):BO") {
-	field(ONAM, "0")
-	field(ZNAM, "1")
 }
