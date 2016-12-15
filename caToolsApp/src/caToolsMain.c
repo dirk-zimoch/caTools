@@ -27,7 +27,7 @@ static void caReadCallback (evargs args);
 bool issueLongStringRequest(struct channel *ch) {
     bool success = false;
     /* This is string request, so we read entire string. No.of.elements has no meaning here */
-    int status = ca_array_get_callback(DBR_CHAR, 0, ch->lstr.id, caReadCallback, ch);
+    int status = ca_array_get_callback(DBR_CHAR, 0, ch->lstr.id, caReadCallback, &ch->lstr);
     if (status == ECA_NORMAL) {
         debugPrint("issueLongStringRequest() Request completed successfully.\n");
         ch->nRequests++;
@@ -36,6 +36,27 @@ bool issueLongStringRequest(struct channel *ch) {
     else {
         debugPrint("issueLongStringRequest() Request failed.\n");
     }
+
+    return success;
+}
+
+/* if cainfo generate requests for the cainfo sibling fields */
+bool issueCainfoSiblingRequests(struct channel *ch) {
+    u_int32_t j, nFields = noFields;
+    bool success = true;
+    for(j=0; j < nFields; j++) {
+        if(ch->fields[j].connectionState == CA_OP_CONN_UP) { /* skip unconnected channels */
+            debugPrint("caGenerateReadRequests() - cainfo: request for field %s\n", ch->fields[j].name);
+            ch->nRequests++;
+            int status = ca_array_get_callback(DBR_STS_STRING, 1, ch->fields[j].id, caReadCallback, &ch->fields[j]);
+            if (status != ECA_NORMAL) {
+                errPrint("Problem creating get request for %s field of record %s: %s.\n", ch->fields[j].name, ch->base.name, ca_message(status));
+                ch->nRequests --;
+                success = false;
+            }
+        }
+    }
+
 
     return success;
 }
@@ -130,7 +151,8 @@ bool initField(struct channel *ch, struct field * field)
 static void caReadCallback (evargs args){
     debugPrint("caReadCallback()\n");
 
-    struct channel *ch = (struct channel *)args.usr;
+    struct field *fld = (struct field *)args.usr;
+    struct channel *ch = fld->ch;
     debugPrint("ReadCallback() callbacks to process: %i\n", ch->nRequests);
     debugPrint("ReadCallback() type: %s\n", dbr_type_to_text(args.type));
     ch->nRequests --; /* number of returned callbacks before printing */
@@ -151,9 +173,8 @@ static void caReadCallback (evargs args){
         return;
     }
 
-    /* Only read metadata and issue long string requests
-     * if this is not long string request */
-    if(ch->lstr.id != args.chid) {
+    /* Only read metadata and issue long string requests for base channel */
+    if(ch->base.id == args.chid) {
         /* get metadata from args and fill the global strings and channel properties:
          * status, severity, timestamp, precision, units*/
         getMetadataFromEvArgs(ch, args);
@@ -181,6 +202,33 @@ static void caReadCallback (evargs args){
         if(ch->lstr.created && ch->lstrDone && stringLength >= MAX_STRING_SIZE-1) {
             issueLongStringRequest(ch);
             if(ch->nRequests <= 0) ch->nRequests++; /* this happens on camon/cawait callback */
+        }
+
+        /* if it is enum and cainfo, remember enum strings for later */
+        if(DBR_CTRL_ENUM == args.type && arguments.tool==cainfo) {
+            ch->enum_no_st = ((struct dbr_ctrl_enum *)args.dbr)->no_str;
+            if (ch->enum_strs == NULL)
+                ch->enum_strs = (char **)callocMustSucceed(MAX_STRING_SIZE, sizeof(((struct dbr_ctrl_enum *)args.dbr)->strs), "Can't allocate buffer for enum strings in caReadCallback");
+            if (ch->enum_strs != NULL){
+                int j=0;
+                for (j=0; j<ch->enum_no_st; j++){
+                    ch->enum_strs[j]=strdup(((struct dbr_ctrl_enum *)args.dbr)->strs[j]);
+                }
+            }
+        }
+
+
+    }else if(ch->lstr.id != args.chid){
+        /* if it is not long string channel and not base channel,
+         * than it must be one of the ca info silblings
+         * save the vaule for later */
+        if(dbr_type_to_DBF(args.type)==DBR_STRING){
+            if(fld->val==NULL)
+               fld->val = (char *) callocMustSucceed(MAX_STRING_SIZE, sizeof(char), "Can't allocate  buffer for val in caReadCallback");
+            if(fld->val != NULL){
+                char* value = dbr_value_ptr(args.dbr, args.type);
+                strncpy(fld->val,value,MAX_STRING_SIZE);
+            }
         }
     }
 
@@ -217,7 +265,10 @@ static void caReadCallback (evargs args){
         }
 
         /* print out */
-        printOutput(args, &arguments);
+        if(arguments.tool == cainfo)
+            printCainfo(args, &arguments);
+        else
+            printOutput(args, &arguments);
     }
 }
 
@@ -262,7 +313,11 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
         epicsTimeGetCurrent(&timeoutNow);
 
         if (arguments.caTimeout > 0 && epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
-            debugPrint("waitForCallbacks - Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
+            debugPrint("waitForCallbacks - Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);            
+            /* reset nRequests counters */
+            for (i=0; i < nChannels; ++i) {
+                channels[i].nRequests = 0;
+            }
             break;
         }
 
@@ -384,7 +439,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     /*request ctrl type */
     int32_t baseType = ca_field_type(ch->base.id);
     int32_t reqType = dbf_type_to_DBR_CTRL(baseType); /* use ctrl type by default */
-    chid    reqChid = ch->base.id;
+    //chid    reqChid = ch->base.id;
     ch->state = read_waiting;
 
     /* check number of elements. arguments->outNelm is 0 by default.
@@ -395,7 +450,6 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         ch->outNelm = ch->count;
         warnPeriodicPrint("Invalid number of requested elements to read (%"PRId64") from %s - reading maximum number of elements (%zu).\n", arguments->outNelm, ch->base.name, ch->count);
     }
-
 
     /* use dbrtype that has been specified as command line argument */
     if (arguments->dbrRequestType!=-1){
@@ -408,20 +462,18 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
 
 
     ch->nRequests ++;
-    status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
+    status = ca_array_get_callback(reqType, ch->outNelm, ch->base.id, caReadCallback, &ch->base);
     if (status != ECA_NORMAL) {
         errPrint("Problem creating get request for process variable %s: %s\n",ch->base.name, ca_message(status));
         ch->nRequests --;
         return false;
     }
 
-
-
     /* if needed issue second request using time type */
-    if ((arguments->time || arguments->date || arguments->timestamp || arguments->tfmt) &&
+    if ((arguments->time || arguments->date || arguments->timestamp || arguments->tfmt || arguments->tool == cainfo) &&
             !(DBR_TIME_STRING <= arguments->dbrRequestType && arguments->dbrRequestType <= DBR_TIME_DOUBLE) )
     {
-        if (ca_field_type(reqChid) == DBF_ENUM && !(arguments->num)){
+        if (ca_field_type(ch->base.id) == DBF_ENUM && !(arguments->num)){
             /* if enum && s, use time_string */
             reqType = DBR_TIME_STRING;
         }
@@ -430,7 +482,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         }
         debugPrint("caGenerateReadRequests() - Issued second request using time type: %s\n", dbr_type_to_text(reqType));
         ch->nRequests=ch->nRequests+1;
-        status = ca_array_get_callback(reqType, ch->outNelm, reqChid, caReadCallback, ch);
+        status = ca_array_get_callback(reqType, ch->outNelm, ch->base.id, caReadCallback, &ch->base);
         if (status != ECA_NORMAL) {
             errPrint("Problem creating get_request for process variable %s: %s\n",ch->base.name, ca_message(status));
             ch->nRequests --;
@@ -441,7 +493,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     /* create subscription in case of camon or cawait */
     if( arguments->tool == camon || arguments->tool == cawait ){
         ch->nRequests=ch->nRequests+1;
-        status = ca_create_subscription(reqType, ch->outNelm, reqChid, DBE_VALUE | DBE_ALARM , caReadCallback, ch, 0);
+        status = ca_create_subscription(reqType, ch->outNelm, ch->base.id, DBE_VALUE | DBE_ALARM, caReadCallback, &ch->base, 0);
         if (status != ECA_NORMAL) {
             errPrint("Problem creating subscription for process variable %s: %s.\n",ch->base.name, ca_message(status));
             ch->nRequests --;
@@ -469,285 +521,6 @@ bool cainfoPendIO(){
     }
 
     return true;
-}
-
-/**
- * @brief cainfoRequest - this spaghetti function does all the work for caInfo tool. Reads channel data using ca_get and then prints.
- * @param channels - array of channel structs
- * @param nChannels - number of channels in array
- * @return true on success
- */
-bool cainfoRequest(struct channel *channels, u_int32_t nChannels){
-    int status;
-    u_int32_t i, j;
-
-    bool readAccess, writeAccess, success = true;
-    u_int32_t nFields = noFields;
-    const char *delimeter = "-------------------------------";
-
-    for(i=0; i < nChannels; i++){
-        if (channels[i].base.connectionState != CA_OP_CONN_UP) continue; /* skip unconnected channels */
-
-        channels[i].count = ca_element_count ( channels[i].base.id );
-
-        channels[i].type = dbf_type_to_DBR_CTRL(ca_field_type(channels[i].base.id));
-
-        /*allocate data for all caget returns */
-        void *data = NULL, *dataLstr = NULL;
-        struct dbr_sts_string *fieldData[nFields];
-
-        data = callocMustSucceed(1, dbr_size_n(channels[i].type, channels[i].count), "caInfoRequest");
-
-
-        /*general ctrl data */
-        status = ca_array_get(channels[i].type, channels[i].count, channels[i].base.id, data);
-        if (status != ECA_NORMAL) {
-            errPrint("CA error %s occurred while trying to create ca_get request for record %s.\n", ca_message(status), channels[i].base.name);
-            success = false;
-            goto cleanup;
-        }
-
-
-        /* get field data */
-        for(j=0; j < nFields; j++) {
-            if(channels[i].fields[j].connectionState == CA_OP_CONN_UP) {
-                fieldData[j] = callocMustSucceed(1, dbr_size_n(DBR_STS_STRING, 1), "caInfoRequest: field");
-                status = ca_array_get(DBR_STS_STRING, 1, channels[i].fields[j].id, fieldData[j]);
-                if (status != ECA_NORMAL) {
-                    errPrint("Problem reading %s field of record %s: %s.\n", fields[j], channels[i].base.name, ca_message(status));
-                    free(fieldData[j]);
-                    fieldData[j] = NULL;
-                }
-            }
-            else {
-                fieldData[j] = NULL;
-            }
-        }
-
-
-        if(!cainfoPendIO()) {
-            success = false;
-            goto cleanup;
-        }
-
-        /* Handle long strings */
-
-        /* See if it makes sense to check for string length and
-         * then issue new request for long string */
-        if(     channels[i].lstr.name != NULL &&    /* name is allocated in caInit() only when request is not on the VAL field and base type is string */
-                channels[i].base.connectionState == CA_OP_CONN_UP)
-        {
-            char* value = dbr_value_ptr(data, channels[i].type);
-            value[MAX_STRING_SIZE-1] = '\0'; /* null terminate string, in case it is not... */
-            if(strlen(value) >= MAX_STRING_SIZE-1 ) {   /* string is full. Let's do the long string request */
-                if(initField(&channels[i], &channels[i].lstr)) {
-                    waitForCallbacks(channels, nChannels);
-                }
-                channels[i].nRequests--;
-            }
-        }
-
-        if(channels[i].lstr.connectionState == CA_OP_CONN_UP)   /* long string channel is connected. */
-        {
-            debugPrint("cainfoRequest() Starting request for long strings\n");
-            dataLstr = callocMustSucceed(1, dbr_size_n(DBR_CTRL_CHAR, ca_element_count(channels[i].lstr.id)), "caInfoRequest: long string");
-            status = ca_array_get(DBR_CTRL_CHAR, ca_element_count(channels[i].lstr.id), channels[i].lstr.id, dataLstr);
-            if (status == ECA_NORMAL) {
-                if(!cainfoPendIO()) {
-                    success = false;
-                    goto cleanup;
-                }
-            }
-            else {
-                debugPrint("cainfoRequest() Request for long strings failed.\n");
-                free(dataLstr);
-                dataLstr = NULL;
-                ca_clear_channel(channels[i].lstr.id);
-                free(channels[i].lstr.name);
-                channels[i].lstr.name = NULL;
-                channels[i].lstr.created = false;
-            }
-        }
-
-        /* check if request is done to the base channel or to it's fields */
-        bool isBaseChannel = false;
-        if(isValField(channels[i].base.name)) {
-            isBaseChannel = true;
-        }
-
-        /*start printing */
-        fputc('\n',stdout);
-        fputc('\n',stdout);
-        printf("%s\n%s\n", delimeter, channels[i].base.name);                                               /*name */
-        if(isBaseChannel) {
-            if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);  /*description */
-        }
-        if(fieldData[field_rtyp] != NULL) printf("\tRecord type: %s\n", fieldData[field_rtyp]->value);      /*record type */
-        printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(channels[i].base.id)));            /*field type */
-        printf("\tNumber of elements: %zu\n", channels[i].count);                                           /*number of elements */
-
-
-
-        evargs args;
-        /* handle long strings */
-        if(dataLstr == NULL) {
-            args.chid = channels[i].base.id;
-            args.count = ca_element_count ( channels[i].base.id );
-            args.dbr = data;
-            args.type = channels[i].type;
-        }
-        else {
-            args.chid = channels[i].lstr.id;
-            args.count = ca_element_count ( channels[i].lstr.id );
-            args.dbr = dataLstr;
-            args.type = DBR_CTRL_CHAR;
-        }
-        printf("\tValue: ");
-        args.status = ECA_NORMAL;
-        args.usr = &channels[i];
-
-        printValue(args, &arguments);
-        fputc('\n',stdout);
-
-        switch (channels[i].type){
-        case DBR_CTRL_STRING:
-            fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n",
-                    epicsAlarmConditionStrings[((struct dbr_sts_string *)data)->status],
-                    epicsAlarmSeverityStrings[((struct dbr_sts_string *)data)->severity]);      /*status and severity */
-            break;
-        case DBR_CTRL_INT:/*and short */
-            printf("\tUnits: %s\n", ((struct dbr_ctrl_int *)data)->units);              /*units */
-            fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n",
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_int *)data)->status],
-                    epicsAlarmSeverityStrings[((struct dbr_ctrl_int *)data)->severity]);      /*status and severity */
-            fputc('\n',stdout);
-            printf("\tWarning\tupper limit: %" PRId16"\n\t\tlower limit: %"PRId16"\n",
-                    ((struct dbr_ctrl_int *)data)->upper_warning_limit, ((struct dbr_ctrl_int *)data)->lower_warning_limit); /*warning limits */
-            printf("\tAlarm\tupper limit: %" PRId16"\n\t\tlower limit: %" PRId16"\n",
-                    ((struct dbr_ctrl_int *)data)->upper_alarm_limit, ((struct dbr_ctrl_int *)data)->lower_alarm_limit); /*alarm limits */
-            printf("\tControl\tupper limit: %"PRId16"\n\t\tlower limit: %"PRId16"\n", ((struct dbr_ctrl_int *)data)->upper_ctrl_limit,\
-                    ((struct dbr_ctrl_int *)data)->lower_ctrl_limit);                   /*control limits */
-            printf("\tDisplay\tupper limit: %"PRId16"\n\t\tower limit: %"PRId16"\n",
-                   ((struct dbr_ctrl_int *)data)->upper_disp_limit, ((struct dbr_ctrl_int *)data)->lower_disp_limit);                   /*display limits */
-            break;
-        case DBR_CTRL_FLOAT:
-            printf("\tUnits: %s\n", ((struct dbr_ctrl_float *)data)->units);
-            fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n",
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_float *)data)->status],
-                    epicsAlarmSeverityStrings[((struct dbr_ctrl_float *)data)->severity]);
-            printf("\n");
-            printf("\tWarning\tupper limit: %g\n\t\tlower limit: %g\n",
-                    ((struct dbr_ctrl_float *)data)->upper_warning_limit, ((struct dbr_ctrl_float *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %g\n\t\tlower limit: %g\n",
-                    ((struct dbr_ctrl_float *)data)->upper_alarm_limit, ((struct dbr_ctrl_float *)data)->lower_alarm_limit);
-            printf("\tControl\tupper limit: %g\n\t\tlower limit: %g\n",
-                    ((struct dbr_ctrl_float *)data)->upper_ctrl_limit, ((struct dbr_ctrl_float *)data)->lower_ctrl_limit);
-            printf("\tDisplay\tupper limit: %g\n\t\tlower limit: %g\n",
-                    ((struct dbr_ctrl_float *)data)->upper_disp_limit, ((struct dbr_ctrl_float *)data)->lower_disp_limit);
-            fputc('\n',stdout);
-            printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_float *)data)->precision);
-
-            /* */    break;
-        case DBR_CTRL_ENUM:
-            fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n",
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_enum *)data)->status],
-                    epicsAlarmSeverityStrings[((struct dbr_ctrl_enum *)data)->severity]);
-
-            printf("\tNumber of enum strings: %"PRId16"\n", ((struct dbr_ctrl_enum *)data)->no_str);
-            for (j=0; j < (u_int32_t)(((struct dbr_ctrl_enum *)data)->no_str); ++j) {
-                printf("\tstring %"PRIu32": %s\n", j, ((struct dbr_ctrl_enum *)data)->strs[j]);
-            }
-            break;
-        case DBR_CTRL_CHAR:
-            printf("\tUnits: %s\n", ((struct dbr_ctrl_char *)data)->units);
-            fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n",
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_char *)data)->status],
-                    epicsAlarmSeverityStrings[((struct dbr_ctrl_char *)data)->severity]);
-            printf("\n");
-            printf("\tWarning\tupper limit: %c\n\t\tlower limit: %c\n",
-                    ((struct dbr_ctrl_char *)data)->upper_warning_limit, ((struct dbr_ctrl_char *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %c\n\t\tlower limit: %c\n",
-                    ((struct dbr_ctrl_char *)data)->upper_alarm_limit, ((struct dbr_ctrl_char *)data)->lower_alarm_limit);
-            printf("\tControl\tupper limit: %c\n\t\tlower limit: %c\n", ((struct dbr_ctrl_char *)data)->upper_ctrl_limit,\
-                    ((struct dbr_ctrl_char *)data)->lower_ctrl_limit);
-            printf("\tDisplay\tupper limit: %c\n\t\tlower limit: %c\n", ((struct dbr_ctrl_char *)data)->upper_disp_limit,\
-                    ((struct dbr_ctrl_char *)data)->lower_disp_limit);
-            break;
-        case DBR_CTRL_LONG:
-            printf("\tUnits: %s\n", ((struct dbr_ctrl_long *)data)->units);
-            fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n",
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_long *)data)->status],
-                    epicsAlarmSeverityStrings[((struct dbr_ctrl_long *)data)->severity]);
-            fputc('\n',stdout);
-            printf("\tWarning\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n",
-                    ((struct dbr_ctrl_long *)data)->upper_warning_limit, ((struct dbr_ctrl_long *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n",
-                    ((struct dbr_ctrl_long *)data)->upper_alarm_limit, ((struct dbr_ctrl_long *)data)->lower_alarm_limit);
-            printf("\tControl\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n", ((struct dbr_ctrl_long *)data)->upper_ctrl_limit,\
-                    ((struct dbr_ctrl_long *)data)->lower_ctrl_limit);
-            printf("\tDisplay\tupper limit: %"PRId32"\n\t\tlower limit: %"PRId32"\n", ((struct dbr_ctrl_long *)data)->upper_disp_limit,\
-                    ((struct dbr_ctrl_long *)data)->lower_disp_limit);
-            break;
-        case DBR_CTRL_DOUBLE:
-            printf("\tUnits: %s\n", ((struct dbr_ctrl_double *)data)->units);
-            fputc('\n',stdout);
-            printf("\tAlarm status: %s, severity: %s\n",
-                    epicsAlarmConditionStrings[((struct dbr_ctrl_double *)data)->status],
-                    epicsAlarmSeverityStrings[((struct dbr_ctrl_double *)data)->severity]);
-            fputc('\n',stdout);
-            printf("\tWarning\tupper limit: %g\n\t\tlower limit: %g\n",
-                    ((struct dbr_ctrl_double *)data)->upper_warning_limit, ((struct dbr_ctrl_double *)data)->lower_warning_limit);
-            printf("\tAlarm\tupper limit: %g\n\t\tlower limit: %g\n",
-                    ((struct dbr_ctrl_double *)data)->upper_alarm_limit, ((struct dbr_ctrl_double *)data)->lower_alarm_limit);
-            printf("\tControl\tupper limit: %g\n\t\tlower limit: %g\n", ((struct dbr_ctrl_double *)data)->upper_ctrl_limit,\
-                    ((struct dbr_ctrl_double *)data)->lower_ctrl_limit);
-            printf("\tDisplay\tupper limit: %g\n\t\tlower limit: %g\n", ((struct dbr_ctrl_double *)data)->upper_disp_limit,\
-                    ((struct dbr_ctrl_double *)data)->lower_disp_limit);
-            fputc('\n',stdout);
-            printf("\tPrecision: %"PRId16"\n",((struct dbr_ctrl_double *)data)->precision);
-            break;
-        }
-
-        fputc('\n',stdout);
-        if(!isBaseChannel) {
-            getBaseChannelName(channels[i].base.name);
-            printf("\t%s info:\n", channels[i].base.name);
-
-            if(!isBaseChannel) {
-                if(fieldData[field_desc] != NULL) printf("\tDescription: %s\n", fieldData[field_desc]->value);
-            }
-        }
-        for(j=field_hhsv; j < nFields; j++) {
-            if (fieldData[j] != NULL) {
-                printf("\t%s alarm severity: %s\n", fields[j], fieldData[j]->value);
-            }
-        }
-
-        fputc('\n',stdout);
-
-
-        readAccess = ca_read_access(channels[i].base.id);
-        writeAccess = ca_write_access(channels[i].base.id);
-
-        printf("\tCA host name: %s\n", ca_host_name(channels[i].base.id));                           /*host name */
-        printf("\tRead access: "); if(readAccess) printf("yes\n"); else printf("no\n");     /*read and write access */
-        printf("\tWrite access: "); if(writeAccess) printf("yes\n"); else printf("no\n");
-        printf("%s\n", delimeter);
-
-        cleanup:
-        if(data != NULL) free(data);
-        if(dataLstr != NULL) free(dataLstr);
-        for(j=0; j < nFields; j++) {
-            if(fieldData[j] != NULL) free(fieldData[j]);
-        }
-    }
-    return success;
 }
 
 /**
@@ -824,8 +597,9 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
         (arguments.tool == caget ||
         arguments.tool == cagets ||
         arguments.tool == caput  ||
-        arguments.tool == camon ||
-        arguments.tool == cawait)
+        arguments.tool == camon  ||
+        arguments.tool == cawait ||
+        arguments.tool == cainfo )
        )
     {
         for(i=0; i < nChannels; i++) {
@@ -835,6 +609,9 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
             if (channels[i].base.connectionState != CA_OP_CONN_UP) {/*skip disconnected channels */
                 continue;
             }
+
+            if(success && arguments.tool == cainfo)
+                success &= issueCainfoSiblingRequests(&channels[i]);
 
             if(success)
                 success &= caGenerateReadRequests(&channels[i], &arguments);
@@ -891,7 +668,7 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
     if (arguments.tool == cainfo)
     {
         /* Review cainfo codebase */
-        success &= cainfoRequest(channels, nChannels);
+        /* success &= cainfoRequest(channels, nChannels);*/
     }
 
     return success;
@@ -1140,6 +917,14 @@ bool caDisconnect(struct channel * channels, u_int32_t nChannels){
     return success;
 }
 
+void freeField(struct field * field){
+    if (field->name != NULL){
+        free(field->name);
+    }
+    if (field->val != NULL){
+        free(field->val);
+    }
+}
 
 /**
  * @brief freeChannels - free global channels array
@@ -1151,21 +936,43 @@ void freeChannels(struct channel * channels, u_int32_t nChannels){
     size_t i, j;
     for (i=0 ;i < nChannels; ++i) {
 
-        if (channels[i].lstr.name != NULL) {
-            free(channels[i].lstr.name);
-        }
+        freeField(&channels[i].lstr);
 
         if ( arguments.tool == cagets || arguments.tool == cado )
-            free(channels[i].proc.name);
+            freeField(&channels[i].proc);
 
         if (arguments.tool == cainfo) {
             size_t nFields = noFields;  /* so we don't calculate in each loop */
             for (j=0; j < nFields; j++) {
-                free(channels[i].fields[j].name);
+                freeField(&channels[i].fields[j]);
             }
         }
         if (channels[i].units != NULL) {
             free(channels[i].units);
+        }
+        if (channels[i].upper_disp_limit != NULL) {
+            free(channels[i].upper_disp_limit);
+        }
+        if (channels[i].lower_disp_limit != NULL) {
+            free(channels[i].lower_disp_limit);
+        }
+        if (channels[i].upper_alarm_limit != NULL) {
+            free(channels[i].upper_alarm_limit);
+        }
+        if (channels[i].upper_warning_limit != NULL) {
+            free(channels[i].upper_warning_limit);
+        }
+        if (channels[i].lower_warning_limit != NULL) {
+            free(channels[i].lower_warning_limit);
+        }
+        if (channels[i].lower_alarm_limit != NULL) {
+            free(channels[i].lower_alarm_limit);
+        }
+        if (channels[i].enum_strs != NULL) {
+            for (j=0; j < channels[i].enum_no_st; j++) {
+               free(channels[i].enum_strs[j]);
+            }
+            free(channels[i].enum_strs);
         }
 
     }

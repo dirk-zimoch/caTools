@@ -56,7 +56,7 @@ void printValue(evargs args, arguments_T *arguments){
 
     value = dbr_value_ptr(args.dbr, args.type);
     baseType = dbr_type_to_DBF(args.type);   /*  convert appropriate TIME, GR, CTRL,... type to basic one */
-    struct channel *ch = (struct channel *)args.usr;
+    struct channel *ch = ((struct field *)args.usr)->ch;
 
 
     debugPrint("printValue() - baseType: %s\n", dbr_type_to_text(baseType));
@@ -251,7 +251,7 @@ static void printTimestamp(const char* fmt, epicsTimeStamp *pts){
 void printOutput(evargs args, arguments_T *arguments){
 /*  prints global output strings corresponding to i-th channel. */
 
-    struct channel *ch = (struct channel *)args.usr;
+    struct channel *ch = ((struct field *)args.usr)->ch;
     bool isTimeType = arguments->dbrRequestType >= DBR_TIME_STRING && arguments->dbrRequestType <= DBR_TIME_DOUBLE;
 
     /* do formating */
@@ -373,6 +373,11 @@ ch->severity = ((struct T *)args.dbr)->severity;
 #define units_get_cb(T) ch->units = strdup(((struct T *)args.dbr)->units);
 #define precision_get(T) ch->prec = (((struct T *)args.dbr)->precision);
 
+/* allocate memmory for meta data strings if needed and generate a meta string for a particular dbr metadata */
+#define get_meta_string(T, D, F) if(ch->D == NULL) \
+    ch->D = (char *) callocMustSucceed(MAX_STRING_SIZE, sizeof(char), "Can't allocate  buffer for meta string");\
+    if(ch->D != NULL) snprintf(ch->D, MAX_STRING_SIZE, F, ((struct T *)args.dbr)->D);
+
 void getMetadataFromEvArgs(struct channel * ch, evargs args){
     /* clear global output strings; the purpose of this callback is to overwrite them */
     /* the exception are units and precision, which we may be getting from elsewhere; we only clear them if we can write them */
@@ -451,12 +456,16 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
         case DBR_GR_INT:    /* and SHORT */
             severity_status_get(dbr_gr_short);
             units_get_cb(dbr_gr_short);
+            get_meta_string(dbr_gr_int, lower_disp_limit, "%"PRId16"");
+            get_meta_string(dbr_gr_int, upper_disp_limit, "%"PRId16"");
             break;
 
         case DBR_GR_FLOAT:
             severity_status_get(dbr_gr_float);
             units_get_cb(dbr_gr_float);
             precision_get(dbr_gr_float);
+            get_meta_string(dbr_gr_float, lower_disp_limit, "%g");
+            get_meta_string(dbr_gr_float, upper_disp_limit, "%g");
             break;
 
         case DBR_GR_ENUM:
@@ -467,28 +476,50 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
         case DBR_GR_CHAR:
             severity_status_get(dbr_gr_char);
             units_get_cb(dbr_gr_char);
+            get_meta_string(dbr_gr_char, lower_disp_limit, "%c");
+            get_meta_string(dbr_gr_char, upper_disp_limit, "%c");
             break;
 
         case DBR_GR_LONG:
             severity_status_get(dbr_gr_long);
             units_get_cb(dbr_gr_long);
+            get_meta_string(dbr_gr_long, lower_disp_limit, "%"PRId32"");
+            get_meta_string(dbr_gr_long, upper_disp_limit, "%"PRId32"");
             break;
 
         case DBR_GR_DOUBLE:
             severity_status_get(dbr_gr_double);
             units_get_cb(dbr_gr_double);
             precision_get(dbr_gr_double);
+            get_meta_string(dbr_gr_double, lower_disp_limit, "%g");
+            get_meta_string(dbr_gr_double, upper_disp_limit, "%g");
             break;
 
         case DBR_CTRL_SHORT:  /* and DBR_CTRL_INT */
             severity_status_get(dbr_ctrl_short);
             units_get_cb(dbr_ctrl_short);
+            get_meta_string(dbr_ctrl_short, lower_disp_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, upper_disp_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, lower_warning_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, upper_warning_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, lower_alarm_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, upper_alarm_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, lower_ctrl_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, upper_ctrl_limit, "%"PRId16"");
             break;
 
         case DBR_CTRL_FLOAT:
             severity_status_get(dbr_ctrl_float);
             units_get_cb(dbr_ctrl_float);
             precision_get(dbr_ctrl_float);
+            get_meta_string(dbr_ctrl_float, lower_disp_limit, "%g");
+            get_meta_string(dbr_ctrl_float, upper_disp_limit, "%g");
+            get_meta_string(dbr_ctrl_float, lower_warning_limit, "%g");
+            get_meta_string(dbr_ctrl_float, upper_warning_limit, "%g");
+            get_meta_string(dbr_ctrl_float, lower_alarm_limit, "%g");
+            get_meta_string(dbr_ctrl_float, upper_alarm_limit, "%g");
+            get_meta_string(dbr_ctrl_float, lower_ctrl_limit, "%g");
+            get_meta_string(dbr_ctrl_float, upper_ctrl_limit, "%g");
             break;
 
         case DBR_CTRL_ENUM:
@@ -499,17 +530,41 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
         case DBR_CTRL_CHAR:
             severity_status_get(dbr_ctrl_char);
             units_get_cb(dbr_ctrl_char);
+            get_meta_string(dbr_ctrl_char, lower_disp_limit, "%c");
+            get_meta_string(dbr_ctrl_char, upper_disp_limit, "%c");
+            get_meta_string(dbr_ctrl_char, lower_warning_limit, "%c");
+            get_meta_string(dbr_ctrl_char, upper_warning_limit, "%c");
+            get_meta_string(dbr_ctrl_char, lower_alarm_limit, "%c");
+            get_meta_string(dbr_ctrl_char, upper_alarm_limit, "%c");
+            get_meta_string(dbr_ctrl_char, lower_ctrl_limit, "%c");
+            get_meta_string(dbr_ctrl_char, upper_ctrl_limit, "%c");
             break;
 
         case DBR_CTRL_LONG:
             severity_status_get(dbr_ctrl_long);
             units_get_cb(dbr_ctrl_long);
+            get_meta_string(dbr_ctrl_long, lower_disp_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, upper_disp_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, lower_warning_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, upper_warning_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, lower_alarm_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, upper_alarm_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, lower_ctrl_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, upper_ctrl_limit, "%"PRId32"");
             break;
 
         case DBR_CTRL_DOUBLE:
             severity_status_get(dbr_ctrl_double);
             units_get_cb(dbr_ctrl_double);
             precision_get(dbr_ctrl_double);
+            get_meta_string(dbr_ctrl_double, lower_disp_limit, "%g");
+            get_meta_string(dbr_ctrl_double, upper_disp_limit, "%g");
+            get_meta_string(dbr_ctrl_double, lower_warning_limit, "%g");
+            get_meta_string(dbr_ctrl_double, upper_warning_limit, "%g");
+            get_meta_string(dbr_ctrl_double, lower_alarm_limit, "%g");
+            get_meta_string(dbr_ctrl_double, upper_alarm_limit, "%g");
+            get_meta_string(dbr_ctrl_double, lower_ctrl_limit, "%g");
+            get_meta_string(dbr_ctrl_double, upper_ctrl_limit, "%g");
             break;
 
         case DBR_CHAR:
@@ -611,4 +666,97 @@ bool cawaitEvaluateCondition(struct channel * ch, evargs args){
     }
 
     return false;
+}
+
+/**
+ * @brief cainfoRequest - this spaghetti function does all the work for caInfo tool. Reads channel data using ca_get and then prints.
+ * @param channels - array of channel structs
+ * @param nChannels - number of channels in array
+ * @return true on success
+ */
+bool printCainfo(evargs args, arguments_T *arguments){
+    int status;
+    u_int32_t i, j;
+
+    struct channel *ch = ((struct field *)args.usr)->ch;
+
+    bool readAccess, writeAccess, success = true;
+    const char *delimeter = "-------------------------------";
+
+    /*start printing */
+    fputc('\n',stdout);
+    fputc('\n',stdout);
+    printf("%s\n%s\n", delimeter, ch->base.name);                                               /*name */
+
+    if(isValField(ch->base.name))
+        if(ch->fields[field_desc].val != NULL) printf("\tDescription: %s\n", ch->fields[field_desc].val);  /*description */
+
+    if(ch->fields[field_rtyp].val != NULL) printf("\tRecord type: %s\n", ch->fields[field_rtyp].val);  /*record type */
+    printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(ch->base.id)));            /*field type */
+    printf("\tNumber of elements: %zu\n", ch->count);                                           /*number of elements */
+    fputs("\tTime: ", stdout);
+    printTimestamp("%Y-%m-%d %H:%M:%S.%06f", &ch->timestamp);                                   /*timestamp*/
+    fputc('\n',stdout);
+    printf("\tValue: ");                                                                        /*value*/
+    printValue(args, arguments);
+    fputc('\n',stdout);
+    if(ch->units)
+        printf("\tUnits: %s\n", ch->units);
+    fputc('\n',stdout);
+    printf("\tAlarm status: %s, severity: %s\n",
+           epicsAlarmSeverityStrings[ch->severity],
+           epicsAlarmConditionStrings[ch->status]);
+    if(ch->upper_warning_limit || ch->lower_warning_limit)
+        printf("\n\tWarning\tupper limit: %s\n\t\tlower limit: %s\n",
+                ch->upper_warning_limit, ch->lower_warning_limit);
+    if(ch->upper_alarm_limit || ch->lower_alarm_limit)
+        printf("\tAlarm\tupper limit: %s\n\t\tlower limit: %s\n",
+                ch->upper_alarm_limit, ch->lower_alarm_limit);
+    if(ch->upper_ctrl_limit || ch->upper_ctrl_limit)
+        printf("\tControl\tupper limit: %s\n\t\tlower limit: %s\n",
+               ch->upper_ctrl_limit, ch->lower_ctrl_limit);
+    if(ch->upper_disp_limit || ch->upper_disp_limit)
+        printf("\tDisplay\tupper limit: %s\n\t\tlower limit: %s\n",
+               ch->upper_disp_limit, ch->lower_disp_limit);
+    fputc('\n',stdout);
+    if(dbr_type_is_FLOAT(args.type) || dbr_type_is_DOUBLE(args.type))
+        printf("\tPrecision: %"PRId16"\n\n",ch->prec);
+
+
+    if(ch->enum_strs){
+        printf("\tNumber of enum strings: %"PRId16"\n", ch->enum_no_st);
+        for (j=0; j < ch->enum_no_st; ++j) {
+            printf("\tstring %"PRIu32": %s\n", j, ch->enum_strs[j]);
+        }
+        if(j>0) fputc('\n',stdout);
+    }
+
+    if(!isValField(ch->base.name)) {
+        getBaseChannelName(ch->base.name);
+        printf("\t%s info:\n", ch->base.name);
+        if(ch->fields[field_desc].val != NULL) printf("\tDescription: %s\n", ch->fields[field_desc].val);
+        fputc('\n',stdout);
+    }
+
+    u_int32_t nFields = sizeof(ch->fields)/sizeof(ch->fields[0]);
+    bool printed_any = false;
+    for(j=field_hhsv; j < nFields; j++) {
+        if (ch->fields[j].val != NULL) {
+            printf("\t%s alarm severity: %.*s\n", fields[j], MAX_STRING_SIZE, ch->fields[j].val);
+            printed_any = true;
+        }
+    }
+    if (printed_any)
+        fputc('\n',stdout);
+
+
+    readAccess = ca_read_access(ch->base.id);
+    writeAccess = ca_write_access(ch->base.id);
+
+    printf("\tCA host name: %s\n", ca_host_name(ch->base.id));                           /*host name */
+    printf("\tRead access: "); if(readAccess) printf("yes\n"); else printf("no\n");     /*read and write access */
+    printf("\tWrite access: "); if(writeAccess) printf("yes\n"); else printf("no\n");
+    printf("%s\n", delimeter);
+
+    return success;
 }
