@@ -525,6 +525,17 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
         case DBR_CTRL_ENUM:
             severity_status_get(dbr_ctrl_enum);
             /* does not have units */
+
+            /* remember enum strings to be able to print them later */
+            ch->enum_no_st = ((struct dbr_ctrl_enum *)args.dbr)->no_str;
+            if (ch->enum_strs == NULL)
+                ch->enum_strs = (char **)callocMustSucceed(MAX_STRING_SIZE, sizeof(((struct dbr_ctrl_enum *)args.dbr)->strs), "Can't allocate buffer for enum strings in getMetadataFromEvArgs");
+            if (ch->enum_strs != NULL){
+                int j=0;
+                for (j=0; j<ch->enum_no_st; j++){
+                    ch->enum_strs[j]=strdup(((struct dbr_ctrl_enum *)args.dbr)->strs[j]);
+                }
+            }
             break;
 
         case DBR_CTRL_CHAR:
@@ -674,13 +685,12 @@ bool cawaitEvaluateCondition(struct channel * ch, evargs args){
  * @param nChannels - number of channels in array
  * @return true on success
  */
-bool printCainfo(evargs args, arguments_T *arguments){
-    int status;
-    u_int32_t i, j;
+void printCainfo(evargs args, arguments_T *arguments){
+    u_int32_t j;
 
     struct channel *ch = ((struct field *)args.usr)->ch;
 
-    bool readAccess, writeAccess, success = true;
+    bool readAccess, writeAccess;
     const char *delimeter = "-------------------------------";
 
     /*start printing */
@@ -731,15 +741,15 @@ bool printCainfo(evargs args, arguments_T *arguments){
         if(j>0) fputc('\n',stdout);
     }
 
+    bool printed_any = false;
     if(!isValField(ch->base.name)) {
         getBaseChannelName(ch->base.name);
         printf("\t%s info:\n", ch->base.name);
         if(ch->fields[field_desc].val != NULL) printf("\tDescription: %s\n", ch->fields[field_desc].val);
-        fputc('\n',stdout);
+        printed_any = true;
     }
 
     u_int32_t nFields = sizeof(ch->fields)/sizeof(ch->fields[0]);
-    bool printed_any = false;
     for(j=field_hhsv; j < nFields; j++) {
         if (ch->fields[j].val != NULL) {
             printf("\t%s alarm severity: %.*s\n", fields[j], MAX_STRING_SIZE, ch->fields[j].val);
@@ -758,5 +768,5 @@ bool printCainfo(evargs args, arguments_T *arguments){
     printf("\tWrite access: "); if(writeAccess) printf("yes\n"); else printf("no\n");
     printf("%s\n", delimeter);
 
-    return success;
+    return;
 }

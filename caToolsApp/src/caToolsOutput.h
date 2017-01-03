@@ -39,7 +39,7 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args);
  */
 bool cawaitEvaluateCondition(struct channel * ch, evargs args);
 
-bool printCainfo(evargs args, arguments_T *arguments);
+void printCainfo(evargs args, arguments_T *arguments);
 
 /* print integer as binary number */
 #define printBits(x) \

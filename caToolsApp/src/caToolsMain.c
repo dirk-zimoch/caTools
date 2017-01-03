@@ -204,24 +204,10 @@ static void caReadCallback (evargs args){
             if(ch->nRequests <= 0) ch->nRequests++; /* this happens on camon/cawait callback */
         }
 
-        /* if it is enum and cainfo, remember enum strings for later */
-        if(DBR_CTRL_ENUM == args.type && arguments.tool==cainfo) {
-            ch->enum_no_st = ((struct dbr_ctrl_enum *)args.dbr)->no_str;
-            if (ch->enum_strs == NULL)
-                ch->enum_strs = (char **)callocMustSucceed(MAX_STRING_SIZE, sizeof(((struct dbr_ctrl_enum *)args.dbr)->strs), "Can't allocate buffer for enum strings in caReadCallback");
-            if (ch->enum_strs != NULL){
-                int j=0;
-                for (j=0; j<ch->enum_no_st; j++){
-                    ch->enum_strs[j]=strdup(((struct dbr_ctrl_enum *)args.dbr)->strs[j]);
-                }
-            }
-        }
-
-
     }else if(ch->lstr.id != args.chid){
         /* if it is not long string channel and not base channel,
          * than it must be one of the ca info silblings
-         * save the vaule for later */
+         * save the string vaule for later */
         if(dbr_type_to_DBF(args.type)==DBR_STRING){
             if(fld->val==NULL)
                fld->val = (char *) callocMustSucceed(MAX_STRING_SIZE, sizeof(char), "Can't allocate  buffer for val in caReadCallback");
@@ -546,7 +532,8 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
             }
 
             /* check if long string channel needs to be opened */
-            if(     channels[i].lstr.name != NULL &&    /* name is allocated in caInit() only when request is not on the VAL field and base type is string */
+            if(     (arguments.tool == caput || arguments.tool == caputq) && /* there are some values to be put - with cagets and cado ww do not put any values */
+                    channels[i].lstr.name != NULL &&    /* name is allocated in caInit() only when request is not on the VAL field and base type is string */
                     channels[i].lstrDone != true)   /* we did not try to open long string channel yet */
             {
                 size_t length = strlen(channels[i].inpStr);
