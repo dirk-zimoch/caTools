@@ -425,7 +425,6 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     /*request ctrl type */
     int32_t baseType = ca_field_type(ch->base.id);
     int32_t reqType = dbf_type_to_DBR_CTRL(baseType); /* use ctrl type by default */
-    //chid    reqChid = ch->base.id;
     ch->state = read_waiting;
 
     /* check number of elements. arguments->outNelm is 0 by default.
@@ -646,6 +645,7 @@ bool caRequest(struct channel *channels, u_int32_t nChannels) {
     }
 
 
+    // useless, remove
     /* call the spaghetti function if cainfo */
     if (arguments.tool == cainfo)
     {

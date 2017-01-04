@@ -214,7 +214,7 @@ struct channel {
 extern epicsTimeStamp g_programStartTime, g_commonLastUpdate; /* see caToolsGlobals.c */
 
 extern int g_verbosity;
-extern const char * fields[];
+extern const char * cainfo_fields[];
 
 
 

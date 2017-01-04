@@ -11,20 +11,26 @@
 #include "caToolsUtils.h"
 #include "caToolsOutput.h"
 
-
+/**
+ * @brief getEnumString tries to return enum string from the evargs
+ * @param str is pointer to the output string
+ * @param args evargs struct obtained from the callback
+ * @param j value index as if channel is an array (0 in case of default one dimensional channels)
+ * @return true if the string value is obtained - false if not
+ */
 bool getEnumString(char ** str, evargs * args, size_t j){
 
     void * value = dbr_value_ptr((*args).dbr, (*args).type);
     dbr_enum_t v = ((dbr_enum_t *)value)[j];
     if (v >= MAX_ENUM_STATES){
         warnPrint("Enum index value %d is greater than MAX_ENUM_STATES %d\n", v, MAX_ENUM_STATES);
-        *str = "\0";
+        *str = "";
         return false;
     }
     if (dbr_type_is_GR((*args).type)) {
         if (v >= ((struct dbr_gr_enum *)(*args).dbr)->no_str) {
             warnPrint("Enum index value %d greater than the number of strings\n", v);
-            *str = "\0";
+            *str = "";
             return false;
         }
         else{
@@ -40,7 +46,7 @@ bool getEnumString(char ** str, evargs * args, size_t j){
     else if (dbr_type_is_CTRL((*args).type)) {
         if (v >= ((struct dbr_ctrl_enum *)(*args).dbr)->no_str) {
             warnPrint("Enum index value %d greater than the number of strings\n", v);
-            *str = "\0";
+            *str = "";
             return false;
         }
         else{
@@ -58,7 +64,7 @@ bool getEnumString(char ** str, evargs * args, size_t j){
         struct channel *ch = ((struct field *)args->usr)->ch;
         if (v >= ch->enum_no_st) {
             warnPrint("Enum index value %d greater than the number of strings\n", v);
-            *str = "\0";
+            *str = "";
             return false;
         }
         else{
@@ -74,6 +80,11 @@ bool getEnumString(char ** str, evargs * args, size_t j){
     return false;
 }
 
+/**
+ * @brief printValue - formats the returned value and prints it - usually called from within printOutput
+ * @param args - evargs from callback function
+ * @param arguments - pointer to the arguments struct
+ */
 void printValue(evargs args, arguments_T *arguments){
 /* Parses the data fetched by ca_get callback according to the data type and formatting arguments-> */
 /* The result is printed to stdout. */
@@ -270,6 +281,11 @@ void printValue(evargs args, arguments_T *arguments){
     }
 }
 
+/**
+ * @brief printTimestamp prints epics timestamp
+ * @param fmt - time format
+ * @param pts - epics timestamp
+ */
 static void printTimestamp(const char* fmt, epicsTimeStamp *pts){
     char buffer[100]; /* epicsTimeToStrftime does not report errors on overflow! It just prints less. */
     epicsTimeToStrftime(buffer, sizeof(buffer), fmt, pts);
@@ -277,6 +293,11 @@ static void printTimestamp(const char* fmt, epicsTimeStamp *pts){
     putc(' ', stdout);
 }
 
+/**
+ * @brief printOutput - prints metatata and calls printValue();
+ * @param args - evargs from callback function
+ * @param arguments - pointer to the (input flags) arguments struct
+ */
 void printOutput(evargs args, arguments_T *arguments){
 /*  prints global output strings corresponding to i-th channel. */
 
@@ -391,26 +412,36 @@ void printOutput(evargs args, arguments_T *arguments){
     return;
 }
 
-
-/*macros for reading requested data */
-#define severity_status_get(T) \
-ch->status = ((struct T *)args.dbr)->status; \
-ch->severity = ((struct T *)args.dbr)->severity;
-#define timestamp_get(T) \
-    ch->timestamp = ((struct T *)args.dbr)->stamp;\
-    validateTimestamp(&ch->timestamp, ch->base.name);
-#define units_get_cb(T) ch->units = strdup(((struct T *)args.dbr)->units);
-#define precision_get(T) ch->prec = (((struct T *)args.dbr)->precision);
-
-/* allocate memmory for meta data strings if needed and generate a meta string for a particular dbr metadata */
-#define get_meta_string(T, D, F) if(ch->D == NULL) \
-    ch->D = (char *) callocMustSucceed(MAX_STRING_SIZE, sizeof(char), "Can't allocate  buffer for meta string");\
-    if(ch->D != NULL) snprintf(ch->D, MAX_STRING_SIZE, F, ((struct T *)args.dbr)->D);
-
+/**
+ * @brief getMetadataFromEvArgs - updates global strings and metadata for the channel
+ * @param ch - pointer to struct channel
+ * @param args - evargs from callback function
+ * @return true if everything goes well
+ */
 void getMetadataFromEvArgs(struct channel * ch, evargs args){
     /* clear global output strings; the purpose of this callback is to overwrite them */
     /* the exception are units and precision, which we may be getting from elsewhere; we only clear them if we can write them */
     debugPrint("getMetadataFromEvArgs() - %s\n", ch->base.name);
+
+    /* define macros for reading requested data */
+        #define severity_status_get(T) \
+        ch->status = ((struct T *)args.dbr)->status; \
+        ch->severity = ((struct T *)args.dbr)->severity;
+        #define timestamp_get(T) \
+            ch->timestamp = ((struct T *)args.dbr)->stamp;\
+            validateTimestamp(&ch->timestamp, ch->base.name);
+        #define units_get_cb(T) ch->units = strdup(((struct T *)args.dbr)->units);
+        #define precision_get(T) ch->prec = (((struct T *)args.dbr)->precision);
+
+        /* allocate memmory for meta data strings if needed and generate a meta string for a particular dbr metadata */
+        /* T ... dbr_type,
+         * D ... ch->fieldname
+         * F ... printf format  */
+        #define get_meta_string(T, D, F) if(ch->D == NULL) \
+            ch->D = (char *) callocMustSucceed(MAX_STRING_SIZE, sizeof(char), "Can't allocate  buffer for meta string");\
+            if(ch->D != NULL) snprintf(ch->D, MAX_STRING_SIZE, F, ((struct T *)args.dbr)->D);
+
+    /* end of macros */
 
     ch->status=0;
     ch->severity=0;
@@ -619,6 +650,14 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
     }
 }
 
+/**
+ * @brief cawaitEvaluateCondition evaluates output of channel i against the corresponding wait condition.
+ *              returns 1 if matching, 0 otherwise, and -1 if error. Before evaluation, channel output is converted to double. If this is
+ *              not successful, the function returns -1. If the channel in question is an array, the condition is evaluated against the first element.
+ * @param ch pointer to the channel struct
+ * @param args evrargs returned by the read callback function
+ * @return true if the condition is fulfilled
+ */
 bool cawaitEvaluateCondition(struct channel * ch, evargs args){
     /*evaluates output of channel i against the corresponding condition. */
     /*returns 1 if matching, 0 otherwise, and -1 if error. */
@@ -709,10 +748,9 @@ bool cawaitEvaluateCondition(struct channel * ch, evargs args){
 }
 
 /**
- * @brief cainfoRequest - this spaghetti function does all the work for caInfo tool. Reads channel data using ca_get and then prints.
- * @param channels - array of channel structs
- * @param nChannels - number of channels in array
- * @return true on success
+ * @brief printCainfo - prints metatata and calls printValue();
+ * @param args - evargs from callback function
+ * @param arguments - pointer to the (input flags) arguments struct
  */
 void printCainfo(evargs args, arguments_T *arguments){
     u_int32_t j;
@@ -781,7 +819,7 @@ void printCainfo(evargs args, arguments_T *arguments){
     u_int32_t nFields = sizeof(ch->fields)/sizeof(ch->fields[0]);
     for(j=field_hhsv; j < nFields; j++) {
         if (ch->fields[j].val != NULL) {
-            printf("\t%s alarm severity: %.*s\n", fields[j], MAX_STRING_SIZE, ch->fields[j].val);
+            printf("\t%s alarm severity: %.*s\n", cainfo_fields[j], MAX_STRING_SIZE, ch->fields[j].val);
             printed_any = true;
         }
     }
