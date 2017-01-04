@@ -16,7 +16,7 @@ bool getEnumString(char ** str, evargs * args, size_t j){
     void * value = dbr_value_ptr((*args).dbr, (*args).type);
     dbr_enum_t v = ((dbr_enum_t *)value)[j];
     if (v >= MAX_ENUM_STATES){
-        warnPrint("Illegal enum index: %d\n", v);
+        warnPrint("Enum index value %d is greater than MAX_ENUM_STATES %d\n", v, MAX_ENUM_STATES);
         *str = "\0";
         return false;
     }
@@ -476,8 +476,8 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
         case DBR_GR_CHAR:
             severity_status_get(dbr_gr_char);
             units_get_cb(dbr_gr_char);
-            get_meta_string(dbr_gr_char, lower_disp_limit, "%c");
-            get_meta_string(dbr_gr_char, upper_disp_limit, "%c");
+            get_meta_string(dbr_gr_char, lower_disp_limit, "%"PRIu8"");
+            get_meta_string(dbr_gr_char, upper_disp_limit, "%"PRIu8"");
             break;
 
         case DBR_GR_LONG:
@@ -541,14 +541,14 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
         case DBR_CTRL_CHAR:
             severity_status_get(dbr_ctrl_char);
             units_get_cb(dbr_ctrl_char);
-            get_meta_string(dbr_ctrl_char, lower_disp_limit, "%c");
-            get_meta_string(dbr_ctrl_char, upper_disp_limit, "%c");
-            get_meta_string(dbr_ctrl_char, lower_warning_limit, "%c");
-            get_meta_string(dbr_ctrl_char, upper_warning_limit, "%c");
-            get_meta_string(dbr_ctrl_char, lower_alarm_limit, "%c");
-            get_meta_string(dbr_ctrl_char, upper_alarm_limit, "%c");
-            get_meta_string(dbr_ctrl_char, lower_ctrl_limit, "%c");
-            get_meta_string(dbr_ctrl_char, upper_ctrl_limit, "%c");
+            get_meta_string(dbr_ctrl_char, lower_disp_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, upper_disp_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, lower_warning_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, upper_warning_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, lower_alarm_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, upper_alarm_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, lower_ctrl_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, upper_ctrl_limit, "%"PRIu8"");
             break;
 
         case DBR_CTRL_LONG:
