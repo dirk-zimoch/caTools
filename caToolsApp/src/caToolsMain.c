@@ -459,13 +459,8 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     if ((arguments->time || arguments->date || arguments->timestamp || arguments->tfmt || arguments->tool == cainfo) &&
             !(DBR_TIME_STRING <= arguments->dbrRequestType && arguments->dbrRequestType <= DBR_TIME_DOUBLE) )
     {
-        if (ca_field_type(ch->base.id) == DBF_ENUM && !(arguments->num)){
-            /* if enum && s, use time_string */
-            reqType = DBR_TIME_STRING;
-        }
-        else{ /* else use time_native */
-            reqType = dbf_type_to_DBR_TIME(dbr_type_to_DBF(reqType));
-        }
+        /* use time native type */
+        reqType = dbf_type_to_DBR_TIME(dbr_type_to_DBF(reqType));
         debugPrint("caGenerateReadRequests() - Issued second request using time type: %s\n", dbr_type_to_text(reqType));
         ch->nRequests=ch->nRequests+1;
         status = ca_array_get_callback(reqType, ch->outNelm, ch->base.id, caReadCallback, &ch->base);

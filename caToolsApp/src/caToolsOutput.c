@@ -13,6 +13,7 @@
 
 
 bool getEnumString(char ** str, evargs * args, size_t j){
+
     void * value = dbr_value_ptr((*args).dbr, (*args).type);
     dbr_enum_t v = ((dbr_enum_t *)value)[j];
     if (v >= MAX_ENUM_STATES){
@@ -28,7 +29,12 @@ bool getEnumString(char ** str, evargs * args, size_t j){
         }
         else{
             *str = ((struct dbr_gr_enum *)(*args).dbr)->strs[v];
-            return true;
+            if(*str[0]=='\0'){
+                return false;
+            }
+            else{
+                return true;
+            }
         }
     }
     else if (dbr_type_is_CTRL((*args).type)) {
@@ -39,10 +45,33 @@ bool getEnumString(char ** str, evargs * args, size_t j){
         }
         else{
             *str = ((struct dbr_ctrl_enum *)(*args).dbr)->strs[v];
-            return true;
+            if(*str[0]=='\0'){
+                return false;
+            }
+            else{
+                return true;
+            }
         }
     }
-    return true;
+    else if (dbr_type_is_TIME((*args).type)) {
+        /* get enum strings from the saved values */
+        struct channel *ch = ((struct field *)args->usr)->ch;
+        if (v >= ch->enum_no_st) {
+            warnPrint("Enum index value %d greater than the number of strings\n", v);
+            *str = "\0";
+            return false;
+        }
+        else{
+            *str = ch->enum_strs[v];
+            if(*str[0]=='\0'){
+                return false;
+            }
+            else{
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 void printValue(evargs args, arguments_T *arguments){
