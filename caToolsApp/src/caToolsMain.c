@@ -728,12 +728,12 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
         size_t nFields = noFields;  /* so we don't calculate in each loop */
         size_t j;
         for (j=0; j < nFields; j++) {
-            debugPrint("caInit() - caInfo for fields[%zu]: %s\n", j, fields[j]);
+            debugPrint("caInit() - caInfo for fields[%zu]: %s\n", j, cainfo_fields[j]);
             ch->fields[j].created = true;
-            ch->fields[j].name = callocMustSucceed(LEN_FQN_NAME, sizeof(char), fields[j]);
+            ch->fields[j].name = callocMustSucceed(LEN_FQN_NAME, sizeof(char), cainfo_fields[j]);
             strcpy(ch->fields[j].name, ch->base.name);
             getBaseChannelName(ch->fields[j].name);
-            strcat(ch->fields[j].name, fields[j]);
+            strcat(ch->fields[j].name, cainfo_fields[j]);
             hasSiblings |= initField(ch, &ch->fields[j]);
         }
     }
