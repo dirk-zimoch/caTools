@@ -20,7 +20,7 @@ void usage(FILE *stream, enum tool tool, char *programName);
  * @param arguments pointer to the variable holding the arguments
  * @return true if everything went ok
  */
-bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *arguments);
+bool parseArguments(int argc, char ** argv, uint32_t *nChannels, arguments_T *arguments);
 
 /**
  * @brief parseChannels - allocates global array of channel structs and fills it up

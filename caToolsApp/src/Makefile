@@ -12,7 +12,22 @@ PROD = caTools
 #caTools_PROD_VERSION += 1
 endif
 
+ifeq ($(OS_CLASS),WIN32)
+#LIBRARY += wingetopt
+#wingetopt_DIR += wingetopt
+#wingetopt_SRCS += getopt.c
+#STATIC_BUILD=YES
+PROD = caTools
+#caTools_PROD_VERSION += 1
+#PROD_DIR += wingetopt
+caTools_SRCS += getopt.c
+#PROD_LIBS += getopt
+USR_INCLUDES += -I../include
+USR_CFLAGS += -Dinline=__inline
+endif
+
 # Build the main IOC entry point on workstation OSs.
+#USR_LIBS += ps5000
 caTools_SRCS += caToolsMain.c
 caTools_SRCS += caToolsOutput.c
 caTools_SRCS += caToolsInput.c
