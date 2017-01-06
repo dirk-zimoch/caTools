@@ -7,7 +7,7 @@ include $(TOP)/configure/CONFIG
 #=============================
 # Build the IOC application
 
-ifeq ($(OS_CLASS),Linux)
+ifeq ($(OS_CLASS),$(filter $(OS_CLASS), Linux WIN32))
 PROD = caTools
 #caTools_PROD_VERSION += 1
 endif
@@ -53,6 +53,10 @@ ifeq ($(OS_CLASS),Linux)
 install: links
 endif
 
+ifeq ($(OS_CLASS),WIN32)
+install: linksWin
+endif
+
 #ifeq ($(EPICS_HOST_ARCH),$(T_A))
 #install: archLinks
 #endif
@@ -66,6 +70,24 @@ links:
 	ln -sf caTools $(INSTALL_BIN)/caput
 	ln -sf caTools $(INSTALL_BIN)/caputq
 	ln -sf caTools $(INSTALL_BIN)/cawait
+	
+linksWin: 
+	del $(subst /,\,$(INSTALL_BIN))\cado.exe >nul 2>&1
+	cmd /c MKLINK $(subst /,\,$(INSTALL_BIN))\cado.exe caTools.exe
+	del $(subst /,\,$(INSTALL_BIN))\caget.exe >nul 2>&1
+	cmd /c MKLINK $(subst /,\,$(INSTALL_BIN))\caget.exe caTools.exe
+	del $(subst /,\,$(INSTALL_BIN))\cagets.exe >nul 2>&1
+	cmd /c MKLINK $(subst /,\,$(INSTALL_BIN))\cagets.exe caTools.exe
+	del $(subst /,\,$(INSTALL_BIN))\cainfo.exe >nul 2>&1
+	cmd /c MKLINK $(subst /,\,$(INSTALL_BIN))\cainfo.exe caTools.exe
+	del $(subst /,\,$(INSTALL_BIN))\camon.exe >nul 2>&1
+	cmd /c MKLINK $(subst /,\,$(INSTALL_BIN))\camon.exe caTools.exe
+	del $(subst /,\,$(INSTALL_BIN))\caput.exe >nul 2>&1
+	cmd /c MKLINK $(subst /,\,$(INSTALL_BIN))\caput.exe caTools.exe
+	del $(subst /,\,$(INSTALL_BIN))\caputq.exe >nul 2>&1
+	cmd /c MKLINK $(subst /,\,$(INSTALL_BIN))\caputq.exe caTools.exe
+	del $(subst /,\,$(INSTALL_BIN))\cawait.exe >nul 2>&1
+	cmd /c MKLINK $(subst /,\,$(INSTALL_BIN))\cawait.exe caTools.exe
 
 archLinks:
 	echo $(INSTALL_HOST_BIN)
