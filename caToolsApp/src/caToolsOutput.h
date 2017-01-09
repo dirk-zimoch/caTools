@@ -2,13 +2,14 @@
 #define caToolsOutput
 
 #include <stdint.h>
+#include "cantProceed.h"
 #include "caToolsTypes.h"
+
 
 /**
  * @brief printOutput - prints metatata and calls printValue();
- * @param i
- * @param args
- * @param arguments
+ * @param args - evargs from callback function
+ * @param arguments - pointer to the (input flags) arguments struct
  */
 void printOutput(evargs args, arguments_T *arguments);
 
@@ -36,6 +37,13 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args);
  * @return true if the condition is fulfilled
  */
 bool cawaitEvaluateCondition(struct channel * ch, evargs args);
+
+/**
+ * @brief printCainfo - prints metatata and calls printValue();
+ * @param args - evargs from callback function
+ * @param arguments - pointer to the (input flags) arguments struct
+ */
+void printCainfo(evargs args, arguments_T *arguments);
 
 /* print integer as binary number */
 #define printBits(x) \

@@ -11,40 +11,80 @@
 #include "caToolsUtils.h"
 #include "caToolsOutput.h"
 
-
+/**
+ * @brief getEnumString tries to return enum string from the evargs
+ * @param str is pointer to the output string
+ * @param args evargs struct obtained from the callback
+ * @param j value index as if channel is an array (0 in case of default one dimensional channels)
+ * @return true if the string value is obtained - false if not
+ */
 bool getEnumString(char ** str, evargs * args, size_t j){
+
     void * value = dbr_value_ptr((*args).dbr, (*args).type);
     dbr_enum_t v = ((dbr_enum_t *)value)[j];
     if (v >= MAX_ENUM_STATES){
-        warnPrint("Illegal enum index: %d\n", v);
-        *str = "\0";
+        warnPrint("Enum index value %d is greater than MAX_ENUM_STATES %d\n", v, MAX_ENUM_STATES);
+        *str = "";
         return false;
     }
     if (dbr_type_is_GR((*args).type)) {
         if (v >= ((struct dbr_gr_enum *)(*args).dbr)->no_str) {
             warnPrint("Enum index value %d greater than the number of strings\n", v);
-            *str = "\0";
+            *str = "";
             return false;
         }
         else{
             *str = ((struct dbr_gr_enum *)(*args).dbr)->strs[v];
-            return true;
+            if(*str[0]=='\0'){
+                return false;
+            }
+            else{
+                return true;
+            }
         }
     }
     else if (dbr_type_is_CTRL((*args).type)) {
         if (v >= ((struct dbr_ctrl_enum *)(*args).dbr)->no_str) {
             warnPrint("Enum index value %d greater than the number of strings\n", v);
-            *str = "\0";
+            *str = "";
             return false;
         }
         else{
             *str = ((struct dbr_ctrl_enum *)(*args).dbr)->strs[v];
-            return true;
+            if(*str[0]=='\0'){
+                return false;
+            }
+            else{
+                return true;
+            }
         }
     }
-    return true;
+    else if (dbr_type_is_TIME((*args).type)) {
+        /* get enum strings from the saved values */
+        struct channel *ch = ((struct field *)args->usr)->ch;
+        if (v >= ch->enum_no_st) {
+            warnPrint("Enum index value %d greater than the number of strings\n", v);
+            *str = "";
+            return false;
+        }
+        else{
+            *str = ch->enum_strs[v];
+            if(*str[0]=='\0'){
+                return false;
+            }
+            else{
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
+/**
+ * @brief printValue - formats the returned value and prints it - usually called from within printOutput
+ * @param args - evargs from callback function
+ * @param arguments - pointer to the arguments struct
+ */
 void printValue(evargs args, arguments_T *arguments){
 /* Parses the data fetched by ca_get callback according to the data type and formatting arguments-> */
 /* The result is printed to stdout. */
@@ -56,7 +96,7 @@ void printValue(evargs args, arguments_T *arguments){
 
     value = dbr_value_ptr(args.dbr, args.type);
     baseType = dbr_type_to_DBF(args.type);   /*  convert appropriate TIME, GR, CTRL,... type to basic one */
-    struct channel *ch = (struct channel *)args.usr;
+    struct channel *ch = ((struct field *)args.usr)->ch;
 
 
     debugPrint("printValue() - baseType: %s\n", dbr_type_to_text(baseType));
@@ -241,6 +281,11 @@ void printValue(evargs args, arguments_T *arguments){
     }
 }
 
+/**
+ * @brief printTimestamp prints epics timestamp
+ * @param fmt - time format
+ * @param pts - epics timestamp
+ */
 static void printTimestamp(const char* fmt, epicsTimeStamp *pts){
     char buffer[100]; /* epicsTimeToStrftime does not report errors on overflow! It just prints less. */
     epicsTimeToStrftime(buffer, sizeof(buffer), fmt, pts);
@@ -248,10 +293,15 @@ static void printTimestamp(const char* fmt, epicsTimeStamp *pts){
     putc(' ', stdout);
 }
 
+/**
+ * @brief printOutput - prints metatata and calls printValue();
+ * @param args - evargs from callback function
+ * @param arguments - pointer to the (input flags) arguments struct
+ */
 void printOutput(evargs args, arguments_T *arguments){
 /*  prints global output strings corresponding to i-th channel. */
 
-    struct channel *ch = (struct channel *)args.usr;
+    struct channel *ch = ((struct field *)args.usr)->ch;
     bool isTimeType = arguments->dbrRequestType >= DBR_TIME_STRING && arguments->dbrRequestType <= DBR_TIME_DOUBLE;
 
     /* do formating */
@@ -362,21 +412,36 @@ void printOutput(evargs args, arguments_T *arguments){
     return;
 }
 
-
-/*macros for reading requested data */
-#define severity_status_get(T) \
-ch->status = ((struct T *)args.dbr)->status; \
-ch->severity = ((struct T *)args.dbr)->severity;
-#define timestamp_get(T) \
-    ch->timestamp = ((struct T *)args.dbr)->stamp;\
-    validateTimestamp(&ch->timestamp, ch->base.name);
-#define units_get_cb(T) ch->units = strdup(((struct T *)args.dbr)->units);
-#define precision_get(T) ch->prec = (((struct T *)args.dbr)->precision);
-
+/**
+ * @brief getMetadataFromEvArgs - updates global strings and metadata for the channel
+ * @param ch - pointer to struct channel
+ * @param args - evargs from callback function
+ * @return true if everything goes well
+ */
 void getMetadataFromEvArgs(struct channel * ch, evargs args){
     /* clear global output strings; the purpose of this callback is to overwrite them */
     /* the exception are units and precision, which we may be getting from elsewhere; we only clear them if we can write them */
     debugPrint("getMetadataFromEvArgs() - %s\n", ch->base.name);
+
+    /* define macros for reading requested data */
+        #define severity_status_get(T) \
+        ch->status = ((struct T *)args.dbr)->status; \
+        ch->severity = ((struct T *)args.dbr)->severity;
+        #define timestamp_get(T) \
+            ch->timestamp = ((struct T *)args.dbr)->stamp;\
+            validateTimestamp(&ch->timestamp, ch->base.name);
+        #define units_get_cb(T) ch->units = strdup(((struct T *)args.dbr)->units);
+        #define precision_get(T) ch->prec = (((struct T *)args.dbr)->precision);
+
+        /* allocate memmory for meta data strings if needed and generate a meta string for a particular dbr metadata */
+        /* T ... dbr_type,
+         * D ... ch->fieldname
+         * F ... printf format  */
+        #define get_meta_string(T, D, F) if(ch->D == NULL) \
+            ch->D = (char *) callocMustSucceed(MAX_STRING_SIZE, sizeof(char), "Can't allocate  buffer for meta string");\
+            if(ch->D != NULL) snprintf(ch->D, MAX_STRING_SIZE, F, ((struct T *)args.dbr)->D);
+
+    /* end of macros */
 
     ch->status=0;
     ch->severity=0;
@@ -451,12 +516,16 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
         case DBR_GR_INT:    /* and SHORT */
             severity_status_get(dbr_gr_short);
             units_get_cb(dbr_gr_short);
+            get_meta_string(dbr_gr_int, lower_disp_limit, "%"PRId16"");
+            get_meta_string(dbr_gr_int, upper_disp_limit, "%"PRId16"");
             break;
 
         case DBR_GR_FLOAT:
             severity_status_get(dbr_gr_float);
             units_get_cb(dbr_gr_float);
             precision_get(dbr_gr_float);
+            get_meta_string(dbr_gr_float, lower_disp_limit, "%g");
+            get_meta_string(dbr_gr_float, upper_disp_limit, "%g");
             break;
 
         case DBR_GR_ENUM:
@@ -467,49 +536,106 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
         case DBR_GR_CHAR:
             severity_status_get(dbr_gr_char);
             units_get_cb(dbr_gr_char);
+            get_meta_string(dbr_gr_char, lower_disp_limit, "%"PRIu8"");
+            get_meta_string(dbr_gr_char, upper_disp_limit, "%"PRIu8"");
             break;
 
         case DBR_GR_LONG:
             severity_status_get(dbr_gr_long);
             units_get_cb(dbr_gr_long);
+            get_meta_string(dbr_gr_long, lower_disp_limit, "%"PRId32"");
+            get_meta_string(dbr_gr_long, upper_disp_limit, "%"PRId32"");
             break;
 
         case DBR_GR_DOUBLE:
             severity_status_get(dbr_gr_double);
             units_get_cb(dbr_gr_double);
             precision_get(dbr_gr_double);
+            get_meta_string(dbr_gr_double, lower_disp_limit, "%g");
+            get_meta_string(dbr_gr_double, upper_disp_limit, "%g");
             break;
 
         case DBR_CTRL_SHORT:  /* and DBR_CTRL_INT */
             severity_status_get(dbr_ctrl_short);
             units_get_cb(dbr_ctrl_short);
+            get_meta_string(dbr_ctrl_short, lower_disp_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, upper_disp_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, lower_warning_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, upper_warning_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, lower_alarm_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, upper_alarm_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, lower_ctrl_limit, "%"PRId16"");
+            get_meta_string(dbr_ctrl_short, upper_ctrl_limit, "%"PRId16"");
             break;
 
         case DBR_CTRL_FLOAT:
             severity_status_get(dbr_ctrl_float);
             units_get_cb(dbr_ctrl_float);
             precision_get(dbr_ctrl_float);
+            get_meta_string(dbr_ctrl_float, lower_disp_limit, "%g");
+            get_meta_string(dbr_ctrl_float, upper_disp_limit, "%g");
+            get_meta_string(dbr_ctrl_float, lower_warning_limit, "%g");
+            get_meta_string(dbr_ctrl_float, upper_warning_limit, "%g");
+            get_meta_string(dbr_ctrl_float, lower_alarm_limit, "%g");
+            get_meta_string(dbr_ctrl_float, upper_alarm_limit, "%g");
+            get_meta_string(dbr_ctrl_float, lower_ctrl_limit, "%g");
+            get_meta_string(dbr_ctrl_float, upper_ctrl_limit, "%g");
             break;
 
         case DBR_CTRL_ENUM:
             severity_status_get(dbr_ctrl_enum);
             /* does not have units */
+
+            /* remember enum strings to be able to print them later */
+            ch->enum_no_st = ((struct dbr_ctrl_enum *)args.dbr)->no_str;
+            if (ch->enum_strs == NULL)
+                ch->enum_strs = (char **)callocMustSucceed(MAX_STRING_SIZE, sizeof(((struct dbr_ctrl_enum *)args.dbr)->strs), "Can't allocate buffer for enum strings in getMetadataFromEvArgs");
+            if (ch->enum_strs != NULL){
+                int j=0;
+                for (j=0; j<ch->enum_no_st; j++){
+                    ch->enum_strs[j]=strdup(((struct dbr_ctrl_enum *)args.dbr)->strs[j]);
+                }
+            }
             break;
 
         case DBR_CTRL_CHAR:
             severity_status_get(dbr_ctrl_char);
             units_get_cb(dbr_ctrl_char);
+            get_meta_string(dbr_ctrl_char, lower_disp_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, upper_disp_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, lower_warning_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, upper_warning_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, lower_alarm_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, upper_alarm_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, lower_ctrl_limit, "%"PRIu8"");
+            get_meta_string(dbr_ctrl_char, upper_ctrl_limit, "%"PRIu8"");
             break;
 
         case DBR_CTRL_LONG:
             severity_status_get(dbr_ctrl_long);
             units_get_cb(dbr_ctrl_long);
+            get_meta_string(dbr_ctrl_long, lower_disp_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, upper_disp_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, lower_warning_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, upper_warning_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, lower_alarm_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, upper_alarm_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, lower_ctrl_limit, "%"PRId32"");
+            get_meta_string(dbr_ctrl_long, upper_ctrl_limit, "%"PRId32"");
             break;
 
         case DBR_CTRL_DOUBLE:
             severity_status_get(dbr_ctrl_double);
             units_get_cb(dbr_ctrl_double);
             precision_get(dbr_ctrl_double);
+            get_meta_string(dbr_ctrl_double, lower_disp_limit, "%g");
+            get_meta_string(dbr_ctrl_double, upper_disp_limit, "%g");
+            get_meta_string(dbr_ctrl_double, lower_warning_limit, "%g");
+            get_meta_string(dbr_ctrl_double, upper_warning_limit, "%g");
+            get_meta_string(dbr_ctrl_double, lower_alarm_limit, "%g");
+            get_meta_string(dbr_ctrl_double, upper_alarm_limit, "%g");
+            get_meta_string(dbr_ctrl_double, lower_ctrl_limit, "%g");
+            get_meta_string(dbr_ctrl_double, upper_ctrl_limit, "%g");
             break;
 
         case DBR_CHAR:
@@ -524,6 +650,14 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
     }
 }
 
+/**
+ * @brief cawaitEvaluateCondition evaluates output of channel i against the corresponding wait condition.
+ *              returns 1 if matching, 0 otherwise, and -1 if error. Before evaluation, channel output is converted to double. If this is
+ *              not successful, the function returns -1. If the channel in question is an array, the condition is evaluated against the first element.
+ * @param ch pointer to the channel struct
+ * @param args evrargs returned by the read callback function
+ * @return true if the condition is fulfilled
+ */
 bool cawaitEvaluateCondition(struct channel * ch, evargs args){
     /*evaluates output of channel i against the corresponding condition. */
     /*returns 1 if matching, 0 otherwise, and -1 if error. */
@@ -611,4 +745,95 @@ bool cawaitEvaluateCondition(struct channel * ch, evargs args){
     }
 
     return false;
+}
+
+/**
+ * @brief printCainfo - prints metatata and calls printValue();
+ * @param args - evargs from callback function
+ * @param arguments - pointer to the (input flags) arguments struct
+ */
+void printCainfo(evargs args, arguments_T *arguments){
+    u_int32_t j;
+
+    struct channel *ch = ((struct field *)args.usr)->ch;
+
+    bool readAccess, writeAccess;
+    const char *delimeter = "-------------------------------";
+
+    /*start printing */
+    fputc('\n',stdout);
+    fputc('\n',stdout);
+    printf("%s\n%s\n", delimeter, ch->base.name);                                               /*name */
+
+    if(isValField(ch->base.name))
+        if(ch->fields[field_desc].val != NULL) printf("\tDescription: %s\n", ch->fields[field_desc].val);  /*description */
+
+    if(ch->fields[field_rtyp].val != NULL) printf("\tRecord type: %s\n", ch->fields[field_rtyp].val);  /*record type */
+    printf("\tNative DBF type: %s\n", dbf_type_to_text(ca_field_type(ch->base.id)));            /*field type */
+    printf("\tNumber of elements: %zu\n", ch->count);                                           /*number of elements */
+    fputs("\tTime: ", stdout);
+    printTimestamp("%Y-%m-%d %H:%M:%S.%06f", &ch->timestamp);                                   /*timestamp*/
+    fputc('\n',stdout);
+    printf("\tValue: ");                                                                        /*value*/
+    printValue(args, arguments);
+    fputc('\n',stdout);
+    if(ch->units)
+        printf("\tUnits: %s\n", ch->units);
+    fputc('\n',stdout);
+    printf("\tAlarm status: %s, severity: %s\n",
+           epicsAlarmSeverityStrings[ch->severity],
+           epicsAlarmConditionStrings[ch->status]);
+    if(ch->upper_warning_limit || ch->lower_warning_limit)
+        printf("\n\tWarning\tupper limit: %s\n\t\tlower limit: %s\n",
+                ch->upper_warning_limit, ch->lower_warning_limit);
+    if(ch->upper_alarm_limit || ch->lower_alarm_limit)
+        printf("\tAlarm\tupper limit: %s\n\t\tlower limit: %s\n",
+                ch->upper_alarm_limit, ch->lower_alarm_limit);
+    if(ch->upper_ctrl_limit || ch->upper_ctrl_limit)
+        printf("\tControl\tupper limit: %s\n\t\tlower limit: %s\n",
+               ch->upper_ctrl_limit, ch->lower_ctrl_limit);
+    if(ch->upper_disp_limit || ch->upper_disp_limit)
+        printf("\tDisplay\tupper limit: %s\n\t\tlower limit: %s\n",
+               ch->upper_disp_limit, ch->lower_disp_limit);
+    fputc('\n',stdout);
+    if(dbr_type_is_FLOAT(args.type) || dbr_type_is_DOUBLE(args.type))
+        printf("\tPrecision: %"PRId16"\n\n",ch->prec);
+
+
+    if(ch->enum_strs){
+        printf("\tNumber of enum strings: %"PRId16"\n", ch->enum_no_st);
+        for (j=0; j < ch->enum_no_st; ++j) {
+            printf("\tstring %"PRIu32": %s\n", j, ch->enum_strs[j]);
+        }
+        if(j>0) fputc('\n',stdout);
+    }
+
+    bool printed_any = false;
+    if(!isValField(ch->base.name)) {
+        getBaseChannelName(ch->base.name);
+        printf("\t%s info:\n", ch->base.name);
+        if(ch->fields[field_desc].val != NULL) printf("\tDescription: %s\n", ch->fields[field_desc].val);
+        printed_any = true;
+    }
+
+    u_int32_t nFields = sizeof(ch->fields)/sizeof(ch->fields[0]);
+    for(j=field_hhsv; j < nFields; j++) {
+        if (ch->fields[j].val != NULL) {
+            printf("\t%s alarm severity: %.*s\n", cainfo_fields[j], MAX_STRING_SIZE, ch->fields[j].val);
+            printed_any = true;
+        }
+    }
+    if (printed_any)
+        fputc('\n',stdout);
+
+
+    readAccess = ca_read_access(ch->base.id);
+    writeAccess = ca_write_access(ch->base.id);
+
+    printf("\tCA host name: %s\n", ca_host_name(ch->base.id));                           /*host name */
+    printf("\tRead access: "); if(readAccess) printf("yes\n"); else printf("no\n");     /*read and write access */
+    printf("\tWrite access: "); if(writeAccess) printf("yes\n"); else printf("no\n");
+    printf("%s\n", delimeter);
+
+    return;
 }

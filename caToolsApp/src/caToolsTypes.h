@@ -135,10 +135,17 @@ enum channelField {
         const void      *dbr;   /* a pointer to the item returned */
         int             status; /* ECA_XXX status of the requested op from the server */
     } evargs;
+
+    epicsShareFunc short epicsShareAPI ca_field_type (chid chan);
+    epicsShareFunc unsigned epicsShareAPI ca_read_access (chid chan);
+    epicsShareFunc unsigned epicsShareAPI ca_write_access (chid chan);
+    epicsShareFunc const char * epicsShareAPI ca_host_name (chid channel);
+
 #endif
 
 struct field {
     char *name;             /* the name of the ca channel */
+    char *val;              /* string representation of value */
     chid id;                /* the id of the ca channel */
     long connectionState;   /* channel connected/disconnected  */
     bool created;           /* channel creation for the field was successfull */
@@ -158,7 +165,7 @@ enum operator { /* possible conditions for cawait */
     operator_strneq
 };
 
-/* enum describing the "state machine" state of each channel during the execution of catools applocation */
+/* enum describing the "state machine" state of each channel during the execution of catools application */
 enum state{
     base_waiting,
     base_created,
@@ -189,6 +196,16 @@ struct channel {
     int      	    severity; 	/* severity */
     int             prec;       /* precision */
     char*           units;      /* units */
+    char*           upper_disp_limit;	/* str representation of upper limit of graph */
+    char*           lower_disp_limit;	/* str representation of lower limit of graph */
+    char*           upper_alarm_limit;  /* str representation of upper alarm limit */
+    char*           upper_warning_limit; /* str representation of upper warning limit */
+    char*           lower_warning_limit; /* str representation of lower warning limit */
+    char*           lower_alarm_limit;   /* str representation of lower alarm limit */
+    char*           upper_ctrl_limit;   /* str representation of lower control limit */
+    char*           lower_ctrl_limit;   /* str representation of lower control limit */
+    char**          enum_strs;   /* enum strings */
+    int             enum_no_st;   /* number of enum strings */
     epicsTimeStamp  timestamp;  /* time stamp */
     epicsTimeStamp  lastUpdate; /* last update for timestamp diff */
     enum state      state;      /* state of the channel within catools application */
@@ -197,6 +214,7 @@ struct channel {
 extern epicsTimeStamp g_programStartTime, g_commonLastUpdate; /* see caToolsGlobals.c */
 
 extern int g_verbosity;
+extern const char * cainfo_fields[];
 
 
 

@@ -41,7 +41,7 @@ arguments_T arguments = {
 };
 
 
-const char * fields[] = {
+const char * cainfo_fields[] = {
     ".DESC",
     ".RTYP",
     ".HHSV",
@@ -68,7 +68,7 @@ const char * fields[] = {
     ".FFSV"
 };
 
-#define noFields (sizeof (fields) / sizeof (const char *))
+#define noFields (sizeof (cainfo_fields) / sizeof (const char *))
 
 /* timestamps needed by -timestamp */
 epicsTimeStamp g_programStartTime;  /* timestamp indicating program start */
