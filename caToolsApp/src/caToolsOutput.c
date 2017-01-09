@@ -3,13 +3,14 @@
 #include <inttypes.h>
 #include <math.h>
 #include <assert.h>
-#include <strings.h>
 #include <string.h>
 
 #include "epicsTime.h"
 #include "caToolsTypes.h"
 #include "caToolsUtils.h"
 #include "caToolsOutput.h"
+#include "alarmString.h"
+
 
 /**
  * @brief getEnumString tries to return enum string from the evargs
@@ -190,7 +191,7 @@ void printValue(evargs args, arguments_T *arguments){
                 printBits(valueInt32);
             }
             else if (arguments->str){
-                printf("%c", (u_int8_t)valueInt32);
+                printf("%c", (uint8_t)valueInt32);
             }
             else{
                 printf("%" PRId32, valueInt32);
@@ -203,17 +204,17 @@ void printValue(evargs args, arguments_T *arguments){
 
             /* display dec, hex, bin, oct, char if desired */
             if (arguments->hex){
-                printf("0x%" PRIx16, (u_int16_t)valueInt16);
+                printf("0x%" PRIx16, (uint16_t)valueInt16);
             }
             else if (arguments->oct){
-                printf("0o%" PRIo16, (u_int16_t)valueInt16);
+                printf("0o%" PRIo16, (uint16_t)valueInt16);
             }
             else if (arguments->bin){
                 printf("0b");
-                printBits((u_int16_t)valueInt16);
+                printBits((uint16_t)valueInt16);
             }
             else if (arguments->str){
-                printf("%c", (u_int8_t)valueInt16);
+                printf("%c", (uint8_t)valueInt16);
             }
             else{
                 printf("%" PRId16, valueInt16);
@@ -254,20 +255,20 @@ void printValue(evargs args, arguments_T *arguments){
            debugPrint("printValue() - case DBR_CHAR\n");
             if (arguments->hex){
                 debugPrint("printValue() - case DBR_CHAR - hex\n");
-                printf("0x%" PRIx8, ((u_int8_t*) value)[j]);
+                printf("0x%" PRIx8, ((uint8_t*) value)[j]);
             }
             else if (arguments->oct){
                 debugPrint("printValue() - case DBR_CHAR - oct\n");
-                printf("0o%" PRIo8, ((u_int8_t*) value)[j]);
+                printf("0o%" PRIo8, ((uint8_t*) value)[j]);
             }
             else if (arguments->bin){
                 debugPrint("printValue() - case DBR_CHAR - bin\n");
                 printf("0b");
-                printBits(((u_int8_t*) value)[j]);
+                printBits(((uint8_t*) value)[j]);
             }
             else if (!arguments->str){    /* output as a number */
                 debugPrint("printValue() - case DBR_CHAR - num\n");
-                printf("%" PRIu8, ((u_int8_t*) value)[j]);
+                printf("%" PRIu8, ((uint8_t*) value)[j]);
             }else{ /*print as char*/
                printf("\'%c\'", ((char*) value)[j]);
             }
@@ -316,9 +317,9 @@ void printOutput(evargs args, arguments_T *arguments){
         epicsTimeStamp* lastTimeStamp;
         epicsTimeStamp elapsed;
         bool negative;
-        
+
         lastTimeStamp = arguments->timestamp == 'r' ? &g_programStartTime : arguments->timestamp == 'c' ? &ch->lastUpdate : &g_commonLastUpdate;
-        
+
         if(doubleTime)
             fputs("timestamp:", stdout);
 
@@ -437,9 +438,22 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
         /* T ... dbr_type,
          * D ... ch->fieldname
          * F ... printf format  */
+#ifdef _WIN32
         #define get_meta_string(T, D, F) if(ch->D == NULL) \
             ch->D = (char *) callocMustSucceed(MAX_STRING_SIZE, sizeof(char), "Can't allocate  buffer for meta string");\
-            if(ch->D != NULL) snprintf(ch->D, MAX_STRING_SIZE, F, ((struct T *)args.dbr)->D);
+            if(ch->D != NULL) { \
+                _snprintf(ch->D, MAX_STRING_SIZE, F, ((struct T *)args.dbr)->D); \
+                ch->D[MAX_STRING_SIZE-1] = '\0'; \
+            }
+#else
+        #define get_meta_string(T, D, F) if(ch->D == NULL) \
+            ch->D = (char *) callocMustSucceed(MAX_STRING_SIZE, sizeof(char), "Can't allocate  buffer for meta string");\
+            if(ch->D != NULL) { \
+                snprintf(ch->D, MAX_STRING_SIZE, F, ((struct T *)args.dbr)->D); \
+            }
+#endif
+
+
 
     /* end of macros */
 
@@ -670,7 +684,7 @@ bool cawaitEvaluateCondition(struct channel * ch, evargs args){
     bool isStrOperator = ch->conditionOperator == operator_streq || ch->conditionOperator == operator_strneq;
 
     /*convert the value to double */
-    double dblValue;
+    double dblValue = 0;
     char * strVal = NULL;
     int32_t baseType = args.type % (LAST_TYPE+1);
     switch (baseType){
@@ -753,7 +767,7 @@ bool cawaitEvaluateCondition(struct channel * ch, evargs args){
  * @param arguments - pointer to the (input flags) arguments struct
  */
 void printCainfo(evargs args, arguments_T *arguments){
-    u_int32_t j;
+    uint32_t j;
 
     struct channel *ch = ((struct field *)args.usr)->ch;
 
@@ -816,7 +830,7 @@ void printCainfo(evargs args, arguments_T *arguments){
         printed_any = true;
     }
 
-    u_int32_t nFields = sizeof(ch->fields)/sizeof(ch->fields[0]);
+    uint32_t nFields = sizeof(ch->fields)/sizeof(ch->fields[0]);
     for(j=field_hhsv; j < nFields; j++) {
         if (ch->fields[j].val != NULL) {
             printf("\t%s alarm severity: %.*s\n", cainfo_fields[j], MAX_STRING_SIZE, ch->fields[j].val);

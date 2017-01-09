@@ -229,7 +229,7 @@ static char* translatePercentN(char* s)
  * @param arguments pointer to the variable holding the arguments
  * @return success
  */
-bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *arguments){
+bool parseArguments(int argc, char ** argv, uint32_t *nChannels, arguments_T *arguments){
     int opt;                    /*  getopt() current option */
     int opt_long;               /*  getopt_long() current long option */
 
@@ -649,7 +649,7 @@ bool parseArguments(int argc, char ** argv, u_int32_t *nChannels, arguments_T *a
 
 bool parseChannels(int argc, char ** argv, arguments_T *arguments, struct channel *channels){
     debugPrint("parseChannels()\n");
-    u_int32_t i;                      /* counter */
+    uint32_t i;                      /* counter */
     bool success = true;
     /* Copy PV names from command line */
     for (i = 0; optind < argc; i++, optind++) {

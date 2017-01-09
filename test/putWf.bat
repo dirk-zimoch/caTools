@@ -1,0 +1,6 @@
+..\caput %1 CTT:TEST_WVF-CHAR "1 10 101"
+..\caput %1 CTT:TEST_WVF-DOUBLE "1 10 101"
+..\caput %1 CTT:TEST_WVF-FLOAT "1 10 101"
+..\caput %1 CTT:TEST_WVF-LONG "1 10 101"
+..\caput %1 CTT:TEST_WVF-SHORT "1 10 101"
+..\caput %1 CTT:TEST_WVF-STRING "123 string 456 dring ping"

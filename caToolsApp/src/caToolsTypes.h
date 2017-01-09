@@ -64,7 +64,7 @@ typedef struct {
    bool parseArray;         /* use inputSeparator to parse array */
    int64_t outNelm;         /* number of array elements to read */
    bool nord;               /* display number of array elements */
-   u_int16_t verbosity;     /* verbosity level: see VERBOSITY_* defines */
+   uint16_t verbosity;     /* verbosity level: see VERBOSITY_* defines */
    double period;           /* periodic execution */
    char* separator;         /* periodic execution separator string */
    char* tfmt;              /* time stamp format */

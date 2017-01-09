@@ -9,13 +9,12 @@
 
 #include "cantProceed.h"
 #include "cadef.h"
-#include "alarmString.h"
-#include "alarm.h"
+#include "caToolsOutput.h"
 #include "caToolsTypes.h"
 #include "caToolsGlobals.c"
-#include "caToolsOutput.h"
 #include "caToolsInput.h"
 #include "caToolsUtils.h"
+
 
 static void caReadCallback (evargs args);
 
@@ -42,7 +41,7 @@ bool issueLongStringRequest(struct channel *ch) {
 
 /* if cainfo generate requests for the cainfo sibling fields */
 bool issueCainfoSiblingRequests(struct channel *ch) {
-    u_int32_t j, nFields = noFields;
+    uint32_t j, nFields = noFields;
     bool success = true;
     for(j=0; j < nFields; j++) {
         if(ch->fields[j].connectionState == CA_OP_CONN_UP) { /* skip unconnected channels */
@@ -285,8 +284,8 @@ static void caWriteCallback (evargs args) {
  * @param channels poiter to the global channel array
  * @param nChannels number of existing chawaitForCallbacksnnels
  */
-void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
-    u_int32_t i;
+void waitForCallbacks(struct channel *channels, uint32_t nChannels) {
+    uint32_t i;
     bool allDone = false;
     epicsTimeStamp timeoutNow, timeout;
 
@@ -299,7 +298,7 @@ void waitForCallbacks(struct channel *channels, u_int32_t nChannels) {
         epicsTimeGetCurrent(&timeoutNow);
 
         if (arguments.caTimeout > 0 && epicsTimeGreaterThanEqual(&timeoutNow, &timeout)) {
-            debugPrint("waitForCallbacks - Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);            
+            debugPrint("waitForCallbacks - Timeout while waiting for PV response (more than %f seconds elapsed).\n", arguments.caTimeout);
             /* reset nRequests counters */
             for (i=0; i < nChannels; ++i) {
                 channels[i].nRequests = 0;
@@ -488,7 +487,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
  * @brief cainfoPendIO issues CA pend IO request and handles error
  * @return true on success
  */
-bool cainfoPendIO(){
+bool cainfoPendIO(void){
     int status = ca_pend_io(arguments.caTimeout);
     if (status != ECA_NORMAL) {
         if (status == ECA_TIMEOUT) {
@@ -509,9 +508,9 @@ bool cainfoPendIO(){
  * @param nChannels - number of channel structs
  * @return true on success
  */
-bool caRequest(struct channel *channels, u_int32_t nChannels) {
+bool caRequest(struct channel *channels, uint32_t nChannels) {
     bool success = true;
-    u_int32_t i;
+    uint32_t i;
 
     /* generate write requests  */
     if (arguments.tool == caput ||
@@ -746,11 +745,11 @@ bool initSiblings(struct channel *ch, arguments_T *arguments){
  * @param nChannels number of channels
  * @return true on success
  */
-bool caInit(struct channel *channels, u_int32_t nChannels){
+bool caInit(struct channel *channels, uint32_t nChannels){
     /*creates contexts and channels. */
     int status;
     bool success = true;
-    u_int32_t i;
+    uint32_t i;
     debugPrint("caInit()\n");
     status = ca_context_create(ca_disable_preemptive_callback);
 
@@ -863,9 +862,9 @@ bool monitorLoop (struct channel * channels, size_t nChannels, arguments_T * arg
  * @param nChannels - number of channels
  * @return true on success
  */
-bool caDisconnect(struct channel * channels, u_int32_t nChannels){
+bool caDisconnect(struct channel * channels, uint32_t nChannels){
     int status;
-    u_int32_t i;
+    uint32_t i;
     bool success = true;
     size_t j=0,nFields = noFields;
 
@@ -913,7 +912,7 @@ void freeField(struct field * field){
  * @param channels - array of channel structs
  * @param nChannels - number of channels
  */
-void freeChannels(struct channel * channels, u_int32_t nChannels){
+void freeChannels(struct channel * channels, uint32_t nChannels){
     /* free channels */
     size_t i, j;
     for (i=0 ;i < nChannels; ++i) {
@@ -969,9 +968,9 @@ void freeChannels(struct channel * channels, u_int32_t nChannels){
  */
 int main ( int argc, char ** argv ){
 
-    u_int32_t nChannels=0;              /* Number of channels */
-    u_int32_t nNotConnectedChannels=0;  /* Number of not connected channels at the end of program execution */
-    u_int32_t i;                        /* counter */
+    uint32_t nChannels=0;              /* Number of channels */
+    uint32_t nNotConnectedChannels=0;  /* Number of not connected channels at the end of program execution */
+    uint32_t i;                        /* counter */
     struct channel *channels;
 
     g_runMonitor = true;
