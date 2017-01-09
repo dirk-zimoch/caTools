@@ -3,7 +3,6 @@
 #include <inttypes.h>
 #include <math.h>
 #include <assert.h>
-//#include <strings.h>
 #include <string.h>
 
 #include "epicsTime.h"
@@ -11,6 +10,7 @@
 #include "caToolsUtils.h"
 #include "caToolsOutput.h"
 #include "alarmString.h"
+
 
 /**
  * @brief getEnumString tries to return enum string from the evargs
@@ -438,9 +438,22 @@ void getMetadataFromEvArgs(struct channel * ch, evargs args){
         /* T ... dbr_type,
          * D ... ch->fieldname
          * F ... printf format  */
+#ifdef _WIN32
         #define get_meta_string(T, D, F) if(ch->D == NULL) \
             ch->D = (char *) callocMustSucceed(MAX_STRING_SIZE, sizeof(char), "Can't allocate  buffer for meta string");\
-            if(ch->D != NULL) _snprintf(ch->D, MAX_STRING_SIZE, F, ((struct T *)args.dbr)->D);
+            if(ch->D != NULL) { \
+                _snprintf(ch->D, MAX_STRING_SIZE, F, ((struct T *)args.dbr)->D); \
+                ch->D[MAX_STRING_SIZE-1] = '\0'; \
+            }
+#else
+        #define get_meta_string(T, D, F) if(ch->D == NULL) \
+            ch->D = (char *) callocMustSucceed(MAX_STRING_SIZE, sizeof(char), "Can't allocate  buffer for meta string");\
+            if(ch->D != NULL) { \
+                snprintf(ch->D, MAX_STRING_SIZE, F, ((struct T *)args.dbr)->D); \
+            }
+#endif
+
+
 
     /* end of macros */
 
@@ -671,7 +684,7 @@ bool cawaitEvaluateCondition(struct channel * ch, evargs args){
     bool isStrOperator = ch->conditionOperator == operator_streq || ch->conditionOperator == operator_strneq;
 
     /*convert the value to double */
-    double dblValue;
+    double dblValue = 0;
     char * strVal = NULL;
     int32_t baseType = args.type % (LAST_TYPE+1);
     switch (baseType){

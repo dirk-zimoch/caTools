@@ -9,13 +9,12 @@
 
 #include "cantProceed.h"
 #include "cadef.h"
-//#include "alarmString.h"
-#include "alarm.h"
+#include "caToolsOutput.h"
 #include "caToolsTypes.h"
 #include "caToolsGlobals.c"
-#include "caToolsOutput.h"
 #include "caToolsInput.h"
 #include "caToolsUtils.h"
+
 
 static void caReadCallback (evargs args);
 
