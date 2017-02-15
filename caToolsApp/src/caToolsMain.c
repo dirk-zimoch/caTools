@@ -179,7 +179,6 @@ static void caReadCallback (evargs args){
         getMetadataFromEvArgs(ch, args);
 
         char* value = dbr_value_ptr(args.dbr, args.type);
-        value[MAX_STRING_SIZE-1] = '\0'; /* null terminate string, in case it is not... */
         size_t stringLength = strlen(value);
 
         /* See if it makes sense to check for string length and
