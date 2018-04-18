@@ -671,7 +671,7 @@ void caCustomExceptionHandler( struct exception_handler_args args) {
     }
     else {
         sprintf(buf + l,
-                "in %s - with request chanel=%s operation=%ld data type=%s count=%ld",
+                "in %s - with request channel=%s, operation=%ld, data type=%s, count=%ld \n",
                 args.ctx, args.chid ? ca_name(args.chid) : "?",
                 args.op, dbr_type_to_text(args.type), args.count);
         ca_signal(args.stat, buf);
