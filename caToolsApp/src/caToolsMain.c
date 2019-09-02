@@ -400,6 +400,7 @@ bool caGenerateWriteRequests(struct channel *ch, arguments_T * arguments){
     if (status != ECA_NORMAL) {
         errPrint("Problem creating put request for PV %s: %s.\n", ch->base.name, ca_message(status));
         ch->nRequests --;
+        ch->state = put_done;
         return false;
     }
     return true;
