@@ -100,7 +100,7 @@ void printValue(evargs args, arguments_T *arguments){
     struct channel *ch = ((struct field *)args.usr)->ch;
 
 
-    debugPrint("printValue() - baseType: %s\n", dbr_type_to_text(baseType));
+    debugPrint("printValue() - baseType: %s  -  %ld elements \n", dbr_type_to_text(baseType), args.count);
 
     /* handle long strings */
     if(         (baseType == DBR_CHAR && (ch->type == DBF_STRING || ch->type == DBR_CTRL_STRING)) ||        /* this is long string */

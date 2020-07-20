@@ -427,8 +427,10 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
     ch->state = read_waiting;
 
     /* check number of elements. arguments->outNelm is 0 by default.
-     * calling ca_create_subscription or ca_request with COUNT 0
-     * returns default number of elements NORD in R3.14.21 or NELM in R3.13.10 */
+     * calling ca_create_subscription with COUNT 0
+     * returns default number of elements NORD in R3.14.21 or NELM in R3.13.10
+     * However this is not true for R3.13 ca_array_get_callback. It may return 0 elements!
+     */
     if((unsigned long) arguments->outNelm < ch->count) ch->outNelm = (unsigned long) arguments->outNelm;
     else{
         ch->outNelm = ch->count;
@@ -446,7 +448,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
 
 
     ch->nRequests ++;
-    status = ca_array_get_callback(reqType, ch->outNelm, ch->base.id, caReadCallback, &ch->base);
+    status = ca_array_get_callback(reqType, ch->outNelm ? ch->outNelm : ch->count, ch->base.id, caReadCallback, &ch->base);
     if (status != ECA_NORMAL) {
         errPrint("Problem creating get request for process variable %s: %s\n",ch->base.name, ca_message(status));
         ch->nRequests --;
@@ -461,7 +463,7 @@ bool caGenerateReadRequests(struct channel *ch, arguments_T * arguments){
         reqType = dbf_type_to_DBR_TIME(dbr_type_to_DBF(reqType));
         debugPrint("caGenerateReadRequests() - Issued second request using time type: %s\n", dbr_type_to_text(reqType));
         ch->nRequests=ch->nRequests+1;
-        status = ca_array_get_callback(reqType, ch->outNelm, ch->base.id, caReadCallback, &ch->base);
+        status = ca_array_get_callback(reqType, ch->outNelm ? ch->outNelm : ch->count, ch->base.id, caReadCallback, &ch->base);
         if (status != ECA_NORMAL) {
             errPrint("Problem creating get_request for process variable %s: %s\n",ch->base.name, ca_message(status));
             ch->nRequests --;
