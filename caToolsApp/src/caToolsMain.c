@@ -253,6 +253,7 @@ static void caReadCallback (evargs args){
             printCainfo(args, &arguments);
         else
             printOutput(args, &arguments);
+        fflush(stdout);
     }
 }
 
