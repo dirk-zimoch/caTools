@@ -114,3 +114,33 @@ The tools are structured as an EPICS application.
 1. Move to `<top>` folder and run `make`
 1. Find the executable in `<top>/bin/<architecture>/caTools`
 1. Find symbolic links for all the tools in `<top>/bin/<architecture>/` folder.
+
+
+# Packaging
+
+While building the package the code with the respective version is downloaded from the Git repository, build and then put into the package.
+
+Therefor make sure that you committed and pushed your changes to the git repository for building the RPM!
+
+
+### RHEL7
+
+The RPM package can be build on a __RHEL7__ system 
+
+```bash
+rpmbuild -ba epics-ext-caTools.spec
+```
+
+Without a special rpmbuild configuraiton the resulting package will end up in `~/rpmbuild/RPMS` .
+
+
+### SL6
+
+The RPM package can be build on a __SL6__ system 
+
+```bash
+rpmbuild -ba epics-ext-caTools.spec
+```
+
+Without a special rpmbuild configuraiton the resulting package will end up in `~/rpmbuild/RPMS` .
+
