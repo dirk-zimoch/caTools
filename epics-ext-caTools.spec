@@ -1,7 +1,7 @@
 Summary:        Epics CA Tools extensions
 Name:           epics-ext-caTools
 Version:        1.0
-Release:        1.0.4g%{?dist}
+Release:        1.0.4h%{?dist}
 License:        Commercial
 Group:          Development/Languages
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-%(%{__id_u} -n)
