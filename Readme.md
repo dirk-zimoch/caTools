@@ -64,9 +64,38 @@ Detailed help for each tool is available with `-h` flag. Eg. run `caget -h` to g
 ## Default Parsing and Formatting
 If no flags are set catools will allways try to parse the input as number(s). If number(s) could not be found the input will be interpreted as string where possible (enum and char field types). Similarly catools will check for char arrays if the output can be printed as ascii. I this case it will be printed as string or a n array of numbers otherwise. To force parsing and formating as strings use `-s` flag, and use `-num`, `-bin`, `-hex` or `-oct` to force numeric parsing and formatting.
 
-## caWait Examples
-`caWait` tool can be used in scripts, as it will exit upon meeting user specified condition. Here are a few examples:
+## cawait Examples
 
+The `cawait` command can be used in shell scripts that need to wait until EPICS channels reach certain values without the need to poll the value repeatedly. It will exit upon meeting the user specified condition. Here are a few examples:
+
+__Usage:__
+```
+camon CHANNEL 'condition' [CHANNEL2 'condition' ...]
+```
+
+Valid conditions are:
+* `<n`
+* `>n`
+* `<=n`
+* `>=n`
+* `==x` or `=x` or simply `x`
+* `a...b` meaning `>=a` and `<= b`
+* `!` means "not" and can can be prefixed to any condition
+
+with numbers `n, a, b` and numbers or strings `x`.
+
+Note that `< >` and `!` need to be escaped from the shell, so best use single quotes like `'condition'`
+
+
+
+If you wait for multiple channels at the same time like this `cawait XXX '<1' YYY '>5'` it will wait until any condition matches, thus it implements a logical OR.
+
+If you need an AND it is often sufficient to wait sequentially: `cawait XXX '<1'; cawait YYY '>5'`
+
+The command does not wait at all if the condition was already true at the beginning.
+
+
+__Examples:__
 - Exit when value of caTools-TEST:AI is smaller than 5.
 
   ```
@@ -101,6 +130,16 @@ If no flags are set catools will allways try to parse the input as number(s). If
 
   ```
   cawait TEST_MBBO '!50.00 Hz'
+  ```
+
+- state (e.g. string) is reached 
+  ```
+  cawait CHANNEL 'DONE'
+  ```
+
+- state is not active any more 
+  ```
+  cawait CHANNEL '!Moving'
   ```
 
 # Development
